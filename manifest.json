@@ -1,5 +1,5 @@
 {
-  "name": "OpsControl IA",
+  "name": "OpsControl IA Zero",
   "short_name": "OpsControl",
   "start_url": "./index.html",
   "scope": "./",
@@ -7,6 +7,5 @@
   "orientation": "portrait",
   "background_color": "#0f172a",
   "theme_color": "#0f172a",
-  "description": "Site inicial do OpsControl IA no GitHub Pages.",
-  "lang": "pt-BR"
+  "description": "OpsControl IA feito do zero com Supabase."
 }

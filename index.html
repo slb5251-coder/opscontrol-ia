@@ -2,76 +2,433 @@
 <html lang="pt-BR">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>OpsControl IA</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>OpsControl IA — Base Zero</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="./supabase-config.js"></script>
   <link rel="manifest" href="./manifest.json">
-  <meta name="theme-color" content="#0f172a">
   <style>
-    * { box-sizing: border-box; }
-    body {
-      margin: 0;
-      font-family: Arial, Helvetica, sans-serif;
-      background: linear-gradient(135deg, #0f172a, #1e3a8a);
-      color: white;
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      text-align: center;
-      padding: 24px;
+    :root{
+      --bg:#0f172a;--card:#ffffff;--text:#0f172a;--muted:#64748b;--line:#e2e8f0;
+      --blue:#2563eb;--green:#16a34a;--red:#dc2626;--amber:#d97706;--soft:#f8fafc;
     }
-    .card {
-      width: min(560px, 100%);
-      background: rgba(17, 24, 39, .92);
-      border: 1px solid #334155;
-      border-radius: 28px;
-      padding: 34px;
-      box-shadow: 0 24px 70px rgba(0,0,0,.38);
-    }
-    h1 {
-      margin: 0 0 12px;
-      font-size: 38px;
-      letter-spacing: -1px;
-    }
-    p {
-      color: #cbd5e1;
-      line-height: 1.55;
-      margin: 10px 0;
-    }
-    .badge {
-      display: inline-block;
-      margin-top: 18px;
-      padding: 9px 15px;
-      border-radius: 999px;
-      background: #2563eb;
-      font-weight: bold;
-    }
-    .status {
-      margin-top: 18px;
-      border: 1px solid #475569;
-      border-radius: 18px;
-      padding: 14px;
-      background: rgba(15, 23, 42, .72);
-      color: #dbeafe;
-      font-size: 14px;
-    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Inter,Arial,Helvetica,sans-serif;background:var(--soft);color:var(--text)}
+    .login{min-height:100vh;display:flex;align-items:center;justify-content:center;background:linear-gradient(135deg,#0f172a,#1e3a8a);padding:20px}
+    .login-card{width:min(440px,100%);background:white;border-radius:28px;padding:28px;box-shadow:0 30px 90px rgba(0,0,0,.35)}
+    h1,h2,h3{margin:0 0 8px}
+    p{color:var(--muted);line-height:1.45}
+    label{font-size:12px;color:var(--muted);font-weight:800;margin-top:12px;display:block}
+    input,select,textarea{width:100%;border:1px solid var(--line);border-radius:14px;padding:12px;background:white;font-size:14px}
+    textarea{min-height:88px}
+    .btn{border:0;border-radius:14px;padding:11px 14px;font-weight:900;cursor:pointer;background:var(--blue);color:white}
+    .btn.secondary{background:#e2e8f0;color:#0f172a}
+    .btn.red{background:var(--red)}
+    .btn.green{background:var(--green)}
+    .btn.mini{font-size:12px;padding:7px 10px;border-radius:10px}
+    .app{display:none;min-height:100vh}
+    .topbar{height:64px;background:#0f172a;color:white;display:flex;align-items:center;justify-content:space-between;padding:0 18px;position:sticky;top:0;z-index:10}
+    .brand{font-weight:900;display:flex;align-items:center;gap:10px}
+    .badge{display:inline-flex;border-radius:999px;padding:5px 9px;font-size:11px;font-weight:900;background:#e2e8f0;color:#0f172a;align-items:center;gap:5px}
+    .badge.green{background:#dcfce7;color:#166534}.badge.blue{background:#dbeafe;color:#1d4ed8}.badge.red{background:#fee2e2;color:#991b1b}.badge.amber{background:#fef3c7;color:#92400e}
+    .layout{display:grid;grid-template-columns:260px 1fr;min-height:calc(100vh - 64px)}
+    .side{background:white;border-right:1px solid var(--line);padding:16px;display:flex;flex-direction:column;gap:8px}
+    .side button{border:0;background:transparent;text-align:left;padding:12px;border-radius:14px;font-weight:800;color:#334155;cursor:pointer}
+    .side button.active,.side button:hover{background:#eff6ff;color:#1d4ed8}
+    .main{padding:22px;max-width:1400px;width:100%;margin:0 auto}
+    .page{display:none}.page.active{display:block}
+    .grid{display:grid;gap:16px}.grid.two{grid-template-columns:repeat(2,minmax(0,1fr))}.grid.three{grid-template-columns:repeat(3,minmax(0,1fr))}.grid.four{grid-template-columns:repeat(4,minmax(0,1fr))}
+    .card{background:white;border:1px solid var(--line);border-radius:22px;padding:18px;box-shadow:0 8px 28px rgba(15,23,42,.04)}
+    .stat-value{font-size:28px;font-weight:950}
+    .toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:16px;flex-wrap:wrap}
+    .table-wrap{overflow:auto}
+    table{width:100%;border-collapse:collapse;font-size:13px}
+    th,td{border-bottom:1px solid var(--line);padding:10px;text-align:left;vertical-align:top}
+    th{color:#475569;background:#f8fafc}
+    .actions{display:flex;gap:8px;flex-wrap:wrap}
+    .modal{position:fixed;inset:0;background:rgba(15,23,42,.65);display:none;align-items:center;justify-content:center;padding:18px;z-index:50}
+    .modal-box{width:min(820px,100%);max-height:92vh;overflow:auto;background:white;border-radius:24px;padding:20px}
+    .form-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.wide{grid-column:1/-1}
+    .notice{border:1px solid #bfdbfe;background:#eff6ff;color:#1e3a8a;border-radius:18px;padding:12px;margin:14px 0}
+    .drop{display:inline-flex;width:18px;height:18px;border-radius:999px 999px 999px 4px;transform:rotate(45deg);vertical-align:middle;margin-right:6px}.drop.blue{background:#2563eb}.drop.green{background:#16a34a}.drop.brown{background:#92400e}.drop.gray{background:#6b7280}
+    @media(max-width:900px){.layout{grid-template-columns:1fr}.side{position:fixed;bottom:0;left:0;right:0;z-index:20;display:grid;grid-template-columns:repeat(5,1fr);padding:8px;border-top:1px solid var(--line);border-right:0}.side button{font-size:11px;text-align:center;padding:8px}.main{padding-bottom:92px}.grid.two,.grid.three,.grid.four{grid-template-columns:1fr}.form-grid{grid-template-columns:1fr}}
   </style>
 </head>
 <body>
-  <main class="card">
-    <h1>OpsControl IA</h1>
-    <p>Site operacional em desenvolvimento.</p>
-    <p>Controle de tanques, fluidos, certificados, QHSE, operações, histórico operacional e manutenção.</p>
-    <div class="badge">GitHub Pages ativo</div>
-    <div class="status">
-      Próxima etapa: substituir esta página inicial pelo sistema completo conectado ao Supabase.
+  <section id="loginPage" class="login">
+    <div class="login-card">
+      <h1>OpsControl IA</h1>
+      <p>Base zero com Supabase: login real, banco online, tancagem, fluidos, histórico e certificados.</p>
+      <label>E-mail</label>
+      <input id="loginEmail" placeholder="seu@email.com">
+      <label>Senha</label>
+      <input id="loginPassword" type="password" placeholder="senha">
+      <button class="btn" style="width:100%;margin-top:18px" onclick="login()">Entrar</button>
+      <div id="loginMsg" class="notice" style="display:none"></div>
     </div>
-  </main>
+  </section>
 
-  <script>
-    if ("serviceWorker" in navigator) {
-      navigator.serviceWorker.register("./sw.js").catch(() => {});
+  <section id="appPage" class="app">
+    <div class="topbar">
+      <div class="brand">🛢️ OpsControl IA <span class="badge amber">BASE ZERO</span></div>
+      <div class="actions"><span id="syncStatus" class="badge">Local</span><button class="btn mini secondary" onclick="logout()">Sair</button></div>
+    </div>
+    <div class="layout">
+      <nav class="side">
+        <button data-page="dashboard" onclick="showPage('dashboard')">🏠 Início</button>
+        <button data-page="tanques" onclick="showPage('tanques')">🛢️ Tanques</button>
+        <button data-page="fluidos" onclick="showPage('fluidos')">💧 Fluidos</button>
+        <button data-page="certificados" onclick="showPage('certificados')">🎓 Certificados</button>
+        <button data-page="setup" onclick="showPage('setup')">⚙️ Setup</button>
+      </nav>
+      <main class="main">
+        <div id="dashboard" class="page"></div>
+        <div id="tanques" class="page"></div>
+        <div id="fluidos" class="page"></div>
+        <div id="certificados" class="page"></div>
+        <div id="setup" class="page"></div>
+      </main>
+    </div>
+  </section>
+
+  <div id="modal" class="modal">
+    <div class="modal-box">
+      <div class="toolbar">
+        <h2 id="modalTitle">Registro</h2>
+        <button class="btn secondary" onclick="closeModal()">Fechar</button>
+      </div>
+      <div id="modalBody"></div>
+    </div>
+  </div>
+
+<script>
+let supabaseClient = null;
+let sessionUser = null;
+let currentPage = "dashboard";
+let editing = { table:null, row:null };
+
+function sb(){
+  if(!window.OPSCONTROL_SUPABASE || !window.OPSCONTROL_SUPABASE.url || !window.OPSCONTROL_SUPABASE.anonKey){
+    throw new Error("Supabase não configurado. Edite supabase-config.js.");
+  }
+  if(!supabaseClient){
+    supabaseClient = window.supabase.createClient(window.OPSCONTROL_SUPABASE.url, window.OPSCONTROL_SUPABASE.anonKey);
+  }
+  return supabaseClient;
+}
+
+async function login(){
+  const email = document.getElementById("loginEmail").value.trim();
+  const password = document.getElementById("loginPassword").value;
+  try{
+    const { data, error } = await sb().auth.signInWithPassword({ email, password });
+    if(error) throw error;
+    sessionUser = data.user;
+    await ensureProfile();
+    document.getElementById("loginPage").style.display="none";
+    document.getElementById("appPage").style.display="block";
+    await loadAll();
+    showPage("dashboard");
+  }catch(e){
+    const msg = document.getElementById("loginMsg");
+    msg.style.display="block";
+    msg.textContent = "Falha no login: " + e.message;
+  }
+}
+
+async function logout(){
+  await sb().auth.signOut();
+  location.reload();
+}
+
+async function init(){
+  try{
+    const { data } = await sb().auth.getSession();
+    if(data.session){
+      sessionUser = data.session.user;
+      await ensureProfile();
+      document.getElementById("loginPage").style.display="none";
+      document.getElementById("appPage").style.display="block";
+      await loadAll();
+      showPage("dashboard");
     }
-  </script>
+  }catch(e){
+    console.warn(e);
+  }
+}
+window.addEventListener("load", init);
+
+let state = { profile:null, tanks:[], fluids:[], certificates:[], tank_history:[] };
+
+async function ensureProfile(){
+  const user = sessionUser;
+  const { data: existing } = await sb().from("profiles").select("*").eq("id", user.id).maybeSingle();
+  if(existing){ state.profile = existing; return; }
+  const profile = { id:user.id, email:user.email, nome:user.email.split("@")[0], role:"user" };
+  const { data, error } = await sb().from("profiles").insert(profile).select().single();
+  if(error) throw error;
+  state.profile = data;
+}
+
+function isAdmin(){ return state.profile?.role === "admin"; }
+
+async function loadAll(){
+  setStatus("sync", "Carregando...");
+  const [tanks, fluids, certs, hist] = await Promise.all([
+    sb().from("tanks").select("*").order("ordem", {ascending:true}),
+    sb().from("fluid_types").select("*").order("nome"),
+    isAdmin() ? sb().from("certificates").select("*").order("created_at", {ascending:false}) : sb().from("certificates").select("*").eq("user_id", sessionUser.id).order("created_at", {ascending:false}),
+    sb().from("tank_history").select("*").order("created_at", {ascending:false}).limit(50)
+  ]);
+  if(tanks.error) throw tanks.error;
+  if(fluids.error) throw fluids.error;
+  if(certs.error) throw certs.error;
+  if(hist.error) throw hist.error;
+  state.tanks = tanks.data || [];
+  state.fluids = fluids.data || [];
+  state.certificates = certs.data || [];
+  state.tank_history = hist.data || [];
+  setStatus("on", "Online");
+  renderAll();
+}
+
+function setStatus(cls,text){
+  const el = document.getElementById("syncStatus");
+  el.className = "badge " + (cls==="on"?"green":cls==="sync"?"amber":"");
+  el.textContent = text;
+}
+
+function showPage(page){
+  currentPage = page;
+  document.querySelectorAll(".page").forEach(p=>p.classList.remove("active"));
+  document.querySelectorAll(".side button").forEach(b=>b.classList.toggle("active", b.dataset.page===page));
+  document.getElementById(page).classList.add("active");
+  renderAll();
+}
+
+function badge(text){
+  const t = text || "-";
+  let c = "";
+  if(["Válido","Ativo","Disponível","Liberado","WBM"].includes(t)) c="green";
+  if(["SBM"].includes(t)) c="blue";
+  if(["Brine","A vencer","Pendente"].includes(t)) c="amber";
+  if(["Vencido","Bloqueado"].includes(t)) c="red";
+  return `<span class="badge ${c}">${t}</span>`;
+}
+
+function fluidIcon(type){
+  if(type==="WBM") return '<span class="drop blue"></span>';
+  if(type==="Brine") return '<span class="drop green"></span>';
+  if(type==="SBM") return '<span class="drop brown"></span>';
+  if(type==="Olefina") return '<span class="drop gray"></span>';
+  return "";
+}
+
+function fluidTypeByName(name){
+  const f = state.fluids.find(x => (x.nome||"").toLowerCase() === (name||"").toLowerCase());
+  if(f) return f.tipo;
+  const p = (name||"").toLowerCase();
+  if(p.includes("brine") || p.includes("nacl")) return "Brine";
+  if(p.includes("olefina") || p.includes("olefin")) return "Olefina";
+  if(p.includes("sbm") || p.includes("rheliant")) return "SBM";
+  if(p.includes("wbm") || p.includes("glydril") || p.includes("premix")) return "WBM";
+  return "";
+}
+
+function totalByType(type){
+  return state.tanks
+    .filter(t => (t.unidade || "bbl") === "bbl")
+    .filter(t => fluidTypeByName(t.produto) === type)
+    .reduce((a,t)=>a+Number(t.volume||0),0);
+}
+
+function renderAll(){
+  renderDashboard(); renderTanks(); renderFluids(); renderCertificates(); renderSetup();
+}
+
+function renderDashboard(){
+  document.getElementById("dashboard").innerHTML = `
+    <div class="toolbar"><div><h2>Dashboard</h2><p>Resumo online da operação.</p></div><button class="btn" onclick="loadAll()">Atualizar</button></div>
+    <div class="grid four">
+      <div class="card"><div class="stat-value">${totalByType("WBM")}</div><p>${fluidIcon("WBM")}WBM bbl</p></div>
+      <div class="card"><div class="stat-value">${totalByType("Brine")}</div><p>${fluidIcon("Brine")}Brine bbl</p></div>
+      <div class="card"><div class="stat-value">${totalByType("SBM")}</div><p>${fluidIcon("SBM")}SBM bbl</p></div>
+      <div class="card"><div class="stat-value">${totalByType("Olefina")}</div><p>${fluidIcon("Olefina")}Olefina bbl</p></div>
+    </div>
+    <div class="grid two" style="margin-top:16px">
+      <div class="card"><h3>Últimos históricos de tanques</h3><div class="table-wrap"><table><thead><tr><th>Tanque</th><th>Antes</th><th>Depois</th><th>Data</th></tr></thead><tbody>${state.tank_history.slice(0,8).map(h=>`<tr><td>${h.tank_tag}</td><td>${h.before_product||"-"} ${h.before_volume||0}</td><td>${h.after_product||"-"} ${h.after_volume||0}</td><td>${new Date(h.created_at).toLocaleString("pt-BR")}</td></tr>`).join("") || "<tr><td colspan='4'>Sem histórico.</td></tr>"}</tbody></table></div></div>
+      <div class="card"><h3>Certificados</h3><p>${state.certificates.length} certificado(s) vinculados ao seu acesso.</p></div>
+    </div>`;
+}
+
+function renderTanks(){
+  const groups = [
+    ["PHASE #1 — Mix Tanks", t=>t.phase==="Phase #1" && t.tipo==="Mix Tank"],
+    ["PHASE #1 — Tanques", t=>t.phase==="Phase #1" && t.tipo==="Tanque"],
+    ["PHASE #2 — Mix Tanks", t=>t.phase==="Phase #2" && t.tipo==="Mix Tank"],
+    ["PHASE #2 — Tanques", t=>t.phase==="Phase #2" && t.tipo==="Tanque"],
+    ["PHASE #1 — Silos", t=>t.phase==="Phase #1" && t.tipo==="Silo"],
+    ["PHASE #2 — Silos", t=>t.phase==="Phase #2" && t.tipo==="Silo"]
+  ];
+  document.getElementById("tanques").innerHTML = `
+    <div class="toolbar"><div><h2>Tanques / Tancagem</h2><p>Atualize fluido, lote, volume e status. Cada alteração gera histórico.</p></div><button class="btn" onclick="loadAll()">Atualizar</button></div>
+    ${groups.map(([name,fn])=>{
+      const list = state.tanks.filter(fn);
+      if(!list.length) return "";
+      return `<div class="card" style="margin-bottom:16px"><h3>${name}</h3><div class="grid three" style="margin-top:12px">${list.map(t=>`
+        <div class="card">
+          <h3>${t.tag}</h3>
+          <p>${t.tipo} • ${t.phase}<br>${fluidIcon(fluidTypeByName(t.produto))}${t.produto || "Sem produto"}<br>Lote: ${t.lote || "-"}<br>Volume: ${t.volume || 0}${t.capacidade ? "/" + t.capacidade : ""} ${t.unidade}</p>
+          ${badge(t.status)}
+          <div class="actions" style="margin-top:12px">
+            <button class="btn mini" onclick='openTank(${JSON.stringify(t)})'>Atualizar</button>
+            <button class="btn mini secondary" onclick='showHistory("${t.tag}")'>Histórico</button>
+          </div>
+        </div>`).join("")}</div></div>`;
+    }).join("")}`;
+}
+
+function renderFluids(){
+  document.getElementById("fluidos").innerHTML = `
+    <div class="toolbar"><div><h2>Cadastro de Fluidos</h2><p>Classifique o fluido para o sistema somar WBM, Brine, SBM e Olefina.</p></div><button class="btn" onclick="openFluid()">Novo fluido</button></div>
+    <div class="card table-wrap"><table><thead><tr><th>Nome</th><th>Tipo</th><th>Status</th><th>Ações</th></tr></thead><tbody>${state.fluids.map(f=>`<tr><td><b>${f.nome}</b></td><td>${fluidIcon(f.tipo)} ${f.tipo}</td><td>${badge(f.status)}</td><td><button class="btn mini secondary" onclick='openFluid(${JSON.stringify(f)})'>Editar</button></td></tr>`).join("") || "<tr><td colspan='4'>Nenhum fluido cadastrado.</td></tr>"}</tbody></table></div>`;
+}
+
+function certStatus(c){
+  if(!c.data_vencimento) return c.status || "Válido";
+  const d = new Date(c.data_vencimento);
+  const diff = Math.ceil((d - new Date())/(1000*60*60*24));
+  if(diff < 0) return "Vencido";
+  if(diff <= 30) return "A vencer";
+  return c.status || "Válido";
+}
+
+function renderCertificates(){
+  document.getElementById("certificados").innerHTML = `
+    <div class="toolbar"><div><h2>Certificados</h2><p>${isAdmin() ? "Admin vê todos." : "Você vê apenas seus certificados."}</p></div><button class="btn" onclick="openCertificate()">Novo certificado</button></div>
+    <div class="grid two">${state.certificates.map(c=>`
+      <div class="card">
+        <h3>${c.titulo}</h3>
+        <p>${c.tipo || "-"} • ${c.emissor || "-"}<br>Vencimento: ${c.data_vencimento ? new Date(c.data_vencimento).toLocaleDateString("pt-BR") : "-"}</p>
+        ${badge(certStatus(c))}
+        <div class="actions" style="margin-top:12px">
+          ${c.file_path ? `<button class="btn mini" onclick='openFile("${c.file_path}")'>Abrir PDF</button>` : ""}
+          <button class="btn mini secondary" onclick='openCertificate(${JSON.stringify(c)})'>Editar</button>
+        </div>
+      </div>`).join("") || "<div class='card'>Nenhum certificado cadastrado.</div>"}</div>`;
+}
+
+function renderSetup(){
+  document.getElementById("setup").innerHTML = `
+    <div class="card">
+      <h2>Setup</h2>
+      <p>Usuário logado: <b>${sessionUser?.email || "-"}</b><br>Perfil: <b>${state.profile?.role || "user"}</b></p>
+      <button class="btn" onclick="seedFixedTanks()">Criar/Restaurar tanques fixos</button>
+      <button class="btn secondary" onclick="loadAll()">Recarregar banco</button>
+    </div>`;
+}
+
+function openModal(title, html){ document.getElementById("modalTitle").textContent=title; document.getElementById("modalBody").innerHTML=html; document.getElementById("modal").style.display="flex"; }
+function closeModal(){ document.getElementById("modal").style.display="none"; }
+function val(id){ return document.getElementById(id)?.value || ""; }
+
+function fluidOptions(selected=""){
+  return state.fluids.map(f=>`<option ${f.nome===selected?"selected":""}>${f.nome}</option>`).join("");
+}
+
+function openTank(t){
+  openModal("Atualizar " + t.tag, `
+    <div class="form-grid">
+      <div><label>Produto</label><input id="f_produto" list="fluidList" value="${t.produto || ""}"><datalist id="fluidList">${fluidOptions(t.produto)}</datalist></div>
+      <div><label>Lote</label><input id="f_lote" value="${t.lote || ""}"></div>
+      <div><label>Volume / Quantidade</label><input id="f_volume" type="number" value="${t.volume || 0}"></div>
+      <div><label>Status</label><select id="f_status"><option ${t.status==="Disponível"?"selected":""}>Disponível</option><option ${t.status==="Liberado"?"selected":""}>Liberado</option><option ${t.status==="Bloqueado"?"selected":""}>Bloqueado</option><option ${t.status==="Em limpeza"?"selected":""}>Em limpeza</option></select></div>
+      <div class="wide"><button class="btn" onclick='saveTank(${JSON.stringify(t)})'>Salvar</button></div>
+    </div>`);
+}
+
+async function saveTank(oldTank){
+  const updates = { produto:val("f_produto"), lote:val("f_lote"), volume:Number(val("f_volume")||0), status:val("f_status") };
+  const { data, error } = await sb().from("tanks").update(updates).eq("id", oldTank.id).select().single();
+  if(error) return alert(error.message);
+  await sb().from("tank_history").insert({
+    tank_id: oldTank.id, tank_tag: oldTank.tag,
+    before_product: oldTank.produto, before_lote: oldTank.lote, before_volume: oldTank.volume, before_status: oldTank.status,
+    after_product: data.produto, after_lote: data.lote, after_volume: data.volume, after_status: data.status,
+    changed_by: sessionUser.id
+  });
+  closeModal(); await loadAll(); showPage("tanques");
+}
+
+function showHistory(tag){
+  const list = state.tank_history.filter(h=>h.tank_tag===tag);
+  openModal("Histórico " + tag, `<div class="table-wrap"><table><thead><tr><th>Data</th><th>Antes</th><th>Depois</th></tr></thead><tbody>${list.map(h=>`<tr><td>${new Date(h.created_at).toLocaleString("pt-BR")}</td><td>${h.before_product||"-"} | ${h.before_lote||"-"} | ${h.before_volume||0} | ${h.before_status||"-"}</td><td>${h.after_product||"-"} | ${h.after_lote||"-"} | ${h.after_volume||0} | ${h.after_status||"-"}</td></tr>`).join("") || "<tr><td colspan='3'>Sem histórico.</td></tr>"}</tbody></table></div>`);
+}
+
+function openFluid(f={}){
+  openModal(f.id ? "Editar fluido" : "Novo fluido", `
+    <div class="form-grid">
+      <div><label>Nome</label><input id="f_nome" value="${f.nome || ""}"></div>
+      <div><label>Tipo</label><select id="f_tipo"><option ${f.tipo==="WBM"?"selected":""}>WBM</option><option ${f.tipo==="Brine"?"selected":""}>Brine</option><option ${f.tipo==="SBM"?"selected":""}>SBM</option><option ${f.tipo==="Olefina"?"selected":""}>Olefina</option></select></div>
+      <div><label>Status</label><select id="f_status"><option ${f.status==="Ativo"?"selected":""}>Ativo</option><option ${f.status==="Inativo"?"selected":""}>Inativo</option></select></div>
+      <div class="wide"><button class="btn" onclick='saveFluid(${JSON.stringify(f)})'>Salvar</button></div>
+    </div>`);
+}
+
+async function saveFluid(f){
+  const row = { nome:val("f_nome"), tipo:val("f_tipo"), status:val("f_status") };
+  const res = f.id ? await sb().from("fluid_types").update(row).eq("id", f.id) : await sb().from("fluid_types").insert(row);
+  if(res.error) return alert(res.error.message);
+  closeModal(); await loadAll(); showPage("fluidos");
+}
+
+function openCertificate(c={}){
+  openModal(c.id ? "Editar certificado" : "Novo certificado", `
+    <div class="form-grid">
+      <div><label>Título</label><input id="f_titulo" value="${c.titulo || ""}"></div>
+      <div><label>Tipo</label><input id="f_tipo" value="${c.tipo || ""}"></div>
+      <div><label>Emissor</label><input id="f_emissor" value="${c.emissor || ""}"></div>
+      <div><label>Vencimento</label><input id="f_data" type="date" value="${c.data_vencimento || ""}"></div>
+      <div class="wide"><label>PDF/Imagem</label><input id="f_file" type="file" accept=".pdf,image/*"></div>
+      <div class="wide"><button class="btn" onclick='saveCertificate(${JSON.stringify(c)})'>Salvar</button></div>
+    </div>`);
+}
+
+async function saveCertificate(c){
+  let file_path = c.file_path || null;
+  const file = document.getElementById("f_file").files[0];
+  if(file){
+    const path = `${sessionUser.id}/${Date.now()}-${file.name.replace(/[^\w.\-À-ÿ ]/g,"_")}`;
+    const up = await sb().storage.from("certificados").upload(path, file, { upsert:false, contentType:file.type });
+    if(up.error) return alert(up.error.message);
+    file_path = up.data.path;
+  }
+  const row = { user_id: c.user_id || sessionUser.id, titulo:val("f_titulo"), tipo:val("f_tipo"), emissor:val("f_emissor"), data_vencimento:val("f_data") || null, status:"Válido", file_path };
+  const res = c.id ? await sb().from("certificates").update(row).eq("id", c.id) : await sb().from("certificates").insert(row);
+  if(res.error) return alert(res.error.message);
+  closeModal(); await loadAll(); showPage("certificados");
+}
+
+async function openFile(path){
+  const { data, error } = await sb().storage.from("certificados").createSignedUrl(path, 3600);
+  if(error) return alert(error.message);
+  window.open(data.signedUrl, "_blank");
+}
+
+async function seedFixedTanks(){
+  if(!confirm("Criar/restaurar estrutura fixa de tanques?")) return;
+  const rows = [];
+  let ordem = 1;
+  ["M-01","M-02"].forEach(tag=>rows.push({tag,tipo:"Mix Tank",phase:"Phase #1",capacidade:500,unidade:"bbl",status:"Disponível",ordem:ordem++}));
+  for(let i=1;i<=18;i++) rows.push({tag:"TK-"+String(i).padStart(2,"0"),tipo:"Tanque",phase:"Phase #1",capacidade:1000,unidade:"bbl",status:"Disponível",ordem:ordem++});
+  ["M-03","M-04"].forEach(tag=>rows.push({tag,tipo:"Mix Tank",phase:"Phase #2",capacidade:500,unidade:"bbl",status:"Disponível",ordem:ordem++}));
+  for(let i=1;i<=15;i++) rows.push({tag:"TK-S"+String(i).padStart(2,"0"),tipo:"Tanque",phase:"Phase #2",capacidade:1500,unidade:"bbl",status:"Disponível",ordem:ordem++});
+  for(let i=1;i<=5;i++) rows.push({tag:"SILO "+i,tipo:"Silo",phase:"Phase #1",capacidade:0,unidade:"ton",status:"Disponível",ordem:ordem++});
+  ["A","B","C","D"].forEach(l=>rows.push({tag:"SILO "+l,tipo:"Silo",phase:"Phase #2",capacidade:0,unidade:"ton",status:"Disponível",ordem:ordem++}));
+  const { error } = await sb().from("tanks").upsert(rows, { onConflict:"tag" });
+  if(error) return alert(error.message);
+  await loadAll(); showPage("tanques");
+}
+</script>
 </body>
 </html>

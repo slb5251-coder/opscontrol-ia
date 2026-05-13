@@ -4,11 +4,14 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>OpsControl IA</title>
+  <link rel="manifest" href="./manifest.json">
+  <meta name="theme-color" content="#0f172a">
   <style>
+    * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: Arial, sans-serif;
-      background: #0f172a;
+      font-family: Arial, Helvetica, sans-serif;
+      background: linear-gradient(135deg, #0f172a, #1e3a8a);
       color: white;
       min-height: 100vh;
       display: flex;
@@ -17,42 +20,58 @@
       text-align: center;
       padding: 24px;
     }
-
     .card {
-      max-width: 520px;
-      background: #111827;
+      width: min(560px, 100%);
+      background: rgba(17, 24, 39, .92);
       border: 1px solid #334155;
-      border-radius: 24px;
-      padding: 32px;
-      box-shadow: 0 20px 60px rgba(0,0,0,.35);
+      border-radius: 28px;
+      padding: 34px;
+      box-shadow: 0 24px 70px rgba(0,0,0,.38);
     }
-
     h1 {
       margin: 0 0 12px;
-      font-size: 34px;
+      font-size: 38px;
+      letter-spacing: -1px;
     }
-
     p {
       color: #cbd5e1;
-      line-height: 1.5;
+      line-height: 1.55;
+      margin: 10px 0;
     }
-
     .badge {
       display: inline-block;
-      margin-top: 16px;
-      padding: 8px 14px;
+      margin-top: 18px;
+      padding: 9px 15px;
       border-radius: 999px;
       background: #2563eb;
       font-weight: bold;
     }
+    .status {
+      margin-top: 18px;
+      border: 1px solid #475569;
+      border-radius: 18px;
+      padding: 14px;
+      background: rgba(15, 23, 42, .72);
+      color: #dbeafe;
+      font-size: 14px;
+    }
   </style>
 </head>
 <body>
-  <div class="card">
+  <main class="card">
     <h1>OpsControl IA</h1>
     <p>Site operacional em desenvolvimento.</p>
-    <p>Controle de tanques, fluidos, certificados, QHSE, operações e histórico operacional.</p>
-    <div class="badge">Versão inicial no GitHub Pages</div>
-  </div>
+    <p>Controle de tanques, fluidos, certificados, QHSE, operações, histórico operacional e manutenção.</p>
+    <div class="badge">GitHub Pages ativo</div>
+    <div class="status">
+      Próxima etapa: substituir esta página inicial pelo sistema completo conectado ao Supabase.
+    </div>
+  </main>
+
+  <script>
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.register("./sw.js").catch(() => {});
+    }
+  </script>
 </body>
 </html>

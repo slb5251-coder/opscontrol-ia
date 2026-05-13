@@ -1,0 +1,12 @@
+{
+  "name": "OpsControl IA",
+  "short_name": "OpsControl",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#0f172a",
+  "theme_color": "#0f172a",
+  "description": "Site inicial do OpsControl IA no GitHub Pages.",
+  "lang": "pt-BR"
+}

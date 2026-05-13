@@ -1,0 +1,17 @@
+Supabase configurado.
+
+Project URL:
+https://cxchjvyodbshroidrvrz.supabase.co
+
+Anon/Public Key:
+preenchida no arquivo supabase-config.js
+
+Arquivos para subir no GitHub:
+- index.html
+- supabase-config.js
+- manifest.json
+- sw.js
+
+Observação:
+O arquivo supabase_schema_zero.sql não precisa subir para o GitHub.
+Ele é apenas para executar no SQL Editor do Supabase.

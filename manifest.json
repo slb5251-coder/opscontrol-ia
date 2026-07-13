@@ -1,11 +1,19 @@
 {
-  "name": "OpsControl IA Zero",
+  "name": "OpsControl IA V2",
   "short_name": "OpsControl",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
-  "orientation": "portrait",
-  "background_color": "#0f172a",
-  "theme_color": "#0f172a",
-  "description": "OpsControl IA feito do zero com Supabase."
+  "orientation": "portrait-primary",
+  "background_color": "#f4f7fb",
+  "theme_color": "#071a35",
+  "description": "Controle operacional para plantas de fluidos e granéis.",
+  "icons": [
+    {
+      "src": "assets/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
 }

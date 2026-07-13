@@ -1,13 +1,13 @@
 {
-  "name": "OpsControl IA V2",
-  "short_name": "OpsControl",
+  "name": "OpsControl IA Pro",
+  "short_name": "OpsControl Pro",
   "start_url": "./index.html",
   "scope": "./",
   "display": "standalone",
   "orientation": "portrait-primary",
   "background_color": "#f4f7fb",
   "theme_color": "#071a35",
-  "description": "Controle operacional para plantas de fluidos e granéis.",
+  "description": "Controle operacional profissional para a B-Port LMP.",
   "icons": [
     {
       "src": "assets/icon.svg",

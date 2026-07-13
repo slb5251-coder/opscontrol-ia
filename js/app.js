@@ -78,7 +78,7 @@
   }
   defaults.tanks=buildTanks();
 
-  const state={mode:"demo",client:null,user:null,data:null,page:"dashboard",config:loadConfig(),realtimeChannel:null,realtimeBusy:false};
+  const state={mode:"real",client:null,user:null,data:null,page:"dashboard",config:loadConfig(),realtimeChannel:null,realtimeBusy:false};
   function loadConfig(){
     const base=window.OPSCONTROL_CONFIG||{};
     try{return {...{url:base.supabaseUrl||"",key:base.supabaseKey||""},...JSON.parse(localStorage.getItem(CONFIG_KEY)||"{}")}}
@@ -112,7 +112,7 @@
 
   async function realLogin(){
     const email=$("#loginEmail").value.trim(),password=$("#loginPassword").value;
-    if(!configured())return showMessage("Configure a Publishable key do Supabase.");
+    if(!configured())return showMessage("A conexão com o sistema não está configurada. Contate o administrador.");
     try{
       await initClient();
       const {data,error}=await state.client.auth.signInWithPassword({email,password});
@@ -126,6 +126,7 @@
     const c=state.client,u=state.user;
     const qs=await Promise.all([
       c.from("profiles").select("*").eq("id",u.id).maybeSingle(),
+      c.from("profiles").select("id,email,full_name,role,department,active,created_at").order("full_name"),
       c.from("fluid_types").select("*").order("name"),
       c.from("tanks").select("*").order("display_order"),
       c.from("operations").select("*").order("start_at",{ascending:false}),
@@ -134,21 +135,33 @@
       c.from("equipment").select("*").order("name"),
       c.from("certificates").select("*").order("expires_at"),
       c.from("alerts").select("*").order("created_at",{ascending:false}),
-      c.from("chat_messages").select("*").order("created_at",{ascending:true})
+      c.from("chat_messages").select("*").order("created_at",{ascending:true}),
+      c.from("attachments").select("*").order("created_at",{ascending:false})
     ]);
     const bad=qs.find(x=>x.error);if(bad)throw bad.error;
     const p=qs[0].data||{full_name:u.email,role:"user"};
     state.data={
       profile:{name:p.full_name||u.email,role:p.role||"user",email:u.email},
-      fluids:(qs[1].data||[]).map(x=>({id:x.id,name:x.name,type:x.category,active:x.active})),
-      tanks:(qs[2].data||[]).map(x=>({id:x.id,name:x.name,phase:x.phase,kind:x.kind,capacity:Number(x.capacity),volume:Number(x.current_volume||0),product:x.current_product||"",lot:x.current_lot||"",status:x.status,order:x.display_order})),
-      operations:(qs[3].data||[]).map(x=>({id:x.id,client:x.client,vessel:x.vessel,activity:x.activity,product:x.product,planned:Number(x.planned_quantity),executed:Number(x.executed_quantity),unit:x.unit,status:x.status,start_at:x.start_at})),
-      trucks:(qs[4].data||[]).map(x=>({id:x.id,date:x.movement_date,movement:x.movement_type,supplier:x.supplier,product:x.product,quantity:Number(x.quantity),unit:x.unit,plate:x.plate,invoice:x.invoice_number,status:x.status})),
-      qhse:(qs[5].data||[]).map(x=>({id:x.id,date:x.record_date,type:x.record_type,title:x.title,responsible:x.responsible,severity:x.severity,status:x.status})),
-      equipment:(qs[6].data||[]).map(x=>({id:x.id,name:x.name,category:x.category,status:x.status,hourmeter:Number(x.hourmeter),last_hours:Number(x.last_work_hours),diesel_initial:Number(x.diesel_initial),refueled:Number(x.diesel_refueled),diesel_final:Number(x.diesel_final)})),
-      certificates:(qs[7].data||[]).map(x=>({id:x.id,title:x.title,owner:x.owner_name,expires_at:x.expires_at,status:x.status})),
-      alerts:(qs[8].data||[]).map(x=>({id:x.id,title:x.title,message:x.message,level:x.level,target:x.target_group,created_at:x.created_at,read:x.is_read})),
-      messages:(qs[9].data||[]).map(x=>({id:x.id,sender:x.sender_name,text:x.message,created_at:x.created_at,mine:x.sender_id===u.id}))
+      users:(qs[1].data||[]).map(x=>({id:x.id,email:x.email||"",name:x.full_name||x.email||"Usuário",role:x.role||"user",department:x.department||"",active:x.active!==false,created_at:x.created_at})),
+      fluids:(qs[2].data||[]).map(x=>({id:x.id,name:x.name,type:x.category,active:x.active})),
+      tanks:(qs[3].data||[]).map(x=>({id:x.id,name:x.name,phase:x.phase,kind:x.kind,capacity:Number(x.capacity),volume:Number(x.current_volume||0),product:x.current_product||"",lot:x.current_lot||"",status:x.status,order:x.display_order})),
+      operations:(qs[4].data||[]).map(x=>({id:x.id,client:x.client,vessel:x.vessel,activity:x.activity,product:x.product,planned:Number(x.planned_quantity),executed:Number(x.executed_quantity),unit:x.unit,status:x.status,start_at:x.start_at})),
+      trucks:(qs[5].data||[]).map(x=>({id:x.id,date:x.movement_date,movement:x.movement_type,supplier:x.supplier,product:x.product,quantity:Number(x.quantity),unit:x.unit,plate:x.plate,invoice:x.invoice_number,status:x.status})),
+      qhse:(qs[6].data||[]).map(x=>({id:x.id,date:x.record_date,type:x.record_type,title:x.title,responsible:x.responsible,severity:x.severity,status:x.status})),
+      equipment:(qs[7].data||[]).map(x=>({id:x.id,name:x.name,category:x.category,status:x.status,hourmeter:Number(x.hourmeter),last_hours:Number(x.last_work_hours),diesel_initial:Number(x.diesel_initial),refueled:Number(x.diesel_refueled),diesel_final:Number(x.diesel_final)})),
+      certificates:(qs[8].data||[]).map(x=>({id:x.id,title:x.title,owner:x.owner_name,expires_at:x.expires_at,status:x.status})),
+      alerts:(qs[9].data||[]).map(x=>({id:x.id,title:x.title,message:x.message,level:x.level,target:x.target_group,created_at:x.created_at,read:x.is_read})),
+      messages:(qs[10].data||[]).map(x=>({id:x.id,sender:x.sender_name,text:x.message,created_at:x.created_at,mine:x.sender_id===u.id})),
+      attachments:(qs[11].data||[]).map(x=>({
+        id:x.id,
+        module:x.module,
+        record_id:x.record_id,
+        file_name:x.file_name,
+        file_path:x.file_path,
+        mime_type:x.mime_type,
+        file_size:Number(x.file_size||0),
+        created_at:x.created_at
+      }))
     };
   }
 
@@ -228,11 +241,11 @@
   }
 
   function renderFluids(){
-    $("#page-fluids").innerHTML=header("Fluidos e granéis","Cadastro padronizado de produtos.",`<button class="btn primary" data-action="new-fluid">+ Adicionar produto</button>`)+`<div class="card table-wrap"><table class="data-table"><thead><tr><th>Produto</th><th>Classificação</th><th>Status</th></tr></thead><tbody>${state.data.fluids.map(x=>`<tr><td><strong>${esc(x.name)}</strong></td><td>${badge(x.type)}</td><td>${badge(x.active?"Ativo":"Inativo")}</td></tr>`).join("")}</tbody></table></div>`;
+    $("#page-fluids").innerHTML=header("Fluidos e granéis","Cadastro padronizado de produtos.",`<button class="btn primary" data-action="new-fluid">+ Adicionar produto</button>`)+`<div class="card table-wrap"><table class="data-table"><thead><tr><th>Produto</th><th>Classificação</th><th>Status</th><th>Anexos</th></tr></thead><tbody>${state.data.fluids.map(x=>{const count=attachmentCount("fluid",x.id);return `<tr><td><strong>${esc(x.name)}</strong></td><td>${badge(x.type)}</td><td>${badge(x.active?"Ativo":"Inativo")}</td><td><button class="btn small secondary" data-attachments="fluid:${x.id}" data-attachment-title="${esc(x.name)}">📎 ${count}</button></td></tr>`}).join("")}</tbody></table></div>`;
   }
 
   function renderTrucks(){
-    $("#page-trucks").innerHTML=header("Carretas","Entradas e saídas de fluidos, granéis e insumos.",`<button class="btn primary" data-action="new-truck">+ Nova movimentação</button>`)+`<div class="card table-wrap"><table class="data-table"><thead><tr><th>Data</th><th>Movimento</th><th>Origem/Destino</th><th>Produto</th><th>Placa</th><th>NF</th><th>Status</th></tr></thead><tbody>${state.data.trucks.map(x=>`<tr><td>${dateOnly(x.date)}</td><td>${badge(x.movement)}</td><td>${esc(x.supplier)}</td><td><strong>${esc(x.product)}</strong><br><small>${fmt(x.quantity)} ${esc(x.unit)}</small></td><td>${esc(x.plate)}</td><td>${esc(x.invoice)}</td><td>${badge(x.status)}</td></tr>`).join("")}</tbody></table></div>`;
+    $("#page-trucks").innerHTML=header("Carretas","Entradas e saídas de fluidos, granéis e insumos.",`<button class="btn primary" data-action="new-truck">+ Nova movimentação</button>`)+`<div class="card table-wrap"><table class="data-table"><thead><tr><th>Data</th><th>Movimento</th><th>Origem/Destino</th><th>Produto</th><th>Placa</th><th>NF</th><th>Status</th><th>Anexos</th></tr></thead><tbody>${state.data.trucks.map(x=>{const count=attachmentCount("truck",x.id);return `<tr><td>${dateOnly(x.date)}</td><td>${badge(x.movement)}</td><td>${esc(x.supplier)}</td><td><strong>${esc(x.product)}</strong><br><small>${fmt(x.quantity)} ${esc(x.unit)}</small></td><td>${esc(x.plate)}</td><td>${esc(x.invoice)}</td><td>${badge(x.status)}</td><td><button class="btn small secondary" data-attachments="truck:${x.id}" data-attachment-title="${esc(x.plate||x.product)}">📎 ${count}</button></td></tr>`}).join("")}</tbody></table></div>`;
   }
 
   function renderQhse(){
@@ -244,7 +257,7 @@
   }
 
   function renderCertificates(){
-    $("#page-certificates").innerHTML=header("Certificados","Documentos por usuário e validade.",`<button class="btn primary" data-action="new-certificate">+ Adicionar certificado</button>`)+`<div class="card table-wrap"><table class="data-table"><thead><tr><th>Certificado</th><th>Colaborador</th><th>Validade</th><th>Status</th></tr></thead><tbody>${state.data.certificates.map(x=>`<tr><td><strong>${esc(x.title)}</strong></td><td>${esc(x.owner)}</td><td>${dateOnly(x.expires_at)}</td><td>${badge(x.status)}</td></tr>`).join("")}</tbody></table></div>`;
+    $("#page-certificates").innerHTML=header("Certificados","Documentos por usuário e validade.",`<button class="btn primary" data-action="new-certificate">+ Adicionar certificado</button>`)+`<div class="card table-wrap"><table class="data-table"><thead><tr><th>Certificado</th><th>Colaborador</th><th>Validade</th><th>Status</th><th>Arquivo</th></tr></thead><tbody>${state.data.certificates.map(x=>{const count=attachmentCount("certificate",x.id);return `<tr><td><strong>${esc(x.title)}</strong></td><td>${esc(x.owner)}</td><td>${dateOnly(x.expires_at)}</td><td>${badge(x.status)}</td><td><button class="btn small secondary" data-attachments="certificate:${x.id}" data-attachment-title="${esc(x.title)}">📎 ${count}</button></td></tr>`}).join("")}</tbody></table></div>`;
   }
 
   function renderAlerts(){
@@ -257,7 +270,49 @@
   }
 
   function renderSettings(){
-    $("#page-settings").innerHTML=header("Configurações","Conexão do Supabase e dados locais.")+`<div class="grid two"><div class="card"><h3>Conexão Supabase</h3><p>O endereço do projeto V2 já está preenchido.</p><label>Project URL</label><input id="cfgUrl" value="${esc(state.config.url)}"><label>Publishable key</label><input id="cfgKey" type="password" value="${esc(state.config.key)}" placeholder="sb_publishable_..."><div class="actions" style="margin-top:14px"><button class="btn primary" data-action="save-config">Salvar conexão</button><button class="btn secondary" data-action="test-config">Testar</button></div></div><div class="card"><h3>Modo demonstração</h3><p>Os dados ficam salvos neste navegador.</p><div class="info-box">Modo atual: <strong>${state.mode==="real"?"Supabase online":"Demonstração local"}</strong></div><button class="btn danger" style="margin-top:14px" data-action="reset-demo">Restaurar demonstração</button></div><div class="card"><h3>Estrutura da unidade</h3><p>Phase #1: M-01, M-02, TK-01 a TK-18 e Silos 1 a 5.<br>Phase #2: M-03, M-04, TK-S01 a TK-S15 e Silos A a D.</p></div><div class="card"><h3>Projeto</h3><p><strong>Nome:</strong> opscontrol-ia-v2<br><strong>Região:</strong> São Paulo<br><strong>Project ID:</strong> bcnzdujfumswhpduxkfy</p></div></div>`;
+    const users=state.data.users||[];
+    const isAdmin=String(state.data.profile?.role||"").toLowerCase()==="admin";
+    const userRows=users.map(u=>`<tr>
+      <td><strong>${esc(u.name)}</strong><br><small>${esc(u.email)}</small></td>
+      <td>${badge(u.role)}</td>
+      <td>${esc(u.department||"-")}</td>
+      <td>${badge(u.active?"Ativo":"Inativo")}</td>
+      <td>${dateOnly(u.created_at)}</td>
+    </tr>`).join("");
+
+    $("#page-settings").innerHTML=header("Configurações","Usuários cadastrados e informações do sistema.")+
+      `<div class="grid two">
+        <div class="card">
+          <h3>Meu perfil</h3>
+          <div class="kpi-list" style="margin-top:14px">
+            <div class="kpi-row"><span>Nome</span><strong>${esc(state.data.profile.name)}</strong></div>
+            <div class="kpi-row"><span>E-mail</span><strong>${esc(state.data.profile.email)}</strong></div>
+            <div class="kpi-row"><span>Cargo</span>${badge(state.data.profile.role)}</div>
+          </div>
+        </div>
+        <div class="card">
+          <h3>Sistema</h3>
+          <p><strong>Aplicação:</strong> OpsControl IA V2<br>
+          <strong>Unidade:</strong> B-Port LMP<br>
+          <strong>Conexão:</strong> Supabase online<br>
+          <strong>Projeto:</strong> opscontrol-ia-v2</p>
+        </div>
+      </div>
+      <div class="section-title">Usuários cadastrados</div>
+      <div class="card table-wrap">
+        ${isAdmin?`
+          <table class="data-table">
+            <thead><tr><th>Usuário</th><th>Cargo</th><th>Departamento</th><th>Status</th><th>Cadastro</th></tr></thead>
+            <tbody>${userRows||`<tr><td colspan="5" class="empty">Nenhum usuário cadastrado.</td></tr>`}</tbody>
+          </table>
+        `:`
+          <div class="info-box">A lista completa de usuários é visível somente para administradores.</div>
+          <table class="data-table" style="margin-top:12px">
+            <thead><tr><th>Usuário</th><th>Cargo</th><th>Departamento</th><th>Status</th><th>Cadastro</th></tr></thead>
+            <tbody>${userRows||`<tr><td colspan="5" class="empty">Perfil não localizado.</td></tr>`}</tbody>
+          </table>
+        `}
+      </div>`;
   }
 
   function renderAll(){renderDashboard();renderOperations();renderTanks();renderFluids();renderTrucks();renderQhse();renderMaintenance();renderCertificates();renderAlerts();renderReports();renderSettings();$("#alertCount").textContent=state.data.alerts.filter(x=>!x.read).length}
@@ -272,13 +327,98 @@
   function tankForm(t){return `<form id="tankForm"><input type="hidden" name="id" value="${t.id}"><div class="form-grid"><div><label>Tanque</label><input value="${esc(t.name)}" disabled></div><div><label>Status</label><select name="status">${["Disponível","Liberado","Em uso","Bloqueado","Limpeza","Manutenção"].map(x=>`<option ${t.status===x?"selected":""}>${x}</option>`).join("")}</select></div><div class="wide"><label>Produto</label><input name="product" value="${esc(t.product)}"></div><div><label>Lote</label><input name="lot" value="${esc(t.lot)}"></div><div><label>Volume</label><input name="volume" type="number" step="0.01" max="${t.capacity}" value="${t.volume}"></div></div>${actions("Atualizar tancagem")}</form>`}
   function generic(kind){
     const f={
-      fluid:`<form id="genericForm" data-kind="fluid"><div class="form-grid"><div class="wide"><label>Produto</label><input name="name" required></div><div><label>Classificação</label><select name="type"><option>WBM</option><option>Brine</option><option>SBM</option><option>Olefina</option><option>Granel</option><option>Insumo</option></select></div><div><label>Ativo</label><select name="active"><option value="true">Sim</option><option value="false">Não</option></select></div></div>${actions("Salvar produto")}</form>`,
-      truck:`<form id="genericForm" data-kind="truck"><div class="form-grid"><div><label>Data</label><input name="date" type="date" required></div><div><label>Movimento</label><select name="movement"><option>Entrada</option><option>Saída</option><option>Backload</option></select></div><div><label>Origem / Destino</label><input name="supplier" required></div><div><label>Produto</label><input name="product" required></div><div><label>Quantidade</label><input name="quantity" type="number" step="0.01"></div><div><label>Unidade</label><select name="unit"><option>ton</option><option>bbl</option><option>m³</option></select></div><div><label>Placa</label><input name="plate"></div><div><label>NF</label><input name="invoice"></div><div><label>Status</label><select name="status"><option>Programada</option><option>Recebida</option><option>Concluída</option></select></div></div>${actions("Salvar movimentação")}</form>`,
+      fluid:`<form id="genericForm" data-kind="fluid"><div class="form-grid"><div class="wide"><label>Produto</label><input name="name" required></div><div><label>Classificação</label><select name="type"><option>WBM</option><option>Brine</option><option>SBM</option><option>Olefina</option><option>Granel</option><option>Insumo</option></select></div><div><label>Ativo</label><select name="active"><option value="true">Sim</option><option value="false">Não</option></select></div><div class="wide"><label>Documentos ou fotos</label><input name="attachment" type="file" accept=".pdf,image/jpeg,image/png,image/webp,image/heic,image/heif" multiple><small class="field-help">PDF ou imagem. Máximo de 20 MB por arquivo.</small></div></div>${actions("Salvar produto")}</form>`,
+      truck:`<form id="genericForm" data-kind="truck"><div class="form-grid"><div><label>Data</label><input name="date" type="date" required></div><div><label>Movimento</label><select name="movement"><option>Entrada</option><option>Saída</option><option>Backload</option></select></div><div><label>Origem / Destino</label><input name="supplier" required></div><div><label>Produto</label><input name="product" required></div><div><label>Quantidade</label><input name="quantity" type="number" step="0.01"></div><div><label>Unidade</label><select name="unit"><option>ton</option><option>bbl</option><option>m³</option></select></div><div><label>Placa</label><input name="plate"></div><div><label>NF</label><input name="invoice"></div><div><label>Status</label><select name="status"><option>Programada</option><option>Recebida</option><option>Concluída</option></select></div><div class="wide"><label>Nota fiscal, documento ou foto</label><input name="attachment" type="file" accept=".pdf,image/jpeg,image/png,image/webp,image/heic,image/heif" multiple capture="environment"><small class="field-help">Você pode tirar uma foto pelo celular ou escolher arquivos.</small></div></div>${actions("Salvar movimentação")}</form>`,
       qhse:`<form id="genericForm" data-kind="qhse"><div class="form-grid"><div><label>Data</label><input name="date" type="date"></div><div><label>Tipo</label><select name="type"><option>DDS</option><option>APR</option><option>Inspeção</option><option>RIR</option><option>Auditoria</option></select></div><div class="wide"><label>Título</label><input name="title" required></div><div><label>Responsável</label><input name="responsible"></div><div><label>Severidade</label><select name="severity"><option>Baixa</option><option>Média</option><option>Alta</option><option>Crítica</option></select></div><div><label>Status</label><select name="status"><option>Pendente</option><option>Em andamento</option><option>Concluído</option></select></div></div>${actions("Salvar registro")}</form>`,
       equipment:`<form id="genericForm" data-kind="equipment"><div class="form-grid"><div><label>Equipamento</label><input name="name" required></div><div><label>Categoria</label><select name="category"><option>Motor a diesel</option><option>Bomba</option><option>Compressor</option><option>Empilhadeira</option><option>Outro</option></select></div><div><label>Status</label><select name="status"><option>Operando</option><option>Disponível</option><option>Parado</option><option>Manutenção</option></select></div><div><label>Horímetro</label><input name="hourmeter" type="number" step="0.1" value="0"></div><div><label>Horas trabalhadas</label><input name="last_hours" type="number" step="0.1" value="0"></div><div><label>Diesel inicial</label><input name="diesel_initial" type="number" step="0.1" value="0"></div><div><label>Abastecido</label><input name="refueled" type="number" step="0.1" value="0"></div><div><label>Diesel final</label><input name="diesel_final" type="number" step="0.1" value="0"></div></div>${actions("Salvar equipamento")}</form>`,
-      certificate:`<form id="genericForm" data-kind="certificate"><div class="form-grid"><div class="wide"><label>Certificado</label><input name="title" required></div><div><label>Colaborador</label><input name="owner"></div><div><label>Validade</label><input name="expires_at" type="date"></div><div><label>Status</label><select name="status"><option>Válido</option><option>A vencer</option><option>Vencido</option></select></div></div>${actions("Salvar certificado")}</form>`,
+      certificate:`<form id="genericForm" data-kind="certificate"><div class="form-grid"><div class="wide"><label>Certificado</label><input name="title" required></div><div><label>Colaborador</label><input name="owner"></div><div><label>Validade</label><input name="expires_at" type="date"></div><div><label>Status</label><select name="status"><option>Válido</option><option>A vencer</option><option>Vencido</option></select></div><div class="wide"><label>Certificado em PDF ou foto</label><input name="attachment" type="file" accept=".pdf,image/jpeg,image/png,image/webp,image/heic,image/heif" multiple><small class="field-help">O arquivo ficará armazenado de forma privada.</small></div></div>${actions("Salvar certificado")}</form>`,
       alert:`<form id="genericForm" data-kind="alert"><div class="form-grid"><div class="wide"><label>Título</label><input name="title" required></div><div class="wide"><label>Mensagem</label><textarea name="message" required></textarea></div><div><label>Nível</label><select name="level"><option>Informativo</option><option>Atenção</option><option>Crítico</option></select></div><div><label>Destinatário / Grupo</label><input name="target"></div></div>${actions("Enviar alerta")}</form>`
     };return f[kind];
+  }
+
+
+  function attachmentCount(module,recordId){
+    return (state.data.attachments||[]).filter(x=>x.module===module && x.record_id===recordId).length;
+  }
+
+  function fileSizeLabel(bytes){
+    const value=Number(bytes||0);
+    if(value<1024)return `${value} B`;
+    if(value<1024*1024)return `${(value/1024).toFixed(1)} KB`;
+    return `${(value/1024/1024).toFixed(1)} MB`;
+  }
+
+  function safeFileName(name){
+    return String(name||"arquivo")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g,"")
+      .replace(/[^a-zA-Z0-9._-]+/g,"-")
+      .replace(/-+/g,"-");
+  }
+
+  async function uploadAttachments(module,recordId,files){
+    if(!files || !files.length)return;
+    const allowed=[
+      "application/pdf",
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "image/heic",
+      "image/heif"
+    ];
+    for(const file of files){
+      if(!allowed.includes(file.type)){
+        throw new Error(`Formato não permitido: ${file.name}`);
+      }
+      if(file.size>20*1024*1024){
+        throw new Error(`O arquivo ${file.name} ultrapassa 20 MB.`);
+      }
+      const path=`${module}/${recordId}/${Date.now()}-${uid("file")}-${safeFileName(file.name)}`;
+      const {error:uploadError}=await state.client.storage
+        .from("opscontrol-files")
+        .upload(path,file,{contentType:file.type,upsert:false});
+      if(uploadError)throw uploadError;
+
+      const {error:metaError}=await state.client.from("attachments").insert({
+        module,
+        record_id:recordId,
+        file_name:file.name,
+        file_path:path,
+        mime_type:file.type,
+        file_size:file.size,
+        uploaded_by:state.user.id
+      });
+      if(metaError){
+        await state.client.storage.from("opscontrol-files").remove([path]);
+        throw metaError;
+      }
+    }
+  }
+
+  async function showAttachments(module,recordId,title){
+    const items=(state.data.attachments||[]).filter(x=>x.module===module && x.record_id===recordId);
+    if(!items.length){
+      openModal(`Anexos — ${title}`,`<div class="empty">Nenhum documento ou foto anexado.</div>`,"ANEXOS");
+      return;
+    }
+
+    const rows=await Promise.all(items.map(async file=>{
+      const {data,error}=await state.client.storage
+        .from("opscontrol-files")
+        .createSignedUrl(file.file_path,3600);
+      const url=error?"":data?.signedUrl||"";
+      const type=(file.mime_type||"").startsWith("image/")?"Foto":"Documento";
+      return `<div class="attachment-item">
+        <div class="attachment-icon">${type==="Foto"?"🖼️":"📄"}</div>
+        <div class="attachment-info">
+          <strong>${esc(file.file_name)}</strong>
+          <small>${type} • ${fileSizeLabel(file.file_size)} • ${dateTime(file.created_at)}</small>
+        </div>
+        ${url?`<a class="btn small primary" href="${url}" target="_blank" rel="noopener">Abrir</a>`:`<span class="badge red">Indisponível</span>`}
+      </div>`;
+    }));
+
+    openModal(`Anexos — ${title}`,`<div class="attachment-list">${rows.join("")}</div>`,"ANEXOS");
   }
 
   async function saveDemoEntity(kind,payload,id){
@@ -299,8 +439,15 @@
       certificate:["certificates",{user_id:state.user.id,owner_name:payload.owner,title:payload.title,expires_at:payload.expires_at,status:payload.status}],
       alert:["alerts",{title:payload.title,message:payload.message,level:payload.level,target_group:payload.target,is_read:false,created_by:state.user.id}]
     };
-    const [table,row]=maps[kind],q=id?state.client.from(table).update(row).eq("id",id):state.client.from(table).insert(row);
-    const {error}=await q;if(error)throw error;await loadRealData();renderAll();
+    const [table,row]=maps[kind];
+    const q=id
+      ? state.client.from(table).update(row).eq("id",id).select("id").single()
+      : state.client.from(table).insert(row).select("id").single();
+    const {data,error}=await q;
+    if(error)throw error;
+    await loadRealData();
+    renderAll();
+    return data?.id||id;
   }
 
   document.addEventListener("submit",async e=>{
@@ -342,22 +489,36 @@
           await loadRealData();renderAll();
         }
       }else if(f.id==="genericForm"){
-        const kind=f.dataset.kind,x=Object.fromEntries(new FormData(f));
-        ["quantity","hourmeter","last_hours","diesel_initial","refueled","diesel_final"].forEach(k=>{if(k in x)x[k]=Number(x[k]||0)});if("active"in x)x.active=x.active==="true";
-        state.mode==="demo"?await saveDemoEntity(kind,x):await saveReal(kind,x);
+        const kind=f.dataset.kind;
+        const input=f.querySelector('input[name="attachment"]');
+        const files=input?[...input.files]:[];
+        const x=Object.fromEntries(new FormData(f));
+        delete x.attachment;
+        ["quantity","hourmeter","last_hours","diesel_initial","refueled","diesel_final"].forEach(k=>{if(k in x)x[k]=Number(x[k]||0)});
+        if("active"in x)x.active=x.active==="true";
+        let recordId=null;
+        if(state.mode==="demo"){
+          await saveDemoEntity(kind,x);
+        }else{
+          recordId=await saveReal(kind,x);
+          if(files.length && ["fluid","truck","certificate"].includes(kind)){
+            toast(`Enviando ${files.length} anexo(s)...`);
+            await uploadAttachments(kind,recordId,files);
+            await loadRealData();
+            renderAll();
+          }
+        }
       }
-      closeModal();toast("Registro salvo.");
+      closeModal();toast("Registro e anexos salvos.");
     }catch(err){toast("Erro: "+err.message)}
   });
 
   document.addEventListener("click",async e=>{
     const b=e.target.closest("button");if(!b)return;
     if(b.id==="loginBtn")return realLogin();
-    if(b.id==="demoBtn"){state.mode="demo";state.data=demoData();return openApp()}
     if(b.id==="logoutBtn")return logout();
     if(b.id==="menuBtn")return $("#sidebar").classList.toggle("open");
     if(b.id==="modalClose"||b.hasAttribute("data-close-modal"))return closeModal();
-    if(b.id==="setupBtnLogin")return openModal("Configurar Supabase",`<form id="setupConnectionForm"><div class="info-box">Projeto: <strong>opscontrol-ia-v2</strong></div><label>Project URL</label><input name="url" value="${esc(state.config.url)}"><label>Publishable key</label><input name="key" type="password" value="${esc(state.config.key)}">${actions("Salvar conexão")}</form>`,"CONEXÃO");
     if(b.classList.contains("nav-item"))return showPage(b.dataset.page);
 
     const a=b.dataset.action;
@@ -374,9 +535,11 @@
       else{const {error}=await state.client.from("chat_messages").insert({channel:"operacao-geral",sender_id:state.user.id,sender_name:state.data.profile.name,message:text});if(error)return toast(error.message);await loadRealData()}
       renderAlerts();return;
     }
-    if(a==="save-config"){state.config={url:$("#cfgUrl").value.trim(),key:$("#cfgKey").value.trim()};localStorage.setItem(CONFIG_KEY,JSON.stringify(state.config));return toast("Conexão salva.")}
-    if(a==="test-config"){try{await initClient();const {error}=await state.client.auth.getSession();if(error)throw error;toast("Conexão válida.")}catch(err){toast("Falha: "+err.message)}return}
-    if(a==="reset-demo"){localStorage.removeItem(DEMO_KEY);state.data=demoData();renderAll();return toast("Demonstração restaurada.")}
+
+    if(b.dataset.attachments){
+      const [module,recordId]=b.dataset.attachments.split(":");
+      return showAttachments(module,recordId,b.dataset.attachmentTitle||"Registro");
+    }
 
     if(b.dataset.editOperation){const op=state.data.operations.find(x=>x.id===b.dataset.editOperation);return openModal("Editar operação",operationForm(op),"OPERAÇÃO")}
     if(b.dataset.editTank){const t=state.data.tanks.find(x=>x.id===b.dataset.editTank);return openModal("Atualizar "+t.name,tankForm(t),"TANCAGEM")}
@@ -384,6 +547,6 @@
   });
 
   $("#modal").addEventListener("click",e=>{if(e.target===$("#modal"))closeModal()});
-  $("#connectionHint").textContent=configured()?"Supabase configurado. Entre ou abra a demonstração.":"Projeto criado. Falta informar a Publishable key.";
+  $("#connectionHint").textContent="Acesse com seu e-mail e senha cadastrados.";
   if("serviceWorker" in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("sw.js").catch(()=>{}));
 })();

@@ -1,4 +1,4 @@
-const CACHE="opscontrol-v2-4";
+const CACHE="opscontrol-pro-1";
 const FILES=["./","./index.html","./app.css","./js/config.js","./js/app.js","./manifest.json","./assets/icon.svg"];
 self.addEventListener("install",e=>e.waitUntil(caches.open(CACHE).then(c=>c.addAll(FILES))));
 self.addEventListener("activate",e=>e.waitUntil(caches.keys().then(keys=>Promise.all(keys.filter(k=>k!==CACHE).map(k=>caches.delete(k))))));

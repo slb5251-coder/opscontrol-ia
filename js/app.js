@@ -15,7 +15,12 @@
     data: null,
     page: "dashboard",
     realtime: null,
+    realtimeStatus: "CLOSED",
     refreshing: false,
+    refreshDebounce: null,
+    refreshTimer: null,
+    autoRefreshStarted: false,
+    lastRefreshError: null,
     lastSync: null,
     filters: { start: "", end: "", client: "", product: "" },
     config: loadConfig()
@@ -59,6 +64,50 @@
   function daysUntil(value) {
     if (!value) return null;
     return Math.ceil((new Date(`${String(value).slice(0, 10)}T23:59:59`) - new Date()) / 86400000);
+  }
+
+  function localDateKey(value = new Date()) {
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Sao_Paulo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).formatToParts(date);
+    const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+    return `${values.year}-${values.month}-${values.day}`;
+  }
+
+  function recordDateKey(value) {
+    if (!value) return "";
+    const text = String(value);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+    return localDateKey(value);
+  }
+
+  function normalizedAlertLevel(value = "") {
+    return String(value)
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+  }
+
+  function isCriticalAlert(value) {
+    return ["alta", "critica", "critico", "critical", "urgente"].includes(normalizedAlertLevel(value));
+  }
+
+  function latestTimestamp(values = []) {
+    const valid = values
+      .filter(Boolean)
+      .map(value => new Date(value))
+      .filter(value => !Number.isNaN(value.getTime()));
+    return valid.length ? new Date(Math.max(...valid.map(value => value.getTime()))) : null;
+  }
+
+  function filterIsActive() {
+    return Object.values(state.filters).some(Boolean);
   }
 
   function toast(message, kind = "normal") {
@@ -186,7 +235,7 @@
   function filteredOperations() {
     const f = state.filters;
     return (state.data?.operations || []).filter(op => {
-      const date = String(op.start_at || op.created_at || "").slice(0, 10);
+      const date = recordDateKey(op.start_at || op.created_at);
       if (f.start && date && date < f.start) return false;
       if (f.end && date && date > f.end) return false;
       if (f.client && op.client !== f.client) return false;
@@ -198,7 +247,7 @@
   function filteredTrucks() {
     const f = state.filters;
     return (state.data?.trucks || []).filter(item => {
-      const date = String(item.date || "").slice(0, 10);
+      const date = recordDateKey(item.date);
       if (f.start && date && date < f.start) return false;
       if (f.end && date && date > f.end) return false;
       if (f.client && item.client !== f.client) return false;
@@ -529,16 +578,16 @@
       c.from("fluid_types").select("*").order("name"),
       c.from("tanks").select("*").order("display_order"),
       c.from("tank_history").select("*").order("created_at", { ascending: false }).limit(500),
-      c.from("operations").select("*").order("start_at", { ascending: false }).limit(300),
-      c.from("operation_events").select("*").order("event_time", { ascending: true }).limit(1000),
-      c.from("trucks").select("*").order("movement_date", { ascending: false }).limit(300),
-      c.from("qhse_records").select("*").order("record_date", { ascending: false }).limit(300),
+      c.from("operations").select("*").order("start_at", { ascending: false }).limit(2000),
+      c.from("operation_events").select("*").order("event_time", { ascending: true }).limit(5000),
+      c.from("trucks").select("*").order("movement_date", { ascending: false }).limit(2000),
+      c.from("qhse_records").select("*").order("record_date", { ascending: false }).limit(1000),
       c.from("action_items").select("*").order("due_date", { ascending: true }).limit(500),
       c.from("equipment").select("*").order("name"),
       c.from("diesel_logs").select("*").order("log_date", { ascending: false }).limit(500),
       c.from("maintenance_orders").select("*").order("opened_at", { ascending: false }).limit(500),
       c.from("certificates").select("*").order("expires_at"),
-      c.from("alerts").select("*").order("created_at", { ascending: false }).limit(300),
+      c.from("alerts").select("*").order("created_at", { ascending: false }).limit(1000),
       c.from("chat_messages").select("*").order("created_at", { ascending: true }).limit(500),
       c.from("attachments").select("*").order("created_at", { ascending: false }).limit(1000),
       c.from("chemical_inventory").select("*").order("product_name").limit(1000),
@@ -717,42 +766,99 @@
     const firstAllowed = $$(".nav-item").find(button => !button.classList.contains("hidden"))?.dataset.page || "dashboard";
     showPage(moduleAllowed(state.page) ? state.page : firstAllowed);
     subscribeRealtime();
+    startAutoRefresh();
+    updateConnectionBadge();
   }
 
   async function logout() {
+    clearTimeout(state.refreshDebounce);
+    clearInterval(state.refreshTimer);
     if (state.realtime) await state.client.removeChannel(state.realtime);
     await state.client.auth.signOut();
     location.reload();
   }
 
   function updateConnectionBadge() {
-    const online = navigator.onLine;
     const badgeEl = $("#syncBadge");
-    badgeEl.textContent = online ? "Tempo real ativo" : "Sem conexão";
-    badgeEl.className = `status-badge ${online ? "online" : "neutral"}`;
+    if (!badgeEl) return;
+
+    if (!navigator.onLine) {
+      badgeEl.textContent = "Sem conexão";
+      badgeEl.className = "status-badge neutral";
+      return;
+    }
+
+    if (state.lastRefreshError) {
+      badgeEl.textContent = "Falha de sincronização";
+      badgeEl.className = "status-badge red";
+      return;
+    }
+
+    if (state.realtimeStatus === "SUBSCRIBED") {
+      const time = state.lastSync ? state.lastSync.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "";
+      badgeEl.textContent = time ? `Atualizado ${time}` : "Tempo real ativo";
+      badgeEl.className = "status-badge online";
+      return;
+    }
+
+    badgeEl.textContent = state.realtimeStatus === "CHANNEL_ERROR" || state.realtimeStatus === "TIMED_OUT"
+      ? "Tempo real indisponível"
+      : "Conectando...";
+    badgeEl.className = "status-badge neutral";
+  }
+
+  function scheduleRealtimeRefresh() {
+    clearTimeout(state.refreshDebounce);
+    state.refreshDebounce = setTimeout(() => refreshRealtime("tempo real"), 700);
   }
 
   function subscribeRealtime() {
     if (state.realtime) return;
     state.realtime = state.client
-      .channel("opscontrol-professional")
-      .on("postgres_changes", { event: "*", schema: "public" }, refreshRealtime)
-      .subscribe();
+      .channel("opscontrol-professional-live")
+      .on("postgres_changes", { event: "*", schema: "public" }, scheduleRealtimeRefresh)
+      .subscribe(status => {
+        state.realtimeStatus = status;
+        updateConnectionBadge();
+      });
   }
 
-  async function refreshRealtime() {
-    if (state.refreshing || !navigator.onLine) return;
+  function startAutoRefresh() {
+    if (state.autoRefreshStarted) return;
+    state.autoRefreshStarted = true;
+
+    state.refreshTimer = setInterval(() => {
+      if (navigator.onLine && document.visibilityState === "visible") refreshRealtime("verificação automática");
+    }, 60000);
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible" && navigator.onLine) refreshRealtime("retorno ao aplicativo");
+    });
+  }
+
+  async function refreshRealtime(source = "tempo real", showToast = false) {
+    if (state.refreshing || !navigator.onLine) return false;
     state.refreshing = true;
+    state.lastRefreshError = null;
+    updateConnectionBadge();
+
     try {
       await loadData();
       if (state.data.profile.active === false) {
         await state.client.auth.signOut();
         location.reload();
-        return;
+        return false;
       }
       renderAll();
+      updateConnectionBadge();
+      if (showToast) toast(`Dashboard atualizado às ${state.lastSync.toLocaleTimeString("pt-BR")}.`, "success");
+      return true;
     } catch (error) {
-      console.error("Atualização em tempo real:", error);
+      state.lastRefreshError = error;
+      console.error(`Atualização (${source}):`, error);
+      updateConnectionBadge();
+      if (showToast) toast(`Falha ao atualizar: ${error.message}`, "error");
+      return false;
     } finally {
       state.refreshing = false;
     }
@@ -782,71 +888,147 @@
     </div>`;
   }
 
+  function storageCard(title, value, capacity, unit, icon, tone) {
+    const pct = capacity > 0 ? Math.min(100, Math.max(0, value / capacity * 100)) : 0;
+    return `<div class="card storage-stat ${tone}">
+      <div class="storage-stat-top"><div><small>${title}</small><h2>${fmt.format(value)}</h2><span>${esc(unit)} armazenados</span></div><span class="storage-icon">${icon}</span></div>
+      <div class="storage-progress"><span style="width:${pct}%"></span></div>
+      <div class="storage-foot"><span>${fmt.format(pct)}% ocupado</span><strong>${fmt.format(Math.max(0, capacity-value))} ${esc(unit)} livres</strong></div>
+    </div>`;
+  }
+
+  function aggregateOperationVolume(operations, field) {
+    const totals = new Map();
+    operations.forEach(op => {
+      const label = String(op[field] || "Não informado").trim() || "Não informado";
+      const unit = String(op.unit || "").trim() || "-";
+      const key = `${label}|||${unit}`;
+      totals.set(key, (totals.get(key) || 0) + Number(op.executed || 0));
+    });
+    return [...totals.entries()].map(([key, value]) => {
+      const [label, unit] = key.split("|||");
+      return { label, unit, value };
+    }).sort((a, b) => b.value - a.value);
+  }
+
   function renderDashboard() {
     const d = state.data;
     const operations = filteredOperations();
     const trucks = filteredTrucks();
-    const volume = type => d.tanks.filter(t => productClass(t.product) === type).reduce((sum, t) => sum + t.volume, 0);
+    const filtersActive = filterIsActive();
+
+    const storage = type => {
+      const items = d.tanks.filter(t => productClass(t.product, t.kind, t.volume) === type);
+      return {
+        volume: items.reduce((sum, item) => sum + Number(item.volume || 0), 0),
+        capacity: items.reduce((sum, item) => sum + Number(item.capacity || 0), 0)
+      };
+    };
+
+    const wbm = storage("wbm");
+    const brine = storage("brine");
+    const sbm = storage("sbm");
+    const olefin = storage("olefin");
+    const bulk = storage("bulk");
+    const genericVolume = d.tanks
+      .filter(t => productClass(t.product, t.kind, t.volume) === "generic")
+      .reduce((sum, item) => sum + Number(item.volume || 0), 0);
+
     const activeOps = operations.filter(x => !["Concluída", "Cancelada"].includes(x.status));
-    const today = new Date().toISOString().slice(0, 10);
-    const todayOps = operations.filter(x => String(x.start_at || "").slice(0, 10) === today).length;
-    const todayTrucks = trucks.filter(x => x.date === today).length;
+    const today = localDateKey();
+    const todayOps = d.operations.filter(x => recordDateKey(x.start_at || x.created_at) === today).length;
+    const todayTrucks = d.trucks.filter(x => recordDateKey(x.date) === today).length;
+    const periodOps = operations.length;
+    const periodTrucks = trucks.length;
+
     const openMaintenance = d.maintenanceOrders.filter(x => !["Concluída", "Fechada", "Cancelada"].includes(x.status)).length;
-    const expiring = d.certificates.filter(x => { const days = daysUntil(x.expires_at); return days !== null && days >= 0 && days <= 60; });
-    const pendingQhse = d.actionItems.filter(x => x.status !== "Concluído").length + d.qhse.filter(x => x.status !== "Concluído").length;
+    const expiring = d.certificates.filter(x => {
+      const days = daysUntil(x.expires_at);
+      return days !== null && days >= 0 && days <= 60;
+    });
+    const pendingQhse = d.actionItems.filter(x => x.status !== "Concluído").length
+      + d.qhse.filter(x => x.status !== "Concluído").length;
     const downtime = operations.reduce((sum, op) => sum + Number(op.paused_minutes || 0), 0);
     const lowChemicals = d.chemicals.filter(x => x.quantity <= x.minimum).length;
-    const expiringChemicals = d.chemicals.filter(x => { const days = daysUntil(x.expiry_date); return days !== null && days >= 0 && days <= 60; }).length;
-    const criticalAlerts = d.systemAlerts.filter(x => String(x.level).toLowerCase() === "alta").length;
+    const expiringChemicals = d.chemicals.filter(x => {
+      const days = daysUntil(x.expiry_date);
+      return days !== null && days >= 0 && days <= 60;
+    }).length;
+    const criticalAlerts = d.systemAlerts.filter(x => isCriticalAlert(x.level)).length
+      + d.alerts.filter(x => !x.read && isCriticalAlert(x.level)).length;
 
-    const byClient = {};
-    operations.forEach(op => { byClient[op.client] = (byClient[op.client] || 0) + Number(op.executed || 0); });
-    const clientRows = Object.entries(byClient).sort((a, b) => b[1] - a[1]).slice(0, 6);
-    const maxClient = Math.max(...clientRows.map(x => x[1]), 1);
-    const productTotals = {};
-    operations.forEach(op => { productTotals[op.product] = (productTotals[op.product] || 0) + Number(op.executed || 0); });
-    const products = Object.entries(productTotals).sort((a, b) => b[1] - a[1]).slice(0, 5);
+    const byClient = aggregateOperationVolume(operations, "client").slice(0, 7);
+    const products = aggregateOperationVolume(operations, "product").slice(0, 7);
+    const maxClient = Math.max(...byClient.map(x => x.value), 1);
+
     const clients = [...new Set(d.operations.map(x => x.client).filter(Boolean))].sort();
     const productNames = [...new Set(d.operations.map(x => x.product).filter(Boolean))].sort();
 
+    const latestChange = latestTimestamp([
+      ...d.tanks.map(x => x.updated_at),
+      ...d.operations.map(x => x.updated_at || x.created_at),
+      ...d.chemicals.map(x => x.updated_at),
+      ...d.maintenanceOrders.map(x => x.closed_at || x.opened_at),
+      ...d.alerts.map(x => x.created_at)
+    ]);
+
+    const occupiedAssets = d.tanks.filter(x => Number(x.volume || 0) > 0).length;
+    const blockedAssets = d.tanks.filter(x => x.status === "Bloqueado").length;
+    const periodLabel = filtersActive ? "no filtro selecionado" : "hoje";
+    const operationCount = filtersActive ? periodOps : todayOps;
+    const truckCount = filtersActive ? periodTrucks : todayTrucks;
+
     $("#page-dashboard").innerHTML =
-      header("Visão gerencial", "Indicadores operacionais, riscos e produtividade em tempo real.",
+      header("Visão gerencial", "Indicadores atuais da planta, produtividade e riscos operacionais.",
         `<button class="btn secondary" data-export="operations">Exportar CSV</button>
-         <button class="btn secondary" data-action="refresh">↻ Atualizar</button>
+         <button class="btn secondary" data-action="refresh">↻ Atualizar agora</button>
          <button class="btn primary" data-action="new-operation">+ Nova operação</button>`) +
-      `<div class="card dashboard-filters no-print">
+
+      `<div class="dashboard-sync-strip">
+        <div><span class="live-dot"></span><strong>Atualização automática ativa</strong><small>Verificação em tempo real e a cada 60 segundos</small></div>
+        <div><span>Última sincronização</span><strong>${state.lastSync ? dateTime(state.lastSync) : "-"}</strong></div>
+        <div><span>Última alteração operacional</span><strong>${latestChange ? dateTime(latestChange) : "-"}</strong></div>
+      </div>
+
+      <div class="card dashboard-filters no-print">
         <div><label>Data inicial</label><input id="filterStart" type="date" value="${esc(state.filters.start)}"></div>
         <div><label>Data final</label><input id="filterEnd" type="date" value="${esc(state.filters.end)}"></div>
         <div><label>Cliente</label><select id="filterClient"><option value="">Todos</option>${clients.map(x => `<option ${state.filters.client === x ? "selected" : ""}>${esc(x)}</option>`).join("")}</select></div>
         <div><label>Produto</label><select id="filterProduct"><option value="">Todos</option>${productNames.map(x => `<option ${state.filters.product === x ? "selected" : ""}>${esc(x)}</option>`).join("")}</select></div>
         <div class="filter-actions"><button class="btn primary" data-action="apply-dashboard-filters">Aplicar</button><button class="btn secondary" data-action="clear-dashboard-filters">Limpar</button></div>
       </div>
+      ${filtersActive ? `<div class="dashboard-filter-notice">Os filtros afetam operações, carretas, tempo parado e rankings. A tancagem sempre mostra o saldo atual da planta.</div>` : ""}
 
-      <div class="grid four" style="margin-top:14px">
-        ${statCard("Operações hoje", fmt.format(todayOps), "programadas/iniciadas", "⚓")}
-        ${statCard("Carretas hoje", fmt.format(todayTrucks), "movimentações", "🚛")}
+      <div class="grid four dashboard-primary-stats" style="margin-top:14px">
+        ${statCard(filtersActive ? "Operações no filtro" : "Operações hoje", fmt.format(operationCount), periodLabel, "⚓", activeOps.length ? `${activeOps.length} em andamento` : "Nenhuma em andamento")}
+        ${statCard(filtersActive ? "Carretas no filtro" : "Carretas hoje", fmt.format(truckCount), periodLabel, "🚛")}
         ${statCard("Manutenções abertas", fmt.format(openMaintenance), "ordens pendentes", "⚙")}
-        ${statCard("Alertas críticos", fmt.format(criticalAlerts), "exigem atenção", "⚠")}
+        ${statCard("Alertas críticos", fmt.format(criticalAlerts), "automáticos e não lidos", "⚠")}
       </div>
 
-      <div class="grid four" style="margin-top:14px">
-        ${statCard("Volume WBM", fmt.format(volume("wbm")), "bbl armazenados", "💧")}
-        ${statCard("Volume Brine", fmt.format(volume("brine")), "bbl armazenados", "🟢")}
-        ${statCard("Volume SBM", fmt.format(volume("sbm")), "bbl armazenados", "🟤")}
-        ${statCard("Olefina", fmt.format(volume("olefin")), "bbl armazenados", "⚪")}
+      <div class="section-title">Tancagem atual</div>
+      <div class="grid five dashboard-storage-grid">
+        ${storageCard("WBM", wbm.volume, wbm.capacity, "bbl", "💧", "wbm")}
+        ${storageCard("Brine", brine.volume, brine.capacity, "bbl", "●", "brine")}
+        ${storageCard("SBM", sbm.volume, sbm.capacity, "bbl", "●", "sbm")}
+        ${storageCard("Olefina", olefin.volume, olefin.capacity, "bbl", "◉", "olefin")}
+        ${storageCard("Granéis", bulk.volume, bulk.capacity, "ton", "◆", "bulk")}
       </div>
+      ${genericVolume > 0 ? `<div class="dashboard-data-warning">Existem ${fmt.format(genericVolume)} bbl com produto não classificado. Informe ou vincule o produto para incluir esse volume no card correto.</div>` : ""}
 
       <div class="grid two" style="margin-top:14px">
-        <div class="card"><h3>Operações em andamento</h3><p>${activeOps.length} operação(ões) ativa(s)</p>
-          ${activeOps.length ? activeOps.slice(0, 5).map(op => {
+        <div class="card"><h3>Operações em andamento</h3><p>${activeOps.length} operação(ões) ativa(s) ${filtersActive ? "no filtro" : ""}</p>
+          ${activeOps.length ? activeOps.slice(0, 6).map(op => {
             const pct = op.planned ? Math.min(100, Math.round(op.executed / op.planned * 100)) : 0;
             return `<div class="operation-mini"><div class="kpi-row"><div><strong>${esc(op.client)} • ${esc(op.vessel)}</strong><span class="muted">${esc(op.activity)} — ${esc(op.product)}</span></div>${badge(op.status)}</div><div class="progress"><span style="width:${pct}%"></span></div><small>${fmt.format(op.executed)} / ${fmt.format(op.planned)} ${esc(op.unit)} • ${fmt.format(operationFlow(op))} ${esc(op.unit)}/h</small></div>`;
           }).join("") : `<div class="empty">Nenhuma operação ativa.</div>`}
         </div>
-        <div class="card"><h3>Indicadores críticos</h3><div class="kpi-list" style="margin-top:15px">
-          <div class="kpi-row"><span>Tanques bloqueados</span><strong>${d.tanks.filter(x => x.status === "Bloqueado").length}</strong></div>
+
+        <div class="card"><h3>Situação da planta</h3><div class="kpi-list" style="margin-top:15px">
+          <div class="kpi-row"><span>Equipamentos com produto</span><strong>${occupiedAssets} de ${d.tanks.length}</strong></div>
+          <div class="kpi-row"><span>Tanques/silos bloqueados</span><strong>${blockedAssets}</strong></div>
           <div class="kpi-row"><span>Pendências QHSE</span><strong>${pendingQhse}</strong></div>
-          <div class="kpi-row"><span>Tempo parado acumulado</span><strong>${fmt.format(downtime / 60)} h</strong></div>
+          <div class="kpi-row"><span>Tempo parado ${filtersActive ? "no filtro" : "carregado"}</span><strong>${fmt.format(downtime / 60)} h</strong></div>
           <div class="kpi-row"><span>Certificados a vencer</span><strong>${expiring.length}</strong></div>
           <div class="kpi-row"><span>Químicos em baixo estoque</span><strong>${lowChemicals}</strong></div>
           <div class="kpi-row"><span>Lotes químicos vencendo</span><strong>${expiringChemicals}</strong></div>
@@ -854,8 +1036,8 @@
       </div>
 
       <div class="grid two" style="margin-top:14px">
-        <div class="card"><h3>Volume executado por cliente</h3><div class="bar-list">${clientRows.length ? clientRows.map(([name, value]) => `<div class="bar-row"><div><span>${esc(name)}</span><strong>${fmt.format(value)}</strong></div><div class="bar-track"><span style="width:${value / maxClient * 100}%"></span></div></div>`).join("") : `<div class="empty">Sem operações no filtro.</div>`}</div></div>
-        <div class="card"><h3>Produtos mais movimentados</h3><div class="ranking-list">${products.length ? products.map(([name, value], index) => `<div class="ranking-row"><span class="rank">${index + 1}</span><div><strong>${esc(name)}</strong><small>${fmt.format(value)} movimentados</small></div></div>`).join("") : `<div class="empty">Sem movimentações no filtro.</div>`}</div></div>
+        <div class="card"><h3>Volume executado por cliente</h3><p>Valores separados por unidade para não misturar bbl e toneladas.</p><div class="bar-list">${byClient.length ? byClient.map(item => `<div class="bar-row"><div><span>${esc(item.label)} <em class="unit-chip">${esc(item.unit)}</em></span><strong>${fmt.format(item.value)}</strong></div><div class="bar-track"><span style="width:${item.value / maxClient * 100}%"></span></div></div>`).join("") : `<div class="empty">Sem operações no filtro.</div>`}</div></div>
+        <div class="card"><h3>Produtos mais movimentados</h3><p>Ranking por produto e unidade operacional.</p><div class="ranking-list">${products.length ? products.map((item, index) => `<div class="ranking-row"><span class="rank">${index + 1}</span><div><strong>${esc(item.label)}</strong><small>${fmt.format(item.value)} ${esc(item.unit)} movimentados</small></div></div>`).join("") : `<div class="empty">Sem movimentações no filtro.</div>`}</div></div>
       </div>
 
       <div class="card smart-query" style="margin-top:14px"><div><h3>Consulta inteligente</h3><p>Pergunte sobre volumes, clientes, carretas, tanques, químicos, certificados ou diesel.</p></div><div class="smart-input"><input id="smartQuestion" placeholder="Ex.: Quantos bbl de Brine temos?"><button class="btn primary" data-action="smart-query">Perguntar</button></div><div id="smartAnswer" class="smart-answer hidden"></div></div>`;
@@ -2413,7 +2595,12 @@
 
     const action = button.dataset.action;
     if (action === "refresh") {
-      try { await loadData(); renderAll(); toast("Dados atualizados."); } catch (e) { toast(e.message, "error"); }
+      const original = button.textContent;
+      button.disabled = true;
+      button.textContent = "Atualizando...";
+      await refreshRealtime("atualização manual", true);
+      button.disabled = false;
+      button.textContent = original;
       return;
     }
     if (action === "apply-dashboard-filters") {
@@ -2680,7 +2867,10 @@
     if (event.key === "Enter") login();
   });
 
-  window.addEventListener("online", updateConnectionBadge);
+  window.addEventListener("online", () => {
+    updateConnectionBadge();
+    refreshRealtime("conexão restaurada");
+  });
   window.addEventListener("offline", updateConnectionBadge);
 
   if ("serviceWorker" in navigator) {

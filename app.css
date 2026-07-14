@@ -226,3 +226,56 @@
 .mobile-allocation-summary{margin:10px 0}
 :root[data-theme="dark"] .operation-allocation-field{background:#0c1828}:root[data-theme="dark"] .operation-allocation-row{background:var(--card)}
 @media(max-width:820px){.operation-allocation-row{grid-template-columns:28px 1fr}.allocation-tank-field,.allocation-quantity-field{grid-column:2}.allocation-remove{grid-column:2;width:100%}.operation-allocation-heading{align-items:flex-start;flex-direction:column}.operation-allocation-heading .btn{width:100%}.operation-allocation-summary{align-items:flex-start;flex-direction:column}}
+
+/* Dashboard gerencial com sincronização confiável */
+.grid.five{grid-template-columns:repeat(5,minmax(0,1fr))}
+.dashboard-sync-strip{
+  display:grid;
+  grid-template-columns:1.35fr 1fr 1fr;
+  gap:12px;
+  padding:13px 15px;
+  margin-bottom:14px;
+  border:1px solid #bcd2ff;
+  border-radius:16px;
+  background:linear-gradient(135deg,#f4f8ff,#eef5ff);
+}
+.dashboard-sync-strip>div{display:flex;flex-direction:column;gap:3px}
+.dashboard-sync-strip>div:first-child{display:grid;grid-template-columns:auto 1fr;column-gap:8px}
+.dashboard-sync-strip>div:first-child small{grid-column:2}
+.dashboard-sync-strip span,.dashboard-sync-strip small{font-size:11px;color:var(--muted)}
+.dashboard-sync-strip strong{font-size:12px}
+.live-dot{width:9px;height:9px;border-radius:50%;background:#20a861;box-shadow:0 0 0 5px #20a8611f;margin-top:3px}
+.dashboard-filter-notice,.dashboard-data-warning{
+  margin-top:10px;padding:10px 13px;border-radius:13px;font-size:12px;font-weight:750
+}
+.dashboard-filter-notice{background:var(--blue-soft);border:1px solid #bfd4ff;color:#174c9d}
+.dashboard-data-warning{background:var(--amber-soft);border:1px solid #f0ce82;color:#7c560e}
+.storage-stat{padding:15px;min-height:150px}
+.storage-stat-top{display:flex;justify-content:space-between;gap:10px}
+.storage-stat small{font-size:11px;font-weight:900;color:var(--muted)}
+.storage-stat h2{font-size:27px;margin:7px 0 2px}
+.storage-stat-top span:not(.storage-icon){font-size:11px;color:var(--muted)}
+.storage-icon{width:42px;height:42px;border-radius:14px;display:grid;place-items:center;font-size:20px;background:#edf2ff;color:#315fc2}
+.storage-progress{height:8px;border-radius:99px;background:#edf1f6;overflow:hidden;margin:14px 0 9px}
+.storage-progress span{display:block;height:100%;border-radius:99px;background:#5b7cfa}
+.storage-foot{display:flex;justify-content:space-between;gap:8px;font-size:10px;color:var(--muted)}
+.storage-foot strong{color:var(--text);text-align:right}
+.storage-stat.wbm .storage-progress span{background:#2a66e8}
+.storage-stat.brine .storage-progress span{background:#19a55b}
+.storage-stat.sbm .storage-progress span{background:#8b572a}
+.storage-stat.olefin .storage-progress span{background:#7c8798}
+.storage-stat.bulk .storage-progress span{background:#c18a36}
+.storage-stat.wbm .storage-icon{background:#e8f0ff;color:#2a66e8}
+.storage-stat.brine .storage-icon{background:#e5f8ec;color:#169752}
+.storage-stat.sbm .storage-icon{background:#f2e9df;color:#8b572a}
+.storage-stat.olefin .storage-icon{background:#edf0f4;color:#657184}
+.storage-stat.bulk .storage-icon{background:#fff3dd;color:#a87018}
+.unit-chip{font-style:normal;font-size:9px;font-weight:900;padding:2px 5px;border-radius:7px;background:var(--blue-soft);color:#2258ad;margin-left:4px}
+.status-badge.red{background:var(--red-soft);color:var(--red)}
+:root[data-theme="dark"] .dashboard-sync-strip{background:#17273c;border-color:#294b78}
+:root[data-theme="dark"] .dashboard-filter-notice{background:#182d4c;border-color:#294b78;color:#a9caff}
+:root[data-theme="dark"] .dashboard-data-warning{background:#342b12;border-color:#695824;color:#f2d98f}
+:root[data-theme="dark"] .storage-progress{background:#27364a}
+@media(max-width:1250px){.grid.five{grid-template-columns:repeat(3,minmax(0,1fr))}}
+@media(max-width:900px){.dashboard-sync-strip{grid-template-columns:1fr}.grid.five{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:560px){.grid.five{grid-template-columns:1fr}.dashboard-sync-strip{padding:12px}.storage-stat{min-height:125px}}

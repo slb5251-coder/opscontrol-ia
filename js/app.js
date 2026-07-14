@@ -87,6 +87,14 @@
     return isAdmin() || roles.includes(role());
   }
 
+  function canManageChemicals() {
+    return hasRole(["supervisor", "lider", "logistica", "qhse"]);
+  }
+
+  function canManageCertificates() {
+    return hasRole(["supervisor", "logistica"]);
+  }
+
   function moduleAllowed(module) {
     if (isAdmin() || module === "settings") return true;
     const permissions = state.data?.profile?.permissions || {};
@@ -1037,13 +1045,13 @@
     const rows = items.map(item => {
       const status = chemicalDisplayStatus(item);
       const days = daysUntil(item.expiry_date);
-      const canMove = hasRole(["supervisor", "lider", "logistica", "qhse"]);
+      const canMove = canManageChemicals();
       return `<tr><td><strong>${esc(item.name)}</strong><br><small>${esc(item.category || "Produto químico")}</small></td><td>${esc(item.lot || "-")}<br><small>FEFO #${fefoRank.get(item.id) || "-"}</small></td><td><strong>${fmt.format(item.quantity)} ${esc(item.unit)}</strong><br><small>Mínimo: ${fmt.format(item.minimum)} ${esc(item.unit)}</small></td><td>${dateOnly(item.expiry_date)}${days !== null ? `<br><small>${days < 0 ? `${Math.abs(days)} dias vencido` : `${days} dias restantes`}</small>` : ""}</td><td>${esc(item.location || "-")}</td><td>${badge(status)}</td><td><div class="row-actions">${canMove ? `<button class="btn small primary" data-chemical-move="${item.id}">Movimentar</button><button class="btn small secondary" data-edit-chemical="${item.id}">Editar</button>` : ""}<button class="btn small secondary" data-chemical-history="${item.id}">Histórico</button><button class="btn small secondary" data-attachments="chemical:${item.id}" data-attachment-title="${esc(item.name)}">📎 ${attachmentCount("chemical", item.id)}</button></div></td></tr>`;
     }).join("");
 
-    const mobile = items.map(item => `<div class="card mobile-record-card"><div class="mobile-record-head"><div><strong>${esc(item.name)}</strong><small>Lote ${esc(item.lot || "-")} • FEFO #${fefoRank.get(item.id) || "-"}</small></div>${badge(chemicalDisplayStatus(item))}</div><div class="mobile-record-grid"><span>Saldo<strong>${fmt.format(item.quantity)} ${esc(item.unit)}</strong></span><span>Mínimo<strong>${fmt.format(item.minimum)} ${esc(item.unit)}</strong></span><span>Validade<strong>${dateOnly(item.expiry_date)}</strong></span><span>Local<strong>${esc(item.location || "-")}</strong></span></div><div class="row-actions"><button class="btn small primary" data-chemical-move="${item.id}">Movimentar</button>${isAdmin() ? `<button class="btn small secondary" data-edit-chemical="${item.id}">Editar</button>` : ""}<button class="btn small secondary" data-chemical-history="${item.id}">Histórico</button></div></div>`).join("");
+    const mobile = items.map(item => `<div class="card mobile-record-card"><div class="mobile-record-head"><div><strong>${esc(item.name)}</strong><small>Lote ${esc(item.lot || "-")} • FEFO #${fefoRank.get(item.id) || "-"}</small></div>${badge(chemicalDisplayStatus(item))}</div><div class="mobile-record-grid"><span>Saldo<strong>${fmt.format(item.quantity)} ${esc(item.unit)}</strong></span><span>Mínimo<strong>${fmt.format(item.minimum)} ${esc(item.unit)}</strong></span><span>Validade<strong>${dateOnly(item.expiry_date)}</strong></span><span>Local<strong>${esc(item.location || "-")}</strong></span></div><div class="row-actions">${canManageChemicals() ? `<button class="btn small primary" data-chemical-move="${item.id}">Movimentar</button><button class="btn small secondary" data-edit-chemical="${item.id}">Editar</button>` : ""}<button class="btn small secondary" data-chemical-history="${item.id}">Histórico</button></div></div>`).join("");
 
-    $("#page-chemicals").innerHTML = header("Inventário de produtos químicos", "Saldo por produto e lote, FEFO, validade, estoque mínimo e rastreabilidade.", `${hasRole(["supervisor", "lider", "logistica", "qhse"]) ? `<button class="btn primary" data-action="new-chemical">+ Novo produto/lote</button>` : ""}<button class="btn secondary" data-action="show-fefo">Ordem FEFO</button><button class="btn secondary" data-export="chemicals">Exportar CSV</button>`) +
+    $("#page-chemicals").innerHTML = header("Inventário de produtos químicos", "Saldo por produto e lote, FEFO, validade, estoque mínimo e rastreabilidade.", `${canManageChemicals() ? `<button class="btn primary" data-action="new-chemical">+ Novo produto/lote</button>` : ""}<button class="btn secondary" data-action="show-fefo">Ordem FEFO</button><button class="btn secondary" data-export="chemicals">Exportar CSV</button>`) +
       `<div class="grid four">${statCard("Produtos e lotes", fmt.format(totalLots), "itens cadastrados", "▧")}${statCard("Baixo estoque", fmt.format(lowStock), "abaixo do mínimo", "⚠")}${statCard("Próximos do vencimento", fmt.format(expiring), "até 60 dias", "⏳")}${statCard("Vencidos", fmt.format(expired), "exigem tratamento", "✕")}</div>
       <div class="card table-wrap desktop-record-table" style="margin-top:14px"><table class="data-table"><thead><tr><th>Produto</th><th>Lote / FEFO</th><th>Saldo</th><th>Validade</th><th>Localização</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows || `<tr><td colspan="7" class="empty">Nenhum produto químico cadastrado.</td></tr>`}</tbody></table></div><div class="mobile-record-list">${mobile}</div>`;
   }
@@ -1108,6 +1116,7 @@
   }
 
   function renderCertificates() {
+    const canManage = canManageCertificates();
     const rows = state.data.certificates.map(item => {
       const days = daysUntil(item.expires_at);
       const automaticStatus = days !== null && days < 0 ? "Vencido" : days !== null && days <= 60 ? "A vencer" : item.status;
@@ -1115,13 +1124,14 @@
         <td><strong>${esc(item.title)}</strong><br><small>${esc(item.issuer || "-")}</small></td>
         <td>${esc(item.owner)}</td><td>${dateOnly(item.expires_at)}${days !== null ? `<br><small>${days < 0 ? `${Math.abs(days)} dias vencido` : `${days} dias restantes`}</small>` : ""}</td>
         <td>${badge(automaticStatus)}</td>
-        <td><div class="row-actions"><button class="btn small secondary" data-attachments="certificate:${item.id}" data-attachment-title="${esc(item.title)}">📎 ${attachmentCount("certificate", item.id)}</button>${isAdmin() ? `<button class="btn small primary" data-edit-certificate="${item.id}">Editar</button>` : ""}</div></td>
+        <td><div class="row-actions"><button class="btn small secondary" data-attachments="certificate:${item.id}" data-attachment-title="${esc(item.title)}">📎 ${attachmentCount("certificate", item.id)}</button>${canManage ? `<button class="btn small primary" data-edit-certificate="${item.id}">Editar</button>` : ""}</div></td>
       </tr>`;
     }).join("");
     $("#page-certificates").innerHTML =
-      header("Certificados", "Validade, alertas automáticos e arquivos privados.",
-        `<button class="btn primary" data-action="new-certificate">+ Adicionar certificado</button>`) +
-      `<div class="card table-wrap"><table class="data-table"><thead><tr><th>Certificado</th><th>Colaborador</th><th>Validade</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+      header("Certificados", "Cada certificado fica vinculado ao usuário selecionado.",
+        canManage ? `<button class="btn primary" data-action="new-certificate">+ Adicionar certificado</button>` : "") +
+      `${!canManage ? `<div class="info-box" style="margin-bottom:14px">Você pode consultar seus certificados. O cadastro é feito pela Logística, Supervisor ou Administrador.</div>` : ""}
+       <div class="card table-wrap"><table class="data-table"><thead><tr><th>Certificado</th><th>Colaborador</th><th>Validade</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows || `<tr><td colspan="5" class="empty">Nenhum certificado disponível.</td></tr>`}</tbody></table></div>`;
   }
 
   function renderAlerts() {
@@ -1165,6 +1175,109 @@
     const lastSync = state.lastSync ? state.lastSync.toLocaleString("pt-BR") : "Não sincronizado";
     const errors = state.data.systemErrors || [];
     $("#page-settings").innerHTML = header("Configurações", "Perfil, usuários, permissões, diagnóstico e aparência.", `<button class="btn secondary" data-action="toggle-theme">Alternar tema</button>${isAdmin() ? `<button class="btn primary" data-action="new-user">+ Novo usuário</button>` : ""}`) + `<div class="grid two"><div class="card"><h3>Meu perfil</h3><div class="kpi-list" style="margin-top:14px"><div class="kpi-row"><span>Nome</span><strong>${esc(state.data.profile.name)}</strong></div><div class="kpi-row"><span>E-mail</span><strong>${esc(state.data.profile.email)}</strong></div><div class="kpi-row"><span>Cargo</span>${badge(state.data.profile.role)}</div><div class="kpi-row"><span>Departamento</span><strong>${esc(state.data.profile.department || "-")}</strong></div></div></div><div class="card"><h3>Diagnóstico do sistema</h3><div class="kpi-list" style="margin-top:14px"><div class="kpi-row"><span>Última sincronização</span><strong>${esc(lastSync)}</strong></div><div class="kpi-row"><span>Tanques e silos</span><strong>${state.data.tanks.length}</strong></div><div class="kpi-row"><span>Operações</span><strong>${state.data.operations.length}</strong></div><div class="kpi-row"><span>Alertas automáticos</span><strong>${state.data.systemAlerts.length}</strong></div><div class="kpi-row"><span>Erros registrados</span><strong>${errors.length}</strong></div></div><div class="info-box" style="margin-top:12px">Movimentações automáticas e transferências são executadas por transações no Supabase.</div>${isAdmin() ? `<div class="admin-edit-notice" style="margin-top:12px"><strong>Edição total ativa</strong><span>O administrador pode editar registros operacionais de todos os módulos. Históricos e auditorias permanecem protegidos.</span></div>` : ""}</div></div><div class="section-title">Usuários e permissões</div><div class="card table-wrap">${isAdmin() ? "" : `<div class="info-box" style="margin-bottom:12px">Somente o administrador pode alterar cargo, setor, status e permissões.</div>`}<table class="data-table"><thead><tr><th>Usuário</th><th>Cargo</th><th>Departamento</th><th>Status</th><th>Cadastro</th><th>Ação</th></tr></thead><tbody>${userRows}</tbody></table></div>${isAdmin() && errors.length ? `<div class="section-title">Erros recentes</div><div class="card table-wrap"><table class="data-table"><thead><tr><th>Data</th><th>Contexto</th><th>Mensagem</th></tr></thead><tbody>${errors.slice(0,20).map(e => `<tr><td>${dateTime(e.created_at)}</td><td>${esc(e.context || "-")}</td><td>${esc(e.message)}</td></tr>`).join("")}</tbody></table></div>` : ""}`;
+  }
+
+
+  function chemicalForm(item = {}) {
+    const editing = Boolean(item.id);
+    const unit = item.unit || "kg";
+    const status = item.status || "Disponível";
+    return `<form id="chemicalForm" data-id="${item.id || ""}" novalidate>
+      <div class="form-grid">
+        <div class="wide">
+          <label>Produto químico *</label>
+          <input name="product_name" required value="${esc(item.name || "")}" placeholder="Ex.: Duo Vis, Soda Cáustica">
+        </div>
+        <div>
+          <label>Categoria</label>
+          <input name="category" value="${esc(item.category || "")}" placeholder="Ex.: Aditivo, Alcalinizante">
+        </div>
+        <div>
+          <label>Lote</label>
+          <input name="lot" value="${esc(item.lot || "")}">
+        </div>
+        <div>
+          <label>Unidade *</label>
+          <select name="unit">${["kg","L","saco","tambor","big bag","unidade"].map(x => `<option ${unit === x ? "selected" : ""}>${x}</option>`).join("")}</select>
+        </div>
+        ${editing ? `
+          <div>
+            <label>Saldo atual</label>
+            <input value="${fmt.format(item.quantity)} ${esc(unit)}" disabled>
+            <small class="field-help">Para alterar o saldo, use o botão Movimentar.</small>
+          </div>
+        ` : `
+          <div>
+            <label>Quantidade inicial</label>
+            <input name="quantity" type="text" inputmode="decimal" value="0">
+          </div>
+        `}
+        <div>
+          <label>Estoque mínimo</label>
+          <input name="minimum_quantity" type="text" inputmode="decimal" value="${String(item.minimum || 0).replace(".", ",")}">
+        </div>
+        <div>
+          <label>Validade</label>
+          <input name="expiry_date" type="date" value="${String(item.expiry_date || "").slice(0,10)}">
+        </div>
+        <div>
+          <label>Localização</label>
+          <input name="location" value="${esc(item.location || "")}" placeholder="Ex.: Almoxarifado A">
+        </div>
+        <div>
+          <label>Fornecedor</label>
+          <input name="supplier" value="${esc(item.supplier || "")}">
+        </div>
+        <div>
+          <label>Status</label>
+          <select name="status">${["Disponível","Quarentena","Bloqueado","Vencido","Descartado"].map(x => `<option ${status === x ? "selected" : ""}>${x}</option>`).join("")}</select>
+        </div>
+        <div class="wide">
+          <label>Observações</label>
+          <textarea name="notes">${esc(item.notes || "")}</textarea>
+        </div>
+        <div class="wide">
+          <label>FISPQ, NF, certificado ou foto</label>
+          <input name="attachment" type="file" accept=".pdf,image/jpeg,image/png,image/webp,image/heic,image/heif" multiple capture="environment">
+        </div>
+      </div>
+      <div id="chemicalSaveMessage" class="message hidden"></div>
+      ${formActions(editing ? "Salvar alterações" : "Cadastrar produto/lote")}
+    </form>`;
+  }
+
+  function chemicalMovementForm(item) {
+    return `<form id="chemicalMovementForm" data-id="${item.id}" novalidate>
+      <div class="info-box">
+        <strong>${esc(item.name)}</strong><br>
+        Lote: ${esc(item.lot || "-")} • Saldo atual: ${fmt.format(item.quantity)} ${esc(item.unit)}
+      </div>
+      <div class="form-grid" style="margin-top:12px">
+        <div>
+          <label>Tipo de movimentação</label>
+          <select name="movement_type">
+            <option>Entrada</option>
+            <option>Saída</option>
+            <option>Ajuste</option>
+          </select>
+        </div>
+        <div>
+          <label>Quantidade *</label>
+          <input name="quantity" type="text" inputmode="decimal" required placeholder="Ex.: 10 ou 10,5">
+          <small class="field-help">Em Ajuste, informe o novo saldo físico. O valor pode ser zero.</small>
+        </div>
+        <div>
+          <label>Referência</label>
+          <input name="reference" placeholder="NF, OS, inventário ou operação">
+        </div>
+        <div class="wide">
+          <label>Observação</label>
+          <textarea name="notes"></textarea>
+        </div>
+      </div>
+      <div id="chemicalMovementMessage" class="message hidden"></div>
+      ${formActions("Confirmar movimentação")}
+    </form>`;
   }
 
   function genericForm(kind, item = {}) {
@@ -1227,14 +1340,22 @@
 
       certificate: `<form id="genericForm" data-kind="certificate" data-id="${id}"><div class="form-grid">
         <div class="wide"><label>Certificado *</label><input name="title" required value="${esc(item.title || "")}"></div>
-        <div><label>Colaborador</label><select name="user_id"><option value="">Sem vínculo</option>${state.data.users.map(user => `<option value="${user.id}" ${item.user_id === user.id ? "selected" : ""}>${esc(user.name)}</option>`).join("")}</select></div>
-        <div><label>Nome no certificado *</label><input name="owner" value="${esc(item.owner || state.data.profile.name)}" required></div>
+        <div>
+          <label>Usuário vinculado *</label>
+          <select name="user_id" required data-certificate-user>
+            <option value="">Selecione o usuário</option>
+            ${state.data.users.filter(user => user.active !== false || user.id === item.user_id).map(user => `<option value="${user.id}" data-user-name="${esc(user.name)}" ${item.user_id === user.id ? "selected" : ""}>${esc(user.name)} — ${esc(user.role)}</option>`).join("")}
+          </select>
+        </div>
+        <div><label>Nome no certificado *</label><input name="owner" value="${esc(item.owner || "")}" required></div>
         <div><label>Emissor</label><input name="issuer" value="${esc(item.issuer || "")}"></div>
         <div><label>Emissão</label><input name="issued_at" type="date" value="${String(item.issued_at || "").slice(0,10)}"></div>
         <div><label>Validade</label><input name="expires_at" type="date" value="${String(item.expires_at || "").slice(0,10)}"></div>
         <div><label>Status</label><select name="status">${["Válido","A vencer","Vencido"].map(x => `<option ${sel(item.status,x)}>${x}</option>`).join("")}</select></div>
         <div class="wide"><label>Certificado em PDF ou foto</label><input name="attachment" type="file" accept=".pdf,image/jpeg,image/png,image/webp,image/heic,image/heif" multiple></div>
-      </div>${formActions(id ? "Salvar alterações" : "Salvar certificado")}</form>`,
+      </div>
+      <div class="info-box" style="margin-top:12px">Somente Logística, Supervisor ou Administrador podem cadastrar e editar certificados.</div>
+      ${formActions(id ? "Salvar alterações" : "Salvar certificado")}</form>`,
 
       alert: `<form id="genericForm" data-kind="alert" data-id="${id}"><div class="form-grid">
         <div class="wide"><label>Título *</label><input name="title" required value="${esc(item.title || "")}"></div>
@@ -1569,7 +1690,7 @@
         notes: payload.notes || null, updated_by: state.user.id
       }],
       certificate: ["certificates", {
-        user_id: payload.user_id || state.user.id, owner_name: payload.owner,
+        user_id: payload.user_id, owner_name: payload.owner,
         title: payload.title, issuer: payload.issuer || null,
         issued_at: payload.issued_at || null, expires_at: payload.expires_at || null,
         status: payload.status, created_by: state.user.id
@@ -1753,6 +1874,9 @@
 
       if (form.id === "genericForm") {
         const kind = form.dataset.kind;
+        if (kind === "certificate" && !canManageCertificates()) {
+          throw new Error("Somente Logística, Supervisor ou Administrador podem cadastrar certificados.");
+        }
         const files = [...(form.querySelector('[name="attachment"]')?.files || [])];
         const payload = Object.fromEntries(new FormData(form));
         delete payload.attachment;
@@ -1764,80 +1888,84 @@
       }
 
       if (form.id === "chemicalForm") {
-        if (!hasRole(["supervisor", "lider", "logistica", "qhse"])) throw new Error("Seu perfil não pode alterar o inventário químico.");
+        if (!canManageChemicals()) throw new Error("Seu perfil não pode alterar o inventário químico.");
+
         const files = [...(form.querySelector('[name="attachment"]')?.files || [])];
         const payload = Object.fromEntries(new FormData(form));
         delete payload.attachment;
-        const id = form.dataset.id || null;
-        const row = {
-          product_name: payload.product_name,
-          category: payload.category || null,
-          lot: payload.lot || null,
-          unit: payload.unit,
-          minimum_quantity: Number(payload.minimum_quantity || 0),
-          expiry_date: payload.expiry_date || null,
-          location: payload.location || null,
-          supplier: payload.supplier || null,
-          status: payload.status,
-          notes: payload.notes || null,
-          updated_by: state.user.id
-        };
-        if (!id) {
-          row.quantity = Number(payload.quantity || 0);
-          row.created_by = state.user.id;
-        }
-        const query = id
-          ? state.client.from("chemical_inventory").update(row).eq("id", id).select("id").single()
-          : state.client.from("chemical_inventory").insert(row).select("id").single();
-        const { data, error } = await query;
+
+        const initialQuantity = form.dataset.id ? 0 : parseOptionalDecimal(payload.quantity);
+        const minimumQuantity = parseOptionalDecimal(payload.minimum_quantity) ?? 0;
+
+        if (Number.isNaN(initialQuantity)) throw new Error("Informe uma quantidade inicial válida.");
+        if (Number.isNaN(minimumQuantity)) throw new Error("Informe um estoque mínimo válido.");
+        if ((initialQuantity ?? 0) < 0) throw new Error("A quantidade inicial não pode ser negativa.");
+        if (minimumQuantity < 0) throw new Error("O estoque mínimo não pode ser negativo.");
+
+        const { data, error } = await state.client.rpc("save_chemical_inventory", {
+          p_inventory_id: form.dataset.id || null,
+          p_product_name: payload.product_name?.trim(),
+          p_category: payload.category?.trim() || null,
+          p_lot: payload.lot?.trim() || null,
+          p_unit: payload.unit,
+          p_initial_quantity: initialQuantity ?? 0,
+          p_minimum_quantity: minimumQuantity,
+          p_expiry_date: payload.expiry_date || null,
+          p_location: payload.location?.trim() || null,
+          p_supplier: payload.supplier?.trim() || null,
+          p_status: payload.status,
+          p_notes: payload.notes?.trim() || null
+        });
+
         if (error) throw error;
-        const recordId = data.id;
-        if (!id && Number(payload.quantity || 0) > 0) {
-          const { error: movementError } = await state.client.from("chemical_movements").insert({
-            inventory_id: recordId,
-            movement_type: "Entrada",
-            quantity: Number(payload.quantity),
-            previous_balance: 0,
-            new_balance: Number(payload.quantity),
-            reference: "Saldo inicial",
-            performed_by: state.user.id
-          });
-          if (movementError) throw movementError;
-        }
-        if (files.length) await uploadAttachments("chemical", recordId, files);
+        const row = Array.isArray(data) ? data[0] : data;
+        if (!row?.id) throw new Error("O Supabase não confirmou o cadastro do produto químico.");
+
+        const { data: confirmed, error: confirmError } = await state.client
+          .from("chemical_inventory")
+          .select("id,product_name,quantity,updated_at")
+          .eq("id", row.id)
+          .single();
+
+        if (confirmError) throw confirmError;
+        if (!confirmed?.id) throw new Error("Não foi possível confirmar o produto salvo.");
+
+        if (files.length) await uploadAttachments("chemical", row.id, files);
       }
 
       if (form.id === "chemicalMovementForm") {
-        if (!hasRole(["supervisor", "lider", "logistica", "qhse"])) throw new Error("Seu perfil não pode movimentar o inventário químico.");
+        if (!canManageChemicals()) throw new Error("Seu perfil não pode movimentar o inventário químico.");
+
         const payload = Object.fromEntries(new FormData(form));
-        const item = state.data.chemicals.find(x => x.id === form.dataset.id);
-        if (!item) throw new Error("Produto não localizado.");
-        const amount = Number(payload.quantity || 0);
-        if (amount <= 0) throw new Error("Informe uma quantidade maior que zero.");
-        const previous = Number(item.quantity || 0);
-        let next = previous;
-        if (payload.movement_type === "Entrada") next = previous + amount;
-        if (payload.movement_type === "Saída") next = previous - amount;
-        if (payload.movement_type === "Ajuste") next = amount;
-        if (next < 0) throw new Error("A saída não pode deixar o estoque negativo.");
+        const amount = parseOptionalDecimal(payload.quantity);
+        if (Number.isNaN(amount) || amount === null) throw new Error("Informe uma quantidade válida.");
+        if (amount < 0) throw new Error("A quantidade não pode ser negativa.");
+        if (payload.movement_type !== "Ajuste" && amount <= 0) {
+          throw new Error("Informe uma quantidade maior que zero.");
+        }
 
-        const { error:updateError } = await state.client.from("chemical_inventory").update({
-          quantity: next,
-          updated_by: state.user.id
-        }).eq("id", item.id);
-        if (updateError) throw updateError;
-
-        const { error:movementError } = await state.client.from("chemical_movements").insert({
-          inventory_id: item.id,
-          movement_type: payload.movement_type,
-          quantity: amount,
-          previous_balance: previous,
-          new_balance: next,
-          reference: payload.reference || null,
-          notes: payload.notes || null,
-          performed_by: state.user.id
+        const { data, error } = await state.client.rpc("move_chemical_inventory", {
+          p_inventory_id: form.dataset.id,
+          p_movement_type: payload.movement_type,
+          p_quantity: amount,
+          p_reference: payload.reference?.trim() || null,
+          p_notes: payload.notes?.trim() || null
         });
-        if (movementError) throw movementError;
+
+        if (error) throw error;
+        const row = Array.isArray(data) ? data[0] : data;
+        if (!row?.id) throw new Error("O Supabase não confirmou a movimentação.");
+
+        const { data: confirmed, error: confirmError } = await state.client
+          .from("chemical_inventory")
+          .select("id,quantity,updated_at")
+          .eq("id", row.id)
+          .single();
+
+        if (confirmError) throw confirmError;
+        if (Math.abs(Number(confirmed.quantity) - Number(row.quantity)) > 0.001) {
+          throw new Error("O saldo confirmado é diferente do saldo movimentado.");
+        }
       }
 
       if (form.id === "eventForm") {
@@ -1961,11 +2089,11 @@
       return openModal("Ordem de consumo FEFO", `<div class="info-box">Consumir primeiro os lotes que vencem antes.</div><div class="attachment-list" style="margin-top:12px">${items.map((item,index) => `<div class="attachment-item"><div class="attachment-icon">${index+1}</div><div class="attachment-info"><strong>${esc(item.name)} — lote ${esc(item.lot || "-")}</strong><small>Validade ${dateOnly(item.expiry_date)} • ${fmt.format(item.quantity)} ${esc(item.unit)}</small></div>${badge(chemicalDisplayStatus(item))}</div>`).join("") || `<div class="empty">Nenhum lote disponível.</div>`}</div>`, "FEFO");
     }
     if (action === "new-fluid") return openModal("Adicionar produto", genericForm("fluid"), "PRODUTO");
-    if (action === "new-chemical") return openModal("Novo produto químico/lote", chemicalForm(), "INVENTÁRIO");
+    if (action === "new-chemical") { if (!canManageChemicals()) return toast("Seu perfil não pode alterar o inventário químico.", "error"); return openModal("Novo produto químico/lote", chemicalForm(), "INVENTÁRIO"); }
     if (action === "new-truck") return openModal("Nova movimentação", genericForm("truck"), "CARRETA");
     if (action === "new-qhse") return openModal("Novo registro QHSE", genericForm("qhse"), "QHSE");
     if (action === "new-equipment") return openModal("Novo equipamento", genericForm("equipment"), "EQUIPAMENTO");
-    if (action === "new-certificate") return openModal("Adicionar certificado", genericForm("certificate"), "CERTIFICADO");
+    if (action === "new-certificate") { if (!canManageCertificates()) return toast("Somente Logística, Supervisor ou Administrador podem adicionar certificados.", "error"); return openModal("Adicionar certificado", genericForm("certificate"), "CERTIFICADO"); }
     if (action === "new-alert") return openModal("Criar alerta", genericForm("alert"), "ALERTA");
     if (action === "new-maintenance-order") return openModal("Nova ordem de serviço", maintenanceOrderForm(), "MANUTENÇÃO");
 
@@ -2021,8 +2149,9 @@
     }
 
     if (button.dataset.editCertificate) {
+      if (!canManageCertificates()) return toast("Somente Logística, Supervisor ou Administrador podem editar certificados.", "error");
       const item = state.data.certificates.find(x => x.id === button.dataset.editCertificate);
-      return openModal(`Editar certificado — ${item.title}`, genericForm("certificate", item), "ADMIN");
+      return openModal(`Editar certificado — ${item.title}`, genericForm("certificate", item), "CERTIFICADO");
     }
 
     if (button.dataset.editAlert) {
@@ -2031,11 +2160,13 @@
     }
 
     if (button.dataset.editChemical) {
+      if (!canManageChemicals()) return toast("Seu perfil não pode editar o inventário químico.", "error");
       const item = state.data.chemicals.find(x => x.id === button.dataset.editChemical);
       return openModal(`Editar — ${item.name}`, chemicalForm(item), "INVENTÁRIO");
     }
 
     if (button.dataset.chemicalMove) {
+      if (!canManageChemicals()) return toast("Seu perfil não pode movimentar o inventário químico.", "error");
       const item = state.data.chemicals.find(x => x.id === button.dataset.chemicalMove);
       return openModal(`Movimentar — ${item.name}`, chemicalMovementForm(item), "MOVIMENTAÇÃO");
     }
@@ -2169,6 +2300,12 @@
     if (event.target.closest("#tankTransferForm")) updateTransferPreview(event.target.closest("#tankTransferForm"));
     if (event.target.closest("#tankForm") && event.target.name === "fluid_type_id") syncTankCatalogFields(event.target.closest("#tankForm"));
     if (event.target.closest('#genericForm[data-kind="fluid"]') && event.target.name === "type") syncFluidDensityUnit(event.target.closest("form"));
+    if (event.target.closest('#genericForm[data-kind="certificate"]') && event.target.name === "user_id") {
+      const form = event.target.closest("form");
+      const option = event.target.selectedOptions?.[0];
+      const owner = form.elements.owner;
+      if (owner && option?.dataset.userName) owner.value = option.dataset.userName;
+    }
   });
 
   document.addEventListener("input", event => {

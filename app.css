@@ -170,3 +170,9 @@
 #tankForm input[name="density"]{font-weight:850}
 .compact-tank-product span:last-child{color:#51627a;font-weight:700}
 :root[data-theme="dark"] .compact-tank-product span:last-child{color:#aabbd2}
+
+/* Inventário químico e certificados — correção operacional */
+#chemicalForm input[name="product_name"],
+#chemicalMovementForm input[name="quantity"]{font-weight:850}
+#chemicalForm .form-actions,
+#chemicalMovementForm .form-actions{position:sticky;bottom:0;background:var(--card);padding-top:12px}

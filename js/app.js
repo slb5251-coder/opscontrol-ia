@@ -23,6 +23,8 @@
     lastRefreshError: null,
     lastSync: null,
     filters: { start: "", end: "", client: "", product: "" },
+    handover: { date: "", shift: "" },
+    tv: { slide: 0, paused: false, timer: null, clockTimer: null, intervalMs: 15000 },
     config: loadConfig()
   };
 
@@ -144,19 +146,27 @@
     return hasRole(["supervisor", "logistica"]);
   }
 
+  function canManageHandover() {
+    return hasRole(["supervisor", "lider", "operador", "logistica", "qhse", "mecanico"]);
+  }
+
+  function canDeleteHandoverPending() {
+    return hasRole(["supervisor", "lider"]);
+  }
+
   function moduleAllowed(module) {
     if (isAdmin() || module === "settings") return true;
     const permissions = state.data?.profile?.permissions || {};
     if (Object.prototype.hasOwnProperty.call(permissions, module)) return permissions[module] !== false;
 
     const defaults = {
-      supervisor: ["dashboard", "operations", "tanks", "fluids", "chemicals", "trucks", "qhse", "maintenance", "certificates", "alerts", "reports"],
-      lider: ["dashboard", "operations", "tanks", "fluids", "chemicals", "trucks", "qhse", "maintenance", "certificates", "alerts", "reports"],
-      operador: ["dashboard", "operations", "tanks", "fluids", "chemicals", "trucks", "qhse", "alerts", "reports"],
-      logistica: ["dashboard", "operations", "tanks", "fluids", "chemicals", "trucks", "certificates", "alerts", "reports"],
-      mecanico: ["dashboard", "maintenance", "certificates", "alerts", "reports"],
-      qhse: ["dashboard", "operations", "chemicals", "qhse", "certificates", "alerts", "reports"],
-      user: ["dashboard", "certificates", "alerts"]
+      supervisor: ["dashboard", "tv", "operations", "tanks", "fluids", "chemicals", "trucks", "qhse", "maintenance", "certificates", "alerts", "reports"],
+      lider: ["dashboard", "tv", "operations", "tanks", "fluids", "chemicals", "trucks", "qhse", "maintenance", "certificates", "alerts", "reports"],
+      operador: ["dashboard", "tv", "operations", "tanks", "fluids", "chemicals", "trucks", "qhse", "alerts", "reports"],
+      logistica: ["dashboard", "tv", "operations", "tanks", "fluids", "chemicals", "trucks", "certificates", "alerts", "reports"],
+      mecanico: ["dashboard", "tv", "maintenance", "certificates", "alerts", "reports"],
+      qhse: ["dashboard", "tv", "operations", "chemicals", "qhse", "certificates", "alerts", "reports"],
+      user: ["dashboard", "tv", "certificates", "alerts"]
     };
     return (defaults[role()] || defaults.user).includes(module);
   }
@@ -596,7 +606,9 @@
       c.from("inventory_alerts").select("*").order("created_at", { ascending: false }),
       c.from("operational_health_alerts").select("*").order("created_at", { ascending: false }),
       c.from("system_errors").select("*").order("created_at", { ascending: false }).limit(50),
-      c.from("operation_tank_allocations").select("*").order("display_order", { ascending: true })
+      c.from("operation_tank_allocations").select("*").order("display_order", { ascending: true }),
+      c.from("handover_pending_items").select("*").order("created_at", { ascending: false }).limit(1000),
+      c.from("shift_handover_notes").select("*").order("shift_date", { ascending: false }).limit(500)
     ]);
 
     const failed = results.find(result => result.error);
@@ -665,12 +677,14 @@
         supplier: x.supplier, client: x.client || "", product: x.product, lot: x.lot || "",
         quantity: Number(x.quantity || 0), unit: x.unit, plate: x.plate || "",
         driver: x.driver_name || "", invoice: x.invoice_number || "", status: x.status,
-        notes: x.notes || ""
+        notes: x.notes || "", created_by: x.created_by,
+        created_at: x.created_at, updated_at: x.updated_at
       })),
       qhse: (results[8].data || []).map(x => ({
         id: x.id, date: x.record_date, type: x.record_type, title: x.title,
         description: x.description || "", responsible: x.responsible || "",
-        severity: x.severity, status: x.status
+        severity: x.severity, status: x.status, created_by: x.created_by,
+        created_at: x.created_at, updated_at: x.updated_at
       })),
       actionItems: results[9].data || [],
       equipment: (results[10].data || []).map(x => ({
@@ -741,6 +755,18 @@
         tank_id: x.tank_id, quantity: Number(x.quantity || 0), unit: x.unit,
         display_order: Number(x.display_order || 0), created_by: x.created_by,
         created_at: x.created_at, updated_at: x.updated_at
+      })),
+      handoverPendings: (results[24].data || []).map(x => ({
+        id: x.id, title: x.title, description: x.description || "",
+        category: x.category, responsible: x.responsible || "",
+        priority: x.priority, status: x.status, due_at: x.due_at,
+        created_by: x.created_by, completed_by: x.completed_by,
+        completed_at: x.completed_at, created_at: x.created_at, updated_at: x.updated_at
+      })),
+      handoverNotes: (results[25].data || []).map(x => ({
+        id: x.id, shift_date: x.shift_date, shift_type: x.shift_type,
+        observations: x.observations || "", updated_by: x.updated_by,
+        created_at: x.created_at, updated_at: x.updated_at
       }))
     };
     state.lastSync = new Date();
@@ -773,6 +799,7 @@
   async function logout() {
     clearTimeout(state.refreshDebounce);
     clearInterval(state.refreshTimer);
+    stopTvMode();
     if (state.realtime) await state.client.removeChannel(state.realtime);
     await state.client.auth.signOut();
     location.reload();
@@ -866,6 +893,7 @@
 
   function renderAll() {
     renderDashboard();
+    renderTv();
     renderOperations();
     renderTanks();
     renderFluids();
@@ -910,6 +938,155 @@
       return { label, unit, value };
     }).sort((a, b) => b.value - a.value);
   }
+
+
+  function tvOperationAllocations(operation) {
+    return state.data.operationAllocations
+      .filter(item => item.operation_id === operation.id)
+      .sort((a, b) => a.display_order - b.display_order)
+      .map(item => {
+        const tank = state.data.tanks.find(x => x.id === item.tank_id);
+        return `${tank?.name || "Equipamento"}: ${fmt.format(item.quantity)} ${item.unit}`;
+      });
+  }
+
+  function tvTankTile(tank) {
+    const volume = Number(tank.volume || 0);
+    const capacity = Number(tank.capacity || 0);
+    const pct = capacity > 0 ? Math.max(0, Math.min(100, volume / capacity * 100)) : 0;
+    const visualPct = volume > 0 ? Math.max(1.5, pct) : 0;
+    const tone = productClass(tank.product, tank.kind, volume);
+    return `<div class="tv-tank-tile ${tone} ${tank.status === "Bloqueado" ? "blocked" : ""}">
+      <div class="tv-tank-head"><strong>${esc(tank.name)}</strong><span>${esc(tank.status)}</span></div>
+      <div class="tv-tank-product">${esc(tank.product || (volume > 0 ? "Produto não informado" : "Vazio"))}</div>
+      <div class="tv-tank-volume"><strong>${fmt.format(volume)}</strong><span>/ ${fmt.format(capacity)} ${esc(tank.unit)}</span></div>
+      <div class="tv-tank-progress"><span style="width:${visualPct}%"></span></div>
+      <div class="tv-tank-foot"><span>${fmt.format(pct)}%</span><span>${tank.lot ? `Lote ${esc(tank.lot)}` : esc(tank.kind)}</span></div>
+    </div>`;
+  }
+
+  function tvOperationTile(operation) {
+    const pct = operation.planned > 0 ? Math.min(100, Math.max(0, operation.executed / operation.planned * 100)) : 0;
+    const allocations = tvOperationAllocations(operation);
+    return `<div class="tv-operation-tile">
+      <div class="tv-operation-top"><div><small>${esc(operation.client)}</small><h3>${esc(operation.vessel)}</h3></div>${badge(operation.status)}</div>
+      <div class="tv-operation-title">${esc(operation.activity)} de ${esc(operation.product)}</div>
+      <div class="tv-operation-progress"><span style="width:${pct}%"></span></div>
+      <div class="tv-operation-values"><strong>${fmt.format(operation.executed)} / ${fmt.format(operation.planned)} ${esc(operation.unit)}</strong><span>${fmt.format(operationFlow(operation))} ${esc(operation.unit)}/h</span></div>
+      ${allocations.length ? `<div class="tv-operation-allocations">${allocations.map(item => `<span>${esc(item)}</span>`).join("")}</div>` : ""}
+      ${operation.occurrence ? `<div class="tv-operation-occurrence">⚠ ${esc(operation.occurrence)}</div>` : ""}
+    </div>`;
+  }
+
+  function tvOverviewSlide() {
+    const d = state.data;
+    const active = d.operations.filter(op => !["Concluída", "Cancelada"].includes(op.status));
+    const totalBbl = d.tanks.filter(t => t.unit === "bbl").reduce((sum, t) => sum + Number(t.volume || 0), 0);
+    const totalTon = d.tanks.filter(t => t.unit === "ton").reduce((sum, t) => sum + Number(t.volume || 0), 0);
+    const critical = [...d.systemAlerts, ...d.alerts.filter(x => !x.read)]
+      .filter(item => isCriticalAlert(item.level))
+      .slice(0, 6);
+
+    return `<div class="tv-overview">
+      <div class="tv-kpi-row">
+        <div><span>Operações ativas</span><strong>${active.length}</strong></div>
+        <div><span>Fluidos armazenados</span><strong>${fmt.format(totalBbl)} bbl</strong></div>
+        <div><span>Granéis armazenados</span><strong>${fmt.format(totalTon)} ton</strong></div>
+        <div><span>Alertas críticos</span><strong>${critical.length}</strong></div>
+      </div>
+      <div class="tv-overview-body">
+        <div class="tv-operations-panel">
+          <div class="tv-panel-title"><h2>Operações em andamento</h2><span>${active.length} operação(ões)</span></div>
+          <div class="tv-operation-grid">${active.length ? active.slice(0, 6).map(tvOperationTile).join("") : `<div class="tv-empty-state">Nenhuma operação em andamento no momento.</div>`}</div>
+        </div>
+        <div class="tv-alerts-panel">
+          <div class="tv-panel-title"><h2>Atenção operacional</h2><span>Atualização automática</span></div>
+          <div class="tv-alert-list">${critical.length ? critical.map(item => `<div class="tv-alert-item"><div>${badge(item.level)}</div><strong>${esc(item.title)}</strong><p>${esc(item.message || "")}</p></div>`).join("") : `<div class="tv-empty-state compact">Nenhum alerta crítico.</div>`}</div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function tvInventorySlide(phase) {
+    const assets = state.data.tanks
+      .filter(item => item.phase === phase)
+      .sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
+    const tanks = assets.filter(item => !isSiloAsset(item));
+    const silos = assets.filter(item => isSiloAsset(item));
+    const occupied = assets.filter(item => Number(item.volume || 0) > 0).length;
+    return `<div class="tv-inventory-slide">
+      <div class="tv-panel-title large"><div><h2>${esc(phase)} — Inventário de tancagem</h2><span>${occupied} de ${assets.length} equipamentos com produto</span></div><strong>${state.data.profile.department || "B-Port LMP"}</strong></div>
+      <div class="tv-inventory-section">
+        <div class="tv-section-label">Tanques e Mix Tanks</div>
+        <div class="tv-tank-grid">${tanks.map(tvTankTile).join("")}</div>
+      </div>
+      <div class="tv-inventory-section silos">
+        <div class="tv-section-label">Silos de granéis</div>
+        <div class="tv-silo-grid">${silos.map(tvTankTile).join("")}</div>
+      </div>
+    </div>`;
+  }
+
+  function updateTvClock() {
+    const clock = $("#tvClock");
+    const date = $("#tvDate");
+    if (!clock || !date) return;
+    const now = new Date();
+    clock.textContent = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    date.textContent = now.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
+  }
+
+  function changeTvSlide(step = 1) {
+    state.tv.slide = (state.tv.slide + step + 3) % 3;
+    renderTv();
+  }
+
+  function startTvMode() {
+    clearInterval(state.tv.timer);
+    clearInterval(state.tv.clockTimer);
+    state.tv.clockTimer = setInterval(updateTvClock, 1000);
+    if (!state.tv.paused) {
+      state.tv.timer = setInterval(() => {
+        if (state.page === "tv" && document.visibilityState === "visible") changeTvSlide(1);
+      }, state.tv.intervalMs);
+    }
+    updateTvClock();
+  }
+
+  function stopTvMode() {
+    clearInterval(state.tv.timer);
+    clearInterval(state.tv.clockTimer);
+    state.tv.timer = null;
+    state.tv.clockTimer = null;
+  }
+
+  function renderTv() {
+    const page = $("#page-tv");
+    if (!page || !state.data) return;
+    const slide = state.tv.slide % 3;
+    const labels = ["Operações", "Phase #1", "Phase #2"];
+    const content = slide === 0 ? tvOverviewSlide() : tvInventorySlide(slide === 1 ? "Phase #1" : "Phase #2");
+
+    page.innerHTML = `<div class="tv-screen">
+      <div class="tv-topbar">
+        <div class="tv-brand"><span>OC</span><div><strong>OpsControl IA</strong><small>Painel Operacional — B-Port LMP</small></div></div>
+        <div class="tv-top-status"><span class="live-dot"></span><strong>Dados em tempo real</strong><small>Última sincronização: ${state.lastSync ? state.lastSync.toLocaleTimeString("pt-BR") : "-"}</small></div>
+        <div class="tv-clock"><strong id="tvClock">--:--:--</strong><span id="tvDate">--</span></div>
+      </div>
+      <div class="tv-content">${content}</div>
+      <div class="tv-footer">
+        <div class="tv-dots">${labels.map((label, index) => `<button class="${index === slide ? "active" : ""}" data-tv-slide="${index}"><span></span>${label}</button>`).join("")}</div>
+        <div class="tv-controls no-print">
+          <button class="btn secondary" data-action="tv-prev">‹ Anterior</button>
+          <button class="btn secondary" data-action="tv-toggle">${state.tv.paused ? "▶ Retomar" : "Ⅱ Pausar"}</button>
+          <button class="btn secondary" data-action="tv-next">Próximo ›</button>
+          <button class="btn primary" data-action="tv-fullscreen">${document.fullscreenElement ? "Sair da tela cheia" : "Tela cheia"}</button>
+        </div>
+      </div>
+    </div>`;
+    updateTvClock();
+  }
+
 
   function renderDashboard() {
     const d = state.data;
@@ -1624,32 +1801,256 @@
     $("#page-alerts").innerHTML = header("Alertas e chat", "Alertas automáticos e comunicação interna por equipe.", `<button class="btn primary" data-action="new-alert">+ Novo alerta</button>`) + `<div class="chat-layout"><div><div class="section-title">Alertas automáticos</div><div style="display:grid;gap:9px">${automatic || `<div class="empty">Nenhum risco automático identificado.</div>`}</div><div class="section-title">Alertas enviados</div><div style="display:grid;gap:9px">${alerts || `<div class="empty">Nenhum alerta enviado.</div>`}</div></div><div class="card chat-panel"><h3>Canal Operação Geral</h3><div id="messages" class="messages">${messages}</div><div class="chat-input"><input id="chatText" placeholder="Digite uma mensagem..."><button class="btn primary" data-action="send-message">Enviar</button></div></div></div>`;
   }
 
-  function handoverText() {
+
+  function addDaysToDateKey(dateKey, days) {
+    const date = new Date(`${dateKey}T12:00:00`);
+    date.setDate(date.getDate() + days);
+    return localDateKey(date);
+  }
+
+  function defaultHandoverSelection(now = new Date()) {
+    const hour = now.getHours();
+    if (hour >= 7 && hour < 19) return { date: localDateKey(now), shift: "day" };
+    if (hour >= 19) return { date: localDateKey(now), shift: "night" };
+    return { date: addDaysToDateKey(localDateKey(now), -1), shift: "night" };
+  }
+
+  function ensureHandoverSelection() {
+    if (!state.handover.date || !state.handover.shift) {
+      state.handover = defaultHandoverSelection();
+    }
+    return state.handover;
+  }
+
+  function shiftWindow(selection = ensureHandoverSelection()) {
+    const startHour = selection.shift === "day" ? 7 : 19;
+    const endHour = selection.shift === "day" ? 19 : 7;
+    const endDate = selection.shift === "day" ? selection.date : addDaysToDateKey(selection.date, 1);
+    return {
+      date: selection.date,
+      shift: selection.shift,
+      start: new Date(`${selection.date}T${String(startHour).padStart(2, "0")}:00:00`),
+      end: new Date(`${endDate}T${String(endHour).padStart(2, "0")}:00:00`),
+      label: selection.shift === "day" ? "Turno Dia — 07:00 às 19:00" : "Turno Noite — 19:00 às 07:00"
+    };
+  }
+
+  function timestampInWindow(value, window) {
+    if (!value) return false;
+    const time = new Date(value).getTime();
+    return Number.isFinite(time) && time >= window.start.getTime() && time < window.end.getTime();
+  }
+
+  function handoverSnapshot(selection = ensureHandoverSelection()) {
     const d = state.data;
-    const active = d.operations.filter(op => !["Concluída", "Cancelada"].includes(op.status));
-    const pending = d.qhse.filter(item => item.status !== "Concluído");
-    const maintenance = d.maintenanceOrders.filter(item => !["Concluída", "Fechada", "Cancelada"].includes(item.status));
+    const window = shiftWindow(selection);
+
+    const completedOperations = d.operations.filter(op =>
+      op.status === "Concluída" && timestampInWindow(op.end_at || op.updated_at, window)
+    );
+
+    const activeOperations = d.operations.filter(op => {
+      if (["Concluída", "Cancelada"].includes(op.status)) return false;
+      const start = op.start_at ? new Date(op.start_at).getTime() : new Date(op.created_at).getTime();
+      return Number.isFinite(start) && start < window.end.getTime();
+    });
+
+    const events = d.operationEvents.filter(item => timestampInWindow(item.event_time, window));
+    const tankMovements = d.tankMovements.filter(item => timestampInWindow(item.created_at, window));
+    const trucks = d.trucks.filter(item =>
+      timestampInWindow(item.created_at, window) ||
+      (!item.created_at && recordDateKey(item.date) === selection.date)
+    );
+    const qhse = d.qhse.filter(item =>
+      timestampInWindow(item.created_at, window) ||
+      (!item.created_at && recordDateKey(item.date) === selection.date)
+    );
+    const maintenanceOpened = d.maintenanceOrders.filter(item => timestampInWindow(item.opened_at, window));
+    const maintenanceClosed = d.maintenanceOrders.filter(item => timestampInWindow(item.closed_at, window));
+
+    const pendingCompleted = d.handoverPendings.filter(item =>
+      item.status === "Concluído" && timestampInWindow(item.completed_at, window)
+    );
+    const openPendings = d.handoverPendings.filter(item =>
+      ["Pendente", "Em andamento"].includes(item.status) &&
+      new Date(item.created_at).getTime() < window.end.getTime()
+    );
+
+    const openQhseActions = d.actionItems.filter(item => item.status !== "Concluído");
+    const openMaintenance = d.maintenanceOrders.filter(item => !["Concluída", "Fechada", "Cancelada"].includes(item.status));
+    const note = d.handoverNotes.find(item => item.shift_date === selection.date && item.shift_type === selection.shift);
+
+    return {
+      selection, window, completedOperations, activeOperations, events,
+      tankMovements, trucks, qhse, maintenanceOpened, maintenanceClosed,
+      pendingCompleted, openPendings, openQhseActions, openMaintenance,
+      observations: note?.observations || "", note
+    };
+  }
+
+  function handoverPendingForm(item = {}) {
+    return `<form id="handoverPendingForm" data-id="${item.id || ""}">
+      <div class="form-grid">
+        <div><label>Categoria</label><select name="category">${["Operação","Logística","Tancagem","QHSE","Manutenção","Documentação","Outro"].map(x => `<option ${item.category === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
+        <div><label>Prioridade</label><select name="priority">${["Baixa","Normal","Alta","Crítica"].map(x => `<option ${item.priority === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
+        <div class="wide"><label>Pendência *</label><input name="title" required value="${esc(item.title || "")}" placeholder="Ex.: Atualizar lote da RFF"></div>
+        <div class="wide"><label>Descrição</label><textarea name="description">${esc(item.description || "")}</textarea></div>
+        <div><label>Responsável</label><input name="responsible" value="${esc(item.responsible || "")}"></div>
+        <div><label>Prazo</label><input name="due_at" type="datetime-local" value="${toLocalInput(item.due_at)}"></div>
+        <div><label>Status</label><select name="status">${["Pendente","Em andamento","Concluído","Cancelado"].map(x => `<option ${item.status === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
+      </div>
+      ${formActions(item.id ? "Salvar pendência" : "Adicionar pendência")}
+    </form>`;
+  }
+
+  function handoverSection(title, items, renderer, emptyText) {
+    return `<section class="handover-section"><h3>${title}</h3>${items.length ? `<ol>${items.map(renderer).join("")}</ol>` : `<p class="handover-empty">${emptyText}</p>`}</section>`;
+  }
+
+  function handoverSheetHtml(snapshot) {
+    const s = snapshot;
+    const generated = new Date();
+    const operationItems = s.completedOperations.map(op => ({
+      title: `${op.activity} de ${op.product}`,
+      detail: `${op.client} • ${op.vessel} • ${fmt.format(op.executed)} ${op.unit}${op.service_order ? ` • OS ${op.service_order}` : ""}`
+    }));
+    const eventItems = s.events.map(item => ({
+      title: item.title,
+      detail: `${dateTime(item.event_time)}${item.description ? ` • ${item.description}` : ""}`
+    }));
+    const movementItems = s.tankMovements.map(item => {
+      const source = state.data.tanks.find(t => t.id === item.source_tank_id)?.name;
+      const destination = state.data.tanks.find(t => t.id === item.destination_tank_id)?.name;
+      const route = source && destination ? `${source} → ${destination}` : source ? `Saída de ${source}` : destination ? `Entrada em ${destination}` : item.movement_type;
+      return { title: `${route}: ${fmt.format(item.quantity)} ${item.unit}`, detail: `${item.product || "-"}${item.lot ? ` • lote ${item.lot}` : ""}` };
+    });
+    const truckItems = s.trucks.map(item => ({
+      title: `${item.movement} — ${item.product}`,
+      detail: `${fmt.format(item.quantity)} ${item.unit} • ${item.supplier || item.client || "-"}${item.invoice ? ` • NF ${item.invoice}` : ""}${item.plate ? ` • ${item.plate}` : ""}`
+    }));
+    const qhseItems = s.qhse.map(item => ({ title: `${item.type}: ${item.title}`, detail: `${item.responsible || "Sem responsável"} • ${item.status}` }));
+    const maintenanceItems = [
+      ...s.maintenanceOpened.map(item => ({ title: `OS aberta: ${item.title}`, detail: `${item.responsible || "Sem responsável"} • ${item.status}` })),
+      ...s.maintenanceClosed.map(item => ({ title: `OS concluída: ${item.title}`, detail: `${item.responsible || "Sem responsável"}` })),
+      ...s.pendingCompleted.map(item => ({ title: `Pendência concluída: ${item.title}`, detail: `${item.responsible || "Sem responsável"} • ${item.category}` }))
+    ];
+    const pendingItems = [
+      ...s.activeOperations.map(op => ({ title: `Operação em andamento: ${op.activity} de ${op.product}`, detail: `${op.client} • ${op.vessel} • ${fmt.format(op.executed)}/${fmt.format(op.planned)} ${op.unit}` })),
+      ...s.openPendings.map(item => ({ title: item.title, detail: `${item.category} • ${item.responsible || "Sem responsável"} • ${item.priority}` })),
+      ...s.openMaintenance.map(item => ({ title: `Manutenção: ${item.title}`, detail: `${item.responsible || "Sem responsável"} • ${item.status}` })),
+      ...s.openQhseActions.map(item => ({ title: `QHSE: ${item.title}`, detail: `${item.responsible || "Sem responsável"} • prazo ${dateOnly(item.due_date)}` }))
+    ];
+
+    const itemRenderer = item => `<li><strong>${esc(item.title)}</strong><span>${esc(item.detail || "")}</span></li>`;
+
+    return `<article class="handover-sheet" id="handoverSheet">
+      <header class="handover-print-header">
+        <div><span class="handover-logo">OC</span></div>
+        <div><h1>PASSAGEM DE SERVIÇO</h1><p>B-Port LMP — OpsControl IA</p></div>
+        <div class="handover-print-meta"><strong>${dateOnly(s.selection.date)}</strong><span>${esc(s.window.label)}</span><small>Gerado em ${generated.toLocaleString("pt-BR")}</small></div>
+      </header>
+
+      <div class="handover-summary-grid">
+        <div><span>Operações concluídas</span><strong>${s.completedOperations.length}</strong></div>
+        <div><span>Eventos registrados</span><strong>${s.events.length}</strong></div>
+        <div><span>Movimentações</span><strong>${s.tankMovements.length}</strong></div>
+        <div><span>Pendências abertas</span><strong>${pendingItems.length}</strong></div>
+      </div>
+
+      ${handoverSection("1. Operações concluídas no turno", operationItems, itemRenderer, "Nenhuma operação concluída no período.")}
+      ${handoverSection("2. Eventos e atividades registradas", eventItems, itemRenderer, "Nenhum evento registrado no período.")}
+      ${handoverSection("3. Movimentações de tanques e silos", movementItems, itemRenderer, "Nenhuma movimentação de tancagem registrada.")}
+      ${handoverSection("4. Movimentações de carretas", truckItems, itemRenderer, "Nenhuma carreta registrada no período.")}
+      ${handoverSection("5. QHSE e manutenção", [...qhseItems, ...maintenanceItems], itemRenderer, "Nenhuma atividade QHSE ou de manutenção registrada.")}
+      ${handoverSection("6. Pendências para o próximo turno", pendingItems, itemRenderer, "Nenhuma pendência identificada.")}
+
+      <section class="handover-section observations"><h3>7. Observações</h3><p>${esc(s.observations || "Manter os controles atualizados, a sala organizada e registrar todas as alterações no OpsControl IA.")}</p></section>
+
+      <footer class="handover-signatures">
+        <div><span>Responsável pelo turno</span><strong>${esc(state.data.profile.name)}</strong></div>
+        <div><span>Recebido por</span><strong>________________________________</strong></div>
+      </footer>
+    </article>`;
+  }
+
+  function handoverText(selection = ensureHandoverSelection()) {
+    const s = handoverSnapshot(selection);
     const lines = [
       "> PASSAGEM DE SERVIÇO",
-      `> Data: ${new Date().toLocaleDateString("pt-BR")} | Hora: ${new Date().toLocaleTimeString("pt-BR", {hour:"2-digit", minute:"2-digit"})}`,
-      "",
-      "*Operações em andamento:*"
+      `> Data: ${dateOnly(selection.date)} | ${s.window.label}`,
+      ""
     ];
-    active.forEach((op, index) => lines.push(`${index + 1}. ${op.client} | ${op.vessel} | ${op.activity} de ${op.product} | ${fmt.format(op.executed)}/${fmt.format(op.planned)} ${op.unit} | ${op.status}`));
-    if (!active.length) lines.push("• Nenhuma operação em andamento.");
-    lines.push("", "*Pendências QHSE:*");
-    pending.forEach(item => lines.push(`• ${item.title} — ${item.responsible || "Sem responsável"} — ${item.status}`));
-    if (!pending.length) lines.push("• Nenhuma pendência QHSE.");
-    lines.push("", "*Manutenções abertas:*");
-    maintenance.forEach(item => lines.push(`• ${item.title} — ${item.responsible || "Sem responsável"} — ${item.status}`));
-    if (!maintenance.length) lines.push("• Nenhuma manutenção aberta.");
-    lines.push("", "*Observação:* Manter controles atualizados e registrar todas as alterações no OpsControl IA.");
+    let number = 1;
+
+    const add = text => lines.push(`${number++}. ${text}`);
+    s.completedOperations.forEach(op => add(`${op.activity} de ${op.product} concluído — ${op.client} / ${op.vessel} — ${fmt.format(op.executed)} ${op.unit}`));
+    s.events.forEach(item => add(`${item.title}${item.description ? ` — ${item.description}` : ""}`));
+    s.trucks.forEach(item => add(`${item.movement} de carreta — ${item.product} — ${fmt.format(item.quantity)} ${item.unit}${item.invoice ? ` — NF ${item.invoice}` : ""}`));
+    s.qhse.forEach(item => add(`${item.type}: ${item.title} — ${item.status}`));
+    s.maintenanceClosed.forEach(item => add(`Manutenção concluída: ${item.title}`));
+    s.pendingCompleted.forEach(item => add(`Pendência concluída: ${item.title}`));
+
+    if (number === 1) lines.push("• Nenhuma atividade concluída ou registrada no turno.");
+
+    lines.push("", "*Operações em andamento:*");
+    s.activeOperations.forEach(op => lines.push(`• ${op.client} | ${op.vessel} | ${op.activity} de ${op.product} | ${fmt.format(op.executed)}/${fmt.format(op.planned)} ${op.unit} | ${op.status}`));
+    if (!s.activeOperations.length) lines.push("• Nenhuma operação em andamento.");
+
+    lines.push("", "*Pendências:*");
+    s.openPendings.forEach(item => lines.push(`• [${item.priority}] ${item.title} — ${item.responsible || "Sem responsável"} — ${item.status}`));
+    s.openMaintenance.forEach(item => lines.push(`• Manutenção: ${item.title} — ${item.responsible || "Sem responsável"} — ${item.status}`));
+    s.openQhseActions.forEach(item => lines.push(`• QHSE: ${item.title} — ${item.responsible || "Sem responsável"} — prazo ${dateOnly(item.due_date)}`));
+    if (!s.openPendings.length && !s.openMaintenance.length && !s.openQhseActions.length) lines.push("• Nenhuma pendência.");
+
+    lines.push("", "*Observações:*");
+    lines.push(s.observations || "Manter os controles atualizados, a sala organizada e registrar todas as alterações no OpsControl IA.");
     return lines.join("\n");
   }
 
+
   function renderReports() {
+    const selection = ensureHandoverSelection();
+    const snapshot = handoverSnapshot(selection);
     const reportCard = (title, description, page, exportKind = "") => `<div class="card report-card"><h3>${title}</h3><p>${description}</p><div class="row-actions"><button class="btn primary" data-print-page="${page}">Gerar / Imprimir</button>${exportKind ? `<button class="btn secondary" data-export="${exportKind}">Exportar CSV</button>` : ""}</div></div>`;
-    $("#page-reports").innerHTML = header("Relatórios", "Relatórios operacionais, gerenciais, CSV e passagem de serviço.", `<button class="btn secondary" data-action="copy-handover">Copiar passagem</button>`) + `<div class="grid two">${reportCard("Relatório gerencial", "KPIs, clientes, produtos, riscos e produtividade.", "dashboard", "operations")}${reportCard("Operações", "Vazão, volume, paralisações, tancagem e status.", "operations", "operations")}${reportCard("Inventário de tancagem", "Produto, lote, volume, capacidade e responsável.", "tanks", "tanks")}${reportCard("QHSE", "Registros, severidades e itens de ação.", "qhse")}${reportCard("Manutenção", "Equipamentos, diesel, preventivas e ordens de serviço.", "maintenance", "maintenance")}${reportCard("Carretas", "Entradas, saídas, NF, placa, motorista e anexos.", "trucks", "trucks")}${reportCard("Inventário químico", "Produtos, lotes, FEFO, validade, estoque mínimo e saldo.", "chemicals", "chemicals")}</div><div class="section-title">Prévia da passagem de serviço</div><div class="card"><pre class="handover-preview">${esc(handoverText())}</pre></div>`;
+
+    const pendingCards = snapshot.openPendings.map(item => `<div class="handover-pending-card">
+      <div><span>${badge(item.priority)}</span><small>${esc(item.category)}</small><h4>${esc(item.title)}</h4><p>${esc(item.description || "Sem descrição")}</p><footer><span>${esc(item.responsible || "Sem responsável")}</span><span>${item.due_at ? dateTime(item.due_at) : "Sem prazo"}</span></footer></div>
+      ${canManageHandover() ? `<div class="row-actions"><button class="btn small secondary" data-edit-handover-pending="${item.id}">Editar</button><button class="btn small primary" data-toggle-handover-pending="${item.id}">Concluir</button>${canDeleteHandoverPending() ? `<button class="btn small danger" data-delete-handover-pending="${item.id}">Excluir</button>` : ""}</div>` : ""}
+    </div>`).join("");
+
+    $("#page-reports").innerHTML =
+      header("Relatórios", "Relatórios operacionais e passagem de serviço automática.",
+        `<button class="btn secondary" data-action="copy-handover">Copiar passagem</button>
+         <button class="btn primary" data-action="print-handover">Imprimir passagem</button>`) +
+
+      `<div class="card handover-controls no-print">
+        <div class="handover-control-copy"><strong>Passagem automática do turno</strong><span>O sistema reúne operações, eventos, movimentações, carretas, QHSE e manutenção.</span></div>
+        <div><label>Data do turno</label><input id="handoverDate" type="date" value="${esc(selection.date)}"></div>
+        <div><label>Turno</label><select id="handoverShift"><option value="day" ${selection.shift === "day" ? "selected" : ""}>Dia — 07h às 19h</option><option value="night" ${selection.shift === "night" ? "selected" : ""}>Noite — 19h às 07h</option></select></div>
+        <button class="btn secondary" data-action="apply-handover-filter">Atualizar período</button>
+        ${canManageHandover() ? `<button class="btn primary" data-action="new-handover-pending">+ Adicionar pendência</button>` : ""}
+      </div>
+
+      <div class="handover-layout">
+        <div>
+          ${handoverSheetHtml(snapshot)}
+        </div>
+        <aside class="handover-side no-print">
+          <div class="card"><h3>Observações do turno</h3><p>Este texto será incluído na impressão e na cópia para WhatsApp.</p><textarea id="handoverObservations" rows="8">${esc(snapshot.observations)}</textarea>${canManageHandover() ? `<button class="btn primary full" data-action="save-handover-note">Salvar observações</button>` : ""}</div>
+          <div class="card"><div class="kpi-row"><div><h3>Pendências manuais</h3><span class="muted">Continuam abertas até serem concluídas.</span></div>${badge(snapshot.openPendings.length)}</div><div class="handover-pending-list">${pendingCards || `<div class="empty">Nenhuma pendência manual aberta.</div>`}</div></div>
+        </aside>
+      </div>
+
+      <div class="section-title no-print">Outros relatórios</div>
+      <div class="grid two no-print">
+        ${reportCard("Relatório gerencial", "KPIs, clientes, produtos, riscos e produtividade.", "dashboard", "operations")}
+        ${reportCard("Operações", "Vazão, volume, paralisações, tancagem e status.", "operations", "operations")}
+        ${reportCard("Inventário de tancagem", "Produto, lote, volume, capacidade e responsável.", "tanks", "tanks")}
+        ${reportCard("QHSE", "Registros, severidades e itens de ação.", "qhse")}
+        ${reportCard("Manutenção", "Equipamentos, diesel, preventivas e ordens de serviço.", "maintenance", "maintenance")}
+        ${reportCard("Carretas", "Entradas, saídas, NF, placa, motorista e anexos.", "trucks", "trucks")}
+        ${reportCard("Inventário químico", "Produtos, lotes, FEFO, validade, estoque mínimo e saldo.", "chemicals", "chemicals")}
+      </div>`;
   }
 
   function renderSettings() {
@@ -1887,7 +2288,7 @@
 
   function userForm(user) {
     const modules = [
-      ["dashboard", "Dashboard"], ["operations", "Operações"], ["tanks", "Tanques"],
+      ["dashboard", "Dashboard"], ["tv", "Painel TV"], ["operations", "Operações"], ["tanks", "Tanques"],
       ["fluids", "Fluidos"], ["chemicals", "Inventário Químico"], ["trucks", "Carretas"], ["qhse", "QHSE"],
       ["maintenance", "Manutenção"], ["certificates", "Certificados"],
       ["alerts", "Alertas"], ["reports", "Relatórios"]
@@ -2263,6 +2664,12 @@
     $$(".nav-item").forEach(item => item.classList.toggle("active", item.dataset.page === page));
     $(`#page-${page}`).classList.add("active");
     $("#sidebar").classList.remove("open");
+    if (page === "tv") {
+      renderTv();
+      startTvMode();
+    } else {
+      stopTvMode();
+    }
   }
 
   function applyTheme(theme) {
@@ -2492,6 +2899,29 @@
         }
       }
 
+      if (form.id === "handoverPendingForm") {
+        if (!canManageHandover()) throw new Error("Seu perfil não pode alterar a passagem de serviço.");
+        const payload = Object.fromEntries(new FormData(form));
+        const completed = payload.status === "Concluído";
+        const row = {
+          title: payload.title?.trim(),
+          description: payload.description?.trim() || null,
+          category: payload.category,
+          responsible: payload.responsible?.trim() || null,
+          priority: payload.priority,
+          status: payload.status,
+          due_at: payload.due_at ? new Date(payload.due_at).toISOString() : null,
+          completed_at: completed ? new Date().toISOString() : null,
+          completed_by: completed ? state.user.id : null
+        };
+        const query = form.dataset.id
+          ? state.client.from("handover_pending_items").update(row).eq("id", form.dataset.id).select("id").single()
+          : state.client.from("handover_pending_items").insert({ ...row, created_by: state.user.id }).select("id").single();
+        const { data, error } = await query;
+        if (error) throw error;
+        if (!data?.id) throw new Error("O Supabase não confirmou a pendência.");
+      }
+
       if (form.id === "eventForm") {
         const payload = Object.fromEntries(new FormData(form));
         const { error } = await state.client.from("operation_events").insert({
@@ -2538,7 +2968,7 @@
           throw new Error("O administrador atual não pode remover o próprio cargo.");
         }
         const permissions = {};
-        ["dashboard", "operations", "tanks", "fluids", "chemicals", "trucks", "qhse", "maintenance", "certificates", "alerts", "reports"].forEach(module => {
+        ["dashboard", "tv", "operations", "tanks", "fluids", "chemicals", "trucks", "qhse", "maintenance", "certificates", "alerts", "reports"].forEach(module => {
           permissions[module] = form.querySelector(`[name="perm_${module}"]`)?.checked === true;
         });
         const { error } = await state.client.from("profiles").update({
@@ -2581,6 +3011,12 @@
     if (button.closest(".user-chip")) return showPage("settings");
     if (button.id === "notificationsBtn") return showPage("alerts");
 
+    if (button.hasAttribute("data-tv-slide")) {
+      state.tv.slide = Number(button.dataset.tvSlide || 0);
+      renderTv();
+      return;
+    }
+
     if (button.hasAttribute("data-add-operation-allocation")) {
       addOperationAllocationRow(button.closest("#operationForm"));
       return;
@@ -2594,6 +3030,64 @@
     }
 
     const action = button.dataset.action;
+    if (action === "tv-prev") {
+      changeTvSlide(-1);
+      return;
+    }
+    if (action === "tv-next") {
+      changeTvSlide(1);
+      return;
+    }
+    if (action === "tv-toggle") {
+      state.tv.paused = !state.tv.paused;
+      startTvMode();
+      renderTv();
+      return;
+    }
+    if (action === "tv-fullscreen") {
+      const target = $("#page-tv");
+      try {
+        if (!document.fullscreenElement) await target.requestFullscreen();
+        else await document.exitFullscreen();
+      } catch (error) {
+        toast(`Não foi possível abrir a tela cheia: ${error.message}`, "error");
+      }
+      renderTv();
+      return;
+    }
+    if (action === "apply-handover-filter") {
+      state.handover = {
+        date: $("#handoverDate")?.value || defaultHandoverSelection().date,
+        shift: $("#handoverShift")?.value || "day"
+      };
+      renderReports();
+      return;
+    }
+    if (action === "new-handover-pending") {
+      if (!canManageHandover()) return toast("Seu perfil não pode adicionar pendências.", "error");
+      return openModal("Nova pendência da passagem", handoverPendingForm(), "PASSAGEM");
+    }
+    if (action === "save-handover-note") {
+      if (!canManageHandover()) return toast("Seu perfil não pode alterar as observações.", "error");
+      const selection = ensureHandoverSelection();
+      const observations = $("#handoverObservations")?.value.trim() || null;
+      const { error } = await state.client.from("shift_handover_notes").upsert({
+        shift_date: selection.date,
+        shift_type: selection.shift,
+        observations,
+        updated_by: state.user.id
+      }, { onConflict: "shift_date,shift_type" });
+      if (error) return toast(error.message, "error");
+      await loadData();
+      renderReports();
+      return toast("Observações do turno salvas.", "success");
+    }
+    if (action === "print-handover") {
+      document.body.classList.add("print-handover");
+      setTimeout(() => window.print(), 100);
+      return;
+    }
+
     if (action === "refresh") {
       const original = button.textContent;
       button.disabled = true;
@@ -2667,6 +3161,35 @@
       const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
       applyTheme(next);
       return;
+    }
+
+    if (button.dataset.editHandoverPending) {
+      if (!canManageHandover()) return toast("Seu perfil não pode editar pendências.", "error");
+      const item = state.data.handoverPendings.find(x => x.id === button.dataset.editHandoverPending);
+      return openModal(`Editar pendência — ${item.title}`, handoverPendingForm(item), "PASSAGEM");
+    }
+
+    if (button.dataset.toggleHandoverPending) {
+      if (!canManageHandover()) return toast("Seu perfil não pode concluir pendências.", "error");
+      const item = state.data.handoverPendings.find(x => x.id === button.dataset.toggleHandoverPending);
+      const completed = item.status !== "Concluído";
+      const { error } = await state.client.from("handover_pending_items").update({
+        status: completed ? "Concluído" : "Pendente",
+        completed_at: completed ? new Date().toISOString() : null,
+        completed_by: completed ? state.user.id : null
+      }).eq("id", item.id);
+      if (error) return toast(error.message, "error");
+      await loadData(); renderReports();
+      return toast(completed ? "Pendência concluída." : "Pendência reaberta.", "success");
+    }
+
+    if (button.dataset.deleteHandoverPending) {
+      if (!canDeleteHandoverPending()) return toast("Somente liderança, supervisão ou administrador podem excluir.", "error");
+      if (!confirm("Excluir esta pendência permanentemente?")) return;
+      const { error } = await state.client.from("handover_pending_items").delete().eq("id", button.dataset.deleteHandoverPending);
+      if (error) return toast(error.message, "error");
+      await loadData(); renderReports();
+      return toast("Pendência excluída.");
     }
 
     if (button.dataset.editFluid) {
@@ -2872,6 +3395,10 @@
     refreshRealtime("conexão restaurada");
   });
   window.addEventListener("offline", updateConnectionBadge);
+  window.addEventListener("afterprint", () => document.body.classList.remove("print-handover"));
+  document.addEventListener("fullscreenchange", () => {
+    if (state.page === "tv") renderTv();
+  });
 
   if ("serviceWorker" in navigator) {
     window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(console.error));

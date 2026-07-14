@@ -91,6 +91,14 @@
     return localDateKey(value);
   }
 
+  function addDaysToDateKey(dateKey, days) {
+    if (!dateKey) return "";
+    const date = new Date(`${dateKey}T12:00:00`);
+    if (Number.isNaN(date.getTime())) return "";
+    date.setDate(date.getDate() + Number(days || 0));
+    return localDateKey(date);
+  }
+
   function normalizedAlertLevel(value = "") {
     return String(value)
       .normalize("NFD")
@@ -757,8 +765,13 @@
       c.from("audit_logs").select("*").order("created_at", { ascending: false }).limit(1500)
     ]);
 
-    const failed = results.find(result => result.error);
-    if (failed) throw failed.error;
+    if (results[0]?.error) throw results[0].error;
+
+    results.forEach((result, index) => {
+      if (!result?.error) return;
+      console.warn(`Fonte opcional ${index} indisponível:`, result.error);
+      results[index] = { data: [] };
+    });
 
     const profile = results[0].data || {
       id: u.id,
@@ -1066,23 +1079,43 @@
     }
   }
 
+  function renderModuleSafely(name, pageId, renderer) {
+    try {
+      renderer();
+      return true;
+    } catch (error) {
+      console.error(`Falha ao renderizar ${name}:`, error);
+      const page = $(`#page-${pageId}`);
+      if (page) {
+        page.innerHTML = header(name, "O módulo encontrou uma inconsistência isolada.") +
+          `<div class="card module-error-card"><strong>Não foi possível carregar esta aba.</strong><p>${esc(error.message || "Erro desconhecido")}</p><button class="btn primary" data-action="refresh">Tentar novamente</button></div>`;
+      }
+      return false;
+    }
+  }
+
   function renderAll() {
-    renderDashboard();
-    renderTv();
-    renderOperations();
-    renderTanks();
-    renderFluids();
-    renderChemicalInventory();
-    renderTrucks();
-    renderQhse();
-    renderMaintenance();
-    renderCertificates();
-    renderAlerts();
-    renderReports();
-    renderAudit();
-    renderSettings();
-    const manualUnread = state.data.alerts.filter(x => !x.read).length;
-    $("#alertCount").textContent = manualUnread + state.data.systemAlerts.length;
+    const modules = [
+      ["Dashboard", "dashboard", renderDashboard],
+      ["Painel TV", "tv", renderTv],
+      ["Operações", "operations", renderOperations],
+      ["Tanques e silos", "tanks", renderTanks],
+      ["Fluidos e granéis", "fluids", renderFluids],
+      ["Inventário químico", "chemicals", renderChemicalInventory],
+      ["Carretas", "trucks", renderTrucks],
+      ["QHSE", "qhse", renderQhse],
+      ["Manutenção", "maintenance", renderMaintenance],
+      ["Certificados", "certificates", renderCertificates],
+      ["Alertas", "alerts", renderAlerts],
+      ["Relatórios", "reports", renderReports],
+      ["Auditoria", "audit", renderAudit],
+      ["Configurações", "settings", renderSettings]
+    ];
+
+    modules.forEach(([name, pageId, renderer]) => renderModuleSafely(name, pageId, renderer));
+    const manualUnread = (state.data.alerts || []).filter(x => !x.read).length;
+    const alertCount = $("#alertCount");
+    if (alertCount) alertCount.textContent = manualUnread + (state.data.systemAlerts || []).length;
   }
 
   function statCard(title, value, unit, icon, detail = "") {
@@ -2124,11 +2157,11 @@
   ];
 
   function selectedHandoverApproval(selection=ensureHandoverSelection()) {
-    return state.data.handoverApprovals.find(item=>item.shift_date===selection.date&&item.shift_type===selection.shift)||null;
+    return (state.data.handoverApprovals || []).find(item=>item.shift_date===selection.date&&item.shift_type===selection.shift)||null;
   }
 
   function checklistForShift(selection=ensureHandoverSelection()) {
-    const saved=state.data.shiftChecklist.filter(item=>item.shift_date===selection.date&&item.shift_type===selection.shift);
+    const saved=(state.data.shiftChecklist || []).filter(item=>item.shift_date===selection.date&&item.shift_type===selection.shift);
     return SHIFT_CHECKLIST_TEMPLATE.map(([key,label,category])=>saved.find(item=>item.item_key===key)||{item_key:key,item_label:label,category,completed:false,notes:""});
   }
 
@@ -2305,17 +2338,18 @@
   function renderAudit() {
     const page=$("#page-audit"); if(!page)return;
     if(!canViewAudit()){page.innerHTML=header("Auditoria","Acesso restrito.")+`<div class="card empty">Somente administração e supervisão podem consultar a auditoria.</div>`;return;}
-    const rows=(state.data.auditLogs||[]).map(item=>{const user=state.data.users.find(u=>u.id===item.changed_by)?.name||"Sistema";return `<tr><td>${dateTime(item.created_at)}</td><td><strong>${esc(user)}</strong></td><td>${esc(item.table_name)}</td><td>${badge(item.action)}</td><td>${esc(item.record_id||"-")}</td><td><small>${esc(auditChangeSummary(item))}</small></td></tr>`}).join("");
-    page.innerHTML=header("Auditoria do sistema","Quem alterou, quando, em qual módulo e o que mudou.",`<button class="btn secondary" data-export="audit">Exportar CSV</button>`)+`<div class="grid four audit-kpis"><div class="card"><span>Registros carregados</span><strong>${state.data.auditLogs.length}</strong></div><div class="card"><span>Usuários envolvidos</span><strong>${new Set(state.data.auditLogs.map(x=>x.changed_by).filter(Boolean)).size}</strong></div><div class="card"><span>Módulos alterados</span><strong>${new Set(state.data.auditLogs.map(x=>x.table_name)).size}</strong></div><div class="card"><span>Última alteração</span><strong>${state.data.auditLogs[0]?dateTime(state.data.auditLogs[0].created_at):"-"}</strong></div></div><div class="card table-wrap"><table class="data-table"><thead><tr><th>Data</th><th>Usuário</th><th>Tabela</th><th>Ação</th><th>Registro</th><th>Alterações</th></tr></thead><tbody>${rows||`<tr><td colspan="6" class="empty">Nenhuma auditoria disponível.</td></tr>`}</tbody></table></div>`;
+    const auditLogs = state.data.auditLogs || [];
+    const rows=auditLogs.map(item=>{const user=state.data.users.find(u=>u.id===item.changed_by)?.name||"Sistema";return `<tr><td>${dateTime(item.created_at)}</td><td><strong>${esc(user)}</strong></td><td>${esc(item.table_name)}</td><td>${badge(item.action)}</td><td>${esc(item.record_id||"-")}</td><td><small>${esc(auditChangeSummary(item))}</small></td></tr>`}).join("");
+    page.innerHTML=header("Auditoria do sistema","Quem alterou, quando, em qual módulo e o que mudou.",`<button class="btn secondary" data-export="audit">Exportar CSV</button>`)+`<div class="grid four audit-kpis"><div class="card"><span>Registros carregados</span><strong>${auditLogs.length}</strong></div><div class="card"><span>Usuários envolvidos</span><strong>${new Set(auditLogs.map(x=>x.changed_by).filter(Boolean)).size}</strong></div><div class="card"><span>Módulos alterados</span><strong>${new Set(auditLogs.map(x=>x.table_name)).size}</strong></div><div class="card"><span>Última alteração</span><strong>${auditLogs[0]?dateTime(auditLogs[0].created_at):"-"}</strong></div></div><div class="card table-wrap"><table class="data-table"><thead><tr><th>Data</th><th>Usuário</th><th>Tabela</th><th>Ação</th><th>Registro</th><th>Alterações</th></tr></thead><tbody>${rows||`<tr><td colspan="6" class="empty">Nenhuma auditoria disponível.</td></tr>`}</tbody></table></div>`;
   }
 
 
   function renderSettings() {
-    const users = state.data.users || [];
+    const users = state.data?.users || [];
     const userRows = users.map(user => `<tr><td><strong>${esc(user.name)}</strong><br><small>${esc(user.email)}</small></td><td>${badge(user.role)}</td><td>${esc(user.department || "-")}</td><td>${badge(user.active ? "Ativo" : "Inativo")}</td><td>${dateOnly(user.created_at)}</td><td>${isAdmin() ? `<button class="btn small primary" data-edit-user="${user.id}">Gerenciar</button>` : ""}</td></tr>`).join("");
     const lastSync = state.lastSync ? state.lastSync.toLocaleString("pt-BR") : "Não sincronizado";
-    const errors = state.data.systemErrors || [];
-    $("#page-settings").innerHTML = header("Configurações", "Perfil, usuários, permissões, diagnóstico e aparência.", `<button class="btn secondary" data-action="toggle-theme">Alternar tema</button>${isAdmin() ? `<button class="btn primary" data-action="new-user">+ Novo usuário</button>` : ""}`) + `<div class="grid two"><div class="card"><h3>Meu perfil</h3><div class="kpi-list" style="margin-top:14px"><div class="kpi-row"><span>Nome</span><strong>${esc(state.data.profile.name)}</strong></div><div class="kpi-row"><span>E-mail</span><strong>${esc(state.data.profile.email)}</strong></div><div class="kpi-row"><span>Cargo</span>${badge(state.data.profile.role)}</div><div class="kpi-row"><span>Departamento</span><strong>${esc(state.data.profile.department || "-")}</strong></div></div></div><div class="card"><h3>Diagnóstico do sistema</h3><div class="kpi-list" style="margin-top:14px"><div class="kpi-row"><span>Última sincronização</span><strong>${esc(lastSync)}</strong></div><div class="kpi-row"><span>Tanques e silos</span><strong>${state.data.tanks.length}</strong></div><div class="kpi-row"><span>Operações</span><strong>${state.data.operations.length}</strong></div><div class="kpi-row"><span>Alertas automáticos</span><strong>${state.data.systemAlerts.length}</strong></div><div class="kpi-row"><span>Erros registrados</span><strong>${errors.length}</strong></div><div class="kpi-row"><span>Fila offline</span><strong>${offlineQueue().length}</strong></div><div class="kpi-row"><span>Backup local</span><strong>${latestLocalBackup()?.created_at ? dateTime(latestLocalBackup().created_at) : "-"}</strong></div></div><div class="row-actions" style="margin-top:12px"><button class="btn primary" data-action="backup-json">Backup JSON</button><button class="btn secondary" data-action="sync-offline">Sincronizar offline</button></div><div class="info-box" style="margin-top:12px">Movimentações automáticas e transferências são executadas por transações no Supabase.</div>${isAdmin() ? `<div class="admin-edit-notice" style="margin-top:12px"><strong>Edição total ativa</strong><span>O administrador pode editar registros operacionais de todos os módulos. Históricos e auditorias permanecem protegidos.</span></div>` : ""}</div></div><div class="section-title">Usuários e permissões</div><div class="card table-wrap">${isAdmin() ? "" : `<div class="info-box" style="margin-bottom:12px">Somente o administrador pode alterar cargo, setor, status e permissões.</div>`}<table class="data-table"><thead><tr><th>Usuário</th><th>Cargo</th><th>Departamento</th><th>Status</th><th>Cadastro</th><th>Ação</th></tr></thead><tbody>${userRows}</tbody></table></div>${isAdmin() && errors.length ? `<div class="section-title">Erros recentes</div><div class="card table-wrap"><table class="data-table"><thead><tr><th>Data</th><th>Contexto</th><th>Mensagem</th></tr></thead><tbody>${errors.slice(0,20).map(e => `<tr><td>${dateTime(e.created_at)}</td><td>${esc(e.context || "-")}</td><td>${esc(e.message)}</td></tr>`).join("")}</tbody></table></div>` : ""}`;
+    const errors = state.data?.systemErrors || [];
+    $("#page-settings").innerHTML = header("Configurações", "Perfil, usuários, permissões, diagnóstico e aparência.", `<button class="btn secondary" data-action="toggle-theme">Alternar tema</button>${isAdmin() ? `<button class="btn primary" data-action="new-user">+ Novo usuário</button>` : ""}`) + `<div class="grid two"><div class="card"><h3>Meu perfil</h3><div class="kpi-list" style="margin-top:14px"><div class="kpi-row"><span>Nome</span><strong>${esc(state.data.profile.name)}</strong></div><div class="kpi-row"><span>E-mail</span><strong>${esc(state.data.profile.email)}</strong></div><div class="kpi-row"><span>Cargo</span>${badge(state.data.profile.role)}</div><div class="kpi-row"><span>Departamento</span><strong>${esc(state.data.profile.department || "-")}</strong></div></div></div><div class="card"><h3>Diagnóstico do sistema</h3><div class="kpi-list" style="margin-top:14px"><div class="kpi-row"><span>Última sincronização</span><strong>${esc(lastSync)}</strong></div><div class="kpi-row"><span>Tanques e silos</span><strong>${(state.data.tanks || []).length}</strong></div><div class="kpi-row"><span>Operações</span><strong>${(state.data.operations || []).length}</strong></div><div class="kpi-row"><span>Alertas automáticos</span><strong>${(state.data.systemAlerts || []).length}</strong></div><div class="kpi-row"><span>Erros registrados</span><strong>${errors.length}</strong></div><div class="kpi-row"><span>Fila offline</span><strong>${offlineQueue().length}</strong></div><div class="kpi-row"><span>Backup local</span><strong>${latestLocalBackup()?.created_at ? dateTime(latestLocalBackup().created_at) : "-"}</strong></div></div><div class="row-actions" style="margin-top:12px"><button class="btn primary" data-action="backup-json">Backup JSON</button><button class="btn secondary" data-action="sync-offline">Sincronizar offline</button></div><div class="info-box" style="margin-top:12px">Movimentações automáticas e transferências são executadas por transações no Supabase.</div>${isAdmin() ? `<div class="admin-edit-notice" style="margin-top:12px"><strong>Edição total ativa</strong><span>O administrador pode editar registros operacionais de todos os módulos. Históricos e auditorias permanecem protegidos.</span></div>` : ""}</div></div><div class="section-title">Usuários e permissões</div><div class="card table-wrap">${isAdmin() ? "" : `<div class="info-box" style="margin-bottom:12px">Somente o administrador pode alterar cargo, setor, status e permissões.</div>`}<table class="data-table"><thead><tr><th>Usuário</th><th>Cargo</th><th>Departamento</th><th>Status</th><th>Cadastro</th><th>Ação</th></tr></thead><tbody>${userRows}</tbody></table></div>${isAdmin() && errors.length ? `<div class="section-title">Erros recentes</div><div class="card table-wrap"><table class="data-table"><thead><tr><th>Data</th><th>Contexto</th><th>Mensagem</th></tr></thead><tbody>${errors.slice(0,20).map(e => `<tr><td>${dateTime(e.created_at)}</td><td>${esc(e.context || "-")}</td><td>${esc(e.message)}</td></tr>`).join("")}</tbody></table></div>` : ""}`;
   }
 
 
@@ -2918,10 +2952,12 @@
     if (role() === "tv" && page !== "tv") page = "tv";
     if (!moduleAllowed(page)) return toast("Seu perfil não possui acesso a este módulo.", "error");
     state.page = page;
+    const targetPage = $(`#page-${page}`);
+    if (!targetPage) return toast("A página solicitada não está disponível.", "error");
     $$(".page").forEach(item => item.classList.remove("active"));
     $$(".nav-item").forEach(item => item.classList.toggle("active", item.dataset.page === page));
-    $(`#page-${page}`).classList.add("active");
-    $("#sidebar").classList.remove("open");
+    targetPage.classList.add("active");
+    $("#sidebar")?.classList.remove("open");
     if (page === "tv") {
       renderTv();
       startTvMode();

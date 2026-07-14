@@ -6,6 +6,8 @@
   const CONFIG = window.OPSCONTROL_CONFIG || {};
   const CONFIG_KEY = "opscontrol_config";
   const THEME_KEY = "opscontrol_theme";
+  const OFFLINE_QUEUE_KEY = "opscontrol_offline_queue";
+  const LOCAL_BACKUP_KEY = "opscontrol_daily_backups";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -25,6 +27,7 @@
     filters: { start: "", end: "", client: "", product: "" },
     handover: { date: "", shift: "" },
     tv: { slide: 0, paused: false, timer: null, clockTimer: null, intervalMs: 15000 },
+    offlineSyncing: false,
     config: loadConfig()
   };
 
@@ -154,18 +157,27 @@
     return hasRole(["supervisor", "lider"]);
   }
 
+  function canApproveHandover() {
+    return hasRole(["supervisor", "lider"]);
+  }
+
+  function canViewAudit() {
+    return hasRole(["supervisor"]);
+  }
+
   function moduleAllowed(module) {
     if (isAdmin() || module === "settings") return true;
     const permissions = state.data?.profile?.permissions || {};
     if (Object.prototype.hasOwnProperty.call(permissions, module)) return permissions[module] !== false;
 
     const defaults = {
-      supervisor: ["dashboard", "tv", "operations", "tanks", "fluids", "chemicals", "trucks", "qhse", "maintenance", "certificates", "alerts", "reports"],
+      supervisor: ["dashboard", "tv", "operations", "tanks", "fluids", "chemicals", "trucks", "qhse", "maintenance", "certificates", "alerts", "reports", "audit"],
       lider: ["dashboard", "tv", "operations", "tanks", "fluids", "chemicals", "trucks", "qhse", "maintenance", "certificates", "alerts", "reports"],
       operador: ["dashboard", "tv", "operations", "tanks", "fluids", "chemicals", "trucks", "qhse", "alerts", "reports"],
       logistica: ["dashboard", "tv", "operations", "tanks", "fluids", "chemicals", "trucks", "certificates", "alerts", "reports"],
       mecanico: ["dashboard", "tv", "maintenance", "certificates", "alerts", "reports"],
       qhse: ["dashboard", "tv", "operations", "chemicals", "qhse", "certificates", "alerts", "reports"],
+      tv: ["tv"],
       user: ["dashboard", "tv", "certificates", "alerts"]
     };
     return (defaults[role()] || defaults.user).includes(module);
@@ -284,6 +296,132 @@
     URL.revokeObjectURL(url);
   }
 
+  function downloadJson(filename, value) {
+    const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function offlineQueue() {
+    try { return JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY) || "[]"); }
+    catch (_) { return []; }
+  }
+
+  function saveOfflineQueue(items) {
+    localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(items.slice(-100)));
+    updateConnectionBadge();
+  }
+
+  function hasFileSelection(form) {
+    return [...form.querySelectorAll('input[type="file"]')].some(input => input.files?.length);
+  }
+
+  function queueOfflineForm(form) {
+    if (hasFileSelection(form)) return false;
+    const payload = Object.fromEntries(new FormData(form));
+    let action = null;
+    if (form.id === "genericForm" && ["truck", "qhse", "alert"].includes(form.dataset.kind)) {
+      action = { type: "entity", kind: form.dataset.kind, id: form.dataset.id || null, payload };
+    } else if (form.id === "eventForm") {
+      action = { type: "event", operationId: form.dataset.operationId, payload };
+    } else if (form.id === "actionItemForm") {
+      action = { type: "action_item", id: form.dataset.id || null, qhseId: form.dataset.qhseId || null, payload };
+    } else if (form.id === "handoverPendingForm") {
+      action = { type: "handover_pending", id: form.dataset.id || null, payload };
+    }
+    if (!action) return false;
+    const queue = offlineQueue();
+    queue.push({ id: uid("offline"), queued_at: new Date().toISOString(), ...action });
+    saveOfflineQueue(queue);
+    return true;
+  }
+
+  async function replayOfflineAction(action) {
+    if (action.type === "entity") return saveEntity(action.kind, action.payload, action.id);
+    if (action.type === "event") {
+      const p = action.payload;
+      const { error } = await state.client.from("operation_events").insert({
+        operation_id: action.operationId, event_time: p.event_time, title: p.title,
+        description: p.description || null, event_type: p.event_type,
+        quantity: Number(p.quantity || 0) || null, unit: p.unit === "-" ? null : p.unit,
+        created_by: state.user.id
+      });
+      if (error) throw error;
+      return;
+    }
+    if (action.type === "action_item") {
+      const p = action.payload;
+      const row = { qhse_record_id: action.qhseId, title: p.title, description: p.description || null,
+        responsible: p.responsible || null, due_date: p.due_date || null, status: p.status,
+        completed_at: p.status === "Concluído" ? new Date().toISOString() : null };
+      const query = action.id ? state.client.from("action_items").update(row).eq("id", action.id)
+        : state.client.from("action_items").insert({ ...row, created_by: state.user.id });
+      const { error } = await query; if (error) throw error; return;
+    }
+    if (action.type === "handover_pending") {
+      const p = action.payload; const completed = p.status === "Concluído";
+      const row = { title:p.title, description:p.description||null, category:p.category,
+        responsible:p.responsible||null, priority:p.priority, status:p.status,
+        due_at:p.due_at ? new Date(p.due_at).toISOString() : null,
+        completed_at:completed?new Date().toISOString():null, completed_by:completed?state.user.id:null };
+      const query = action.id ? state.client.from("handover_pending_items").update(row).eq("id",action.id)
+        : state.client.from("handover_pending_items").insert({ ...row, created_by:state.user.id });
+      const { error } = await query; if (error) throw error;
+    }
+  }
+
+  async function syncOfflineQueue() {
+    if (state.offlineSyncing || !navigator.onLine || !state.client || !state.user) return;
+    const queue = offlineQueue();
+    if (!queue.length) return;
+    state.offlineSyncing = true;
+    const remaining = [];
+    let synced = 0;
+    for (const action of queue) {
+      try { await replayOfflineAction(action); synced += 1; }
+      catch (error) { remaining.push({ ...action, last_error: error.message }); }
+    }
+    saveOfflineQueue(remaining);
+    state.offlineSyncing = false;
+    if (synced) {
+      await loadData(); renderAll();
+      toast(`${synced} registro(s) offline sincronizado(s).`, "success");
+    }
+  }
+
+  function backupPayload() {
+    const d = state.data || {};
+    return {
+      generated_at: new Date().toISOString(), generated_by: d.profile?.name || "-", version: "20260714-pro-management-suite-1",
+      tanks: d.tanks || [], operations: d.operations || [], operationAllocations: d.operationAllocations || [],
+      trucks: d.trucks || [], chemicals: d.chemicals || [], chemicalMovements: d.chemicalMovements || [],
+      tankMovements: d.tankMovements || [], qhse: d.qhse || [], actionItems: d.actionItems || [],
+      equipment: d.equipment || [], maintenanceOrders: d.maintenanceOrders || [],
+      certificates: d.certificates || [], handoverPendings: d.handoverPendings || [],
+      handoverNotes: d.handoverNotes || [], handoverApprovals: d.handoverApprovals || [],
+      checklistItems: d.shiftChecklist || []
+    };
+  }
+
+  function saveLocalDailyBackup() {
+    if (!state.data) return;
+    try {
+      const today = localDateKey();
+      const backups = JSON.parse(localStorage.getItem(LOCAL_BACKUP_KEY) || "[]").filter(item => item.date !== today);
+      backups.push({ date: today, created_at: new Date().toISOString(), data: backupPayload() });
+      localStorage.setItem(LOCAL_BACKUP_KEY, JSON.stringify(backups.slice(-3)));
+    } catch (error) { console.warn("Backup local:", error); }
+  }
+
+  function latestLocalBackup() {
+    try { return JSON.parse(localStorage.getItem(LOCAL_BACKUP_KEY) || "[]").slice(-1)[0] || null; }
+    catch (_) { return null; }
+  }
+
   function exportData(kind) {
     const date = new Date().toISOString().slice(0, 10);
     if (kind === "operations") {
@@ -305,6 +443,10 @@
     if (kind === "maintenance") {
       const rows = state.data.equipment.map(e => [e.name, e.category, e.status, e.hourmeter, e.next_maintenance_date, e.maintenance_due_hourmeter, e.location]);
       return downloadCsv(`manutencao-${date}.csv`, ["Equipamento", "Categoria", "Status", "Horímetro", "Próxima preventiva", "Horímetro limite", "Localização"], rows);
+    }
+    if (kind === "audit") {
+      const rows = state.data.auditLogs.map(x => [x.created_at, state.data.users.find(u=>u.id===x.changed_by)?.name||"Sistema", x.table_name, x.action, x.record_id, auditChangeSummary(x)]);
+      return downloadCsv(`auditoria-${date}.csv`, ["Data", "Usuário", "Tabela", "Ação", "Registro", "Alterações"], rows);
     }
   }
 
@@ -608,7 +750,11 @@
       c.from("system_errors").select("*").order("created_at", { ascending: false }).limit(50),
       c.from("operation_tank_allocations").select("*").order("display_order", { ascending: true }),
       c.from("handover_pending_items").select("*").order("created_at", { ascending: false }).limit(1000),
-      c.from("shift_handover_notes").select("*").order("shift_date", { ascending: false }).limit(500)
+      c.from("shift_handover_notes").select("*").order("shift_date", { ascending: false }).limit(500),
+      c.from("operational_alert_center").select("*").order("created_at", { ascending: false }).limit(1000),
+      c.from("shift_handover_approvals").select("*").order("shift_date", { ascending: false }).limit(500),
+      c.from("shift_checklist_items").select("*").order("shift_date", { ascending: false }).limit(2000),
+      c.from("audit_logs").select("*").order("created_at", { ascending: false }).limit(1500)
     ]);
 
     const failed = results.find(result => result.error);
@@ -767,8 +913,32 @@
         id: x.id, shift_date: x.shift_date, shift_type: x.shift_type,
         observations: x.observations || "", updated_by: x.updated_by,
         created_at: x.created_at, updated_at: x.updated_at
+      })),
+      alertCenter: (results[26].data || []).map(x => ({
+        id: x.alert_key, title: x.title, message: x.message || "", level: x.level || "Média",
+        category: x.category || "Sistema", entity_type: x.entity_type, entity_id: x.entity_id,
+        due_at: x.due_at, created_at: x.created_at, action_page: x.action_page || "alerts", automatic: true
+      })),
+      handoverApprovals: (results[27].data || []).map(x => ({
+        id:x.id, sequence_no:Number(x.sequence_no||0), shift_date:x.shift_date, shift_type:x.shift_type,
+        status:x.status, snapshot_json:x.snapshot_json||{}, snapshot_text:x.snapshot_text||"",
+        delivered_by:x.delivered_by, delivered_at:x.delivered_at, received_by:x.received_by,
+        received_at:x.received_at, reopened_by:x.reopened_by, reopened_at:x.reopened_at,
+        created_at:x.created_at, updated_at:x.updated_at
+      })),
+      shiftChecklist: (results[28].data || []).map(x => ({
+        id:x.id, shift_date:x.shift_date, shift_type:x.shift_type, item_key:x.item_key,
+        item_label:x.item_label, category:x.category, completed:x.completed,
+        notes:x.notes||"", completed_by:x.completed_by, completed_at:x.completed_at,
+        created_by:x.created_by, created_at:x.created_at, updated_at:x.updated_at
+      })),
+      auditLogs: (results[29].data || []).map(x => ({
+        id:x.id, table_name:x.table_name, record_id:x.record_id, action:x.action,
+        old_data:x.old_data, new_data:x.new_data, changed_by:x.changed_by, created_at:x.created_at
       }))
     };
+    state.data.systemAlerts = [...state.data.systemAlerts, ...state.data.alertCenter]
+      .filter((item,index,all) => all.findIndex(other => String(other.id || other.alert_key || other.title) === String(item.id || item.alert_key || item.title)) === index);
     state.lastSync = new Date();
   }
 
@@ -789,10 +959,14 @@
     updateConnectionBadge();
     renderAll();
 
+    const kiosk = role() === "tv";
+    document.body.classList.toggle("kiosk-mode", kiosk);
     const firstAllowed = $$(".nav-item").find(button => !button.classList.contains("hidden"))?.dataset.page || "dashboard";
-    showPage(moduleAllowed(state.page) ? state.page : firstAllowed);
+    showPage(kiosk ? "tv" : (moduleAllowed(state.page) ? state.page : firstAllowed));
     subscribeRealtime();
     startAutoRefresh();
+    saveLocalDailyBackup();
+    syncOfflineQueue();
     updateConnectionBadge();
   }
 
@@ -809,8 +983,9 @@
     const badgeEl = $("#syncBadge");
     if (!badgeEl) return;
 
+    const pendingOffline = offlineQueue().length;
     if (!navigator.onLine) {
-      badgeEl.textContent = "Sem conexão";
+      badgeEl.textContent = pendingOffline ? `Sem conexão • ${pendingOffline} pendente(s)` : "Sem conexão";
       badgeEl.className = "status-badge neutral";
       return;
     }
@@ -904,6 +1079,7 @@
     renderCertificates();
     renderAlerts();
     renderReports();
+    renderAudit();
     renderSettings();
     const manualUnread = state.data.alerts.filter(x => !x.read).length;
     $("#alertCount").textContent = manualUnread + state.data.systemAlerts.length;
@@ -1220,6 +1396,37 @@
       <div class="card smart-query" style="margin-top:14px"><div><h3>Consulta inteligente</h3><p>Pergunte sobre volumes, clientes, carretas, tanques, químicos, certificados ou diesel.</p></div><div class="smart-input"><input id="smartQuestion" placeholder="Ex.: Quantos bbl de Brine temos?"><button class="btn primary" data-action="smart-query">Perguntar</button></div><div id="smartAnswer" class="smart-answer hidden"></div></div>`;
   }
 
+
+  function planningAssessment(operation) {
+    const allocations = normalizedOperationAllocations(operation);
+    const mode = tankMovementMode(operation.activity);
+    const expected = Number(operation.planned || 0);
+    const allocated = allocations.reduce((sum,item)=>sum+Number(item.quantity||0),0);
+    const issues = [];
+    if (mode !== "none" && !allocations.length) issues.push("Nenhum tanque ou silo reservado");
+    if (mode !== "none" && allocations.length && Math.abs(allocated-expected)>0.001) issues.push(`Rateio ${fmt.format(allocated)} de ${fmt.format(expected)} ${operation.unit}`);
+    allocations.forEach(item => {
+      const tank=state.data.tanks.find(t=>t.id===item.tank_id); if(!tank){issues.push("Equipamento não localizado");return;}
+      if(item.direction==="source" && Number(item.quantity)>Number(tank.volume)) issues.push(`${tank.name}: saldo insuficiente`);
+      if(item.direction==="destination" && Number(item.quantity)>Number(tank.capacity-tank.volume)) issues.push(`${tank.name}: capacidade insuficiente`);
+      if(String(tank.unit).toLowerCase()!==String(operation.unit).toLowerCase()) issues.push(`${tank.name}: unidade diferente`);
+    });
+    return { allocations, allocated, issues, ready: issues.length===0 && mode!=="none" };
+  }
+
+  function planningCard(operation) {
+    const check=planningAssessment(operation); const start=operation.start_at?dateTime(operation.start_at):"Sem horário";
+    return `<div class="planning-card ${check.issues.length?"risk":"ready"}">
+      <div class="planning-card-head"><div><small>${esc(operation.client)}</small><h3>${esc(operation.vessel)}</h3></div>${badge(check.issues.length?"Atenção":"Pronta")}</div>
+      <p>${esc(operation.activity)} de <strong>${esc(operation.product)}</strong></p>
+      <div class="planning-kpis"><span>Previsto<strong>${fmt.format(operation.planned)} ${esc(operation.unit)}</strong></span><span>Reservado<strong>${fmt.format(check.allocated)} ${esc(operation.unit)}</strong></span><span>Início<strong>${esc(start)}</strong></span></div>
+      <div class="planning-assets">${check.allocations.map(item=>{const t=state.data.tanks.find(x=>x.id===item.tank_id);return `<span>${esc(t?.name||"-")}: ${fmt.format(item.quantity)} ${esc(item.unit)}</span>`}).join("")||"<span>Sem equipamentos reservados</span>"}</div>
+      ${check.issues.length?`<div class="planning-issues">${check.issues.map(x=>`<span>⚠ ${esc(x)}</span>`).join("")}</div>`:`<div class="planning-ok">✓ Saldo e capacidade conferidos</div>`}
+      <button class="btn small primary" data-edit-operation="${operation.id}">Abrir planejamento</button>
+    </div>`;
+  }
+
+
   function renderOperations() {
     const operations = filteredOperations();
     const rows = operations.map(op => {
@@ -1254,7 +1461,9 @@
     $("#page-operations").innerHTML =
       header("Operações", "Planejamento, rateio por vários tanques/silos, vazão, timeline e documentos.",
         `<button class="btn secondary" data-export="operations">Exportar CSV</button><button class="btn primary" data-action="new-operation">+ Nova operação</button>`) +
-      `<div class="card table-wrap desktop-record-table"><table class="data-table"><thead><tr><th>Cliente / Embarcação</th><th>Atividade / Produto</th><th>Progresso</th><th>Vazão</th><th>Distribuição da tancagem</th><th>Status</th><th>Período</th><th>Ações</th></tr></thead><tbody>${rows || `<tr><td colspan="8" class="empty">Nenhuma operação cadastrada.</td></tr>`}</tbody></table></div><div class="mobile-record-list">${mobile || `<div class="empty">Nenhuma operação cadastrada.</div>`}</div>`;
+      `<div class="section-title">Planejamento operacional</div><div class="planning-grid">${state.data.operations.filter(op=>op.status==="Programada").sort((a,b)=>new Date(a.start_at||"2999-01-01")-new Date(b.start_at||"2999-01-01")).slice(0,8).map(planningCard).join("")||`<div class="card empty">Nenhuma operação programada.</div>`}</div>
+       <div class="section-title">Controle das operações</div>
+       <div class="card table-wrap desktop-record-table"><table class="data-table"><thead><tr><th>Cliente / Embarcação</th><th>Atividade / Produto</th><th>Progresso</th><th>Vazão</th><th>Distribuição da tancagem</th><th>Status</th><th>Período</th><th>Ações</th></tr></thead><tbody>${rows || `<tr><td colspan="8" class="empty">Nenhuma operação cadastrada.</td></tr>`}</tbody></table></div><div class="mobile-record-list">${mobile || `<div class="empty">Nenhuma operação cadastrada.</div>`}</div>`;
   }
 
   function operationForm(op = {}) {
@@ -1387,6 +1596,20 @@
       </div>
     </div>`;
   }
+
+
+  function tankHistoryVisual(tank, history) {
+    const ordered=[...history].sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)).slice(-30);
+    const points=ordered.map(item=>Number(item.new_volume||0));
+    const max=Math.max(Number(tank.capacity||0),...points,1); const width=720,height=210,pad=28;
+    const coords=points.map((value,index)=>({x:pad+(index*(width-pad*2)/Math.max(1,points.length-1)),y:height-pad-(value/max*(height-pad*2)),value}));
+    const poly=coords.map(p=>`${p.x},${p.y}`).join(" ");
+    const last=coords.at(-1);
+    return `<div class="tank-history-visual"><div class="history-chart-head"><div><strong>Evolução do volume</strong><span>Últimas ${ordered.length} alterações</span></div><div><strong>${fmt.format(tank.volume)} ${esc(tank.unit)}</strong><span>Atual</span></div></div>
+      ${ordered.length?`<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Evolução do volume"><line x1="${pad}" y1="${height-pad}" x2="${width-pad}" y2="${height-pad}" class="chart-axis"/><line x1="${pad}" y1="${pad}" x2="${pad}" y2="${height-pad}" class="chart-axis"/><polyline points="${poly}" class="history-line" fill="none"/>${coords.map((p,i)=>`<circle cx="${p.x}" cy="${p.y}" r="${i===coords.length-1?5:3}" class="history-point"><title>${fmt.format(p.value)} ${esc(tank.unit)} — ${dateTime(ordered[i].created_at)}</title></circle>`).join("")}${last?`<text x="${Math.min(width-80,last.x+8)}" y="${Math.max(18,last.y-8)}">${fmt.format(last.value)} ${esc(tank.unit)}</text>`:""}</svg>`:`<div class="empty">Sem histórico suficiente para o gráfico.</div>`}
+      <div class="history-summary-grid"><span>Capacidade<strong>${fmt.format(tank.capacity)} ${esc(tank.unit)}</strong></span><span>Produto atual<strong>${esc(tank.product||"-")}</strong></span><span>Densidade<strong>${tank.density?`${fmt.format(tank.density)} ${esc(tank.densityUnit||"")}`:"-"}</strong></span></div></div>`;
+  }
+
 
   function tankTransferForm() {
     const sourceOptions = state.data.tanks.filter(tank => tank.volume > 0).map(tank => `<option value="${tank.id}">${esc(tank.name)} — ${fmt.format(tank.volume)} ${esc(tank.unit)} — ${esc(tank.product || "Sem produto")}</option>`).join("");
@@ -1795,17 +2018,18 @@
   }
 
   function renderAlerts() {
-    const automatic = state.data.systemAlerts.map(item => `<div class="card alert-card automatic-alert"><div class="kpi-row"><div><strong>${esc(item.title)}</strong><span class="muted">Automático • ${dateTime(item.created_at)}</span></div>${badge(item.level)}</div><p>${esc(item.message)}</p><button class="btn small secondary" data-go-module="${esc(item.module)}">Abrir seção</button></div>`).join("");
-    const alerts = state.data.alerts.map(item => `<div class="card alert-card"><div class="kpi-row"><div><strong>${esc(item.title)}</strong><span class="muted">${esc(item.target || "Todos")} • ${dateTime(item.created_at)}</span></div>${badge(item.level)}</div><p>${esc(item.message)}</p>${isAdmin() ? `<button class="btn small primary" data-edit-alert="${item.id}">Editar alerta</button>` : ""}</div>`).join("");
-    const messages = state.data.messages.map(item => `<div class="chat-message ${item.mine ? "mine" : ""}"><strong>${esc(item.sender)}</strong><br>${esc(item.text)}<br><small>${dateTime(item.created_at)}</small></div>`).join("");
-    $("#page-alerts").innerHTML = header("Alertas e chat", "Alertas automáticos e comunicação interna por equipe.", `<button class="btn primary" data-action="new-alert">+ Novo alerta</button>`) + `<div class="chat-layout"><div><div class="section-title">Alertas automáticos</div><div style="display:grid;gap:9px">${automatic || `<div class="empty">Nenhum risco automático identificado.</div>`}</div><div class="section-title">Alertas enviados</div><div style="display:grid;gap:9px">${alerts || `<div class="empty">Nenhum alerta enviado.</div>`}</div></div><div class="card chat-panel"><h3>Canal Operação Geral</h3><div id="messages" class="messages">${messages}</div><div class="chat-input"><input id="chatText" placeholder="Digite uma mensagem..."><button class="btn primary" data-action="send-message">Enviar</button></div></div></div>`;
-  }
-
-
-  function addDaysToDateKey(dateKey, days) {
-    const date = new Date(`${dateKey}T12:00:00`);
-    date.setDate(date.getDate() + days);
-    return localDateKey(date);
+    const manual = state.data.alerts || [];
+    const automatic = state.data.systemAlerts || [];
+    const all = [...automatic, ...manual.map(item => ({ ...item, category:item.target||"Comunicado", automatic:false }))]
+      .sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0));
+    const critical=all.filter(item=>isCriticalAlert(item.level));
+    const grouped=[...new Set(all.map(x=>x.category||"Sistema"))];
+    const cards=all.slice(0,80).map(item=>`<div class="alert-center-card ${statusClass(item.level)}"><div class="alert-center-top"><span>${esc(item.category||"Sistema")}</span>${badge(item.level)}</div><h3>${esc(item.title)}</h3><p>${esc(item.message||"")}</p><footer><span>${dateTime(item.created_at)}</span>${item.action_page&&moduleAllowed(item.action_page)?`<button class="btn small secondary" data-alert-page="${esc(item.action_page)}">Abrir módulo</button>`:""}</footer></div>`).join("");
+    const messages=state.data.messages.map(item=>`<div class="chat-message"><strong>${esc(item.sender_name)}</strong><p>${esc(item.message)}</p><small>${dateTime(item.created_at)}</small></div>`).join("");
+    $("#page-alerts").innerHTML=header("Central de alertas", "Avisos automáticos, comunicados e comunicação da equipe.", hasRole(["supervisor","lider","qhse","logistica"])?`<button class="btn primary" data-action="new-alert">+ Criar comunicado</button>`:"")+
+      `<div class="grid four alert-kpis"><div class="card"><span>Total ativo</span><strong>${all.length}</strong></div><div class="card"><span>Críticos/altos</span><strong>${critical.length}</strong></div><div class="card"><span>Categorias</span><strong>${grouped.length}</strong></div><div class="card"><span>Pendentes offline</span><strong>${offlineQueue().length}</strong></div></div>
+       <div class="alert-center-layout"><div><div class="alert-filter-row">${grouped.map(category=>`<span>${esc(category)} <strong>${all.filter(x=>(x.category||"Sistema")===category).length}</strong></span>`).join("")}</div><div class="alert-center-grid">${cards||`<div class="empty">Nenhum alerta ativo.</div>`}</div></div>
+       <div class="card chat-panel"><h3>Chat interno</h3><div class="chat-list">${messages||`<div class="empty">Sem mensagens.</div>`}</div>${role()!=="tv"?`<form id="chatForm" class="chat-form"><input name="message" required placeholder="Mensagem para a equipe"><button class="btn primary">Enviar</button></form>`:""}</div></div>`;
   }
 
   function defaultHandoverSelection(now = new Date()) {
@@ -1888,6 +2112,53 @@
     };
   }
 
+
+  const SHIFT_CHECKLIST_TEMPLATE = [
+    ["tank_inventory","Conferir volumes, produtos e lotes dos tanques e silos","Operacional"],
+    ["pumps","Inspecionar bombas, compressores e equipamentos em operação","Equipamentos"],
+    ["chemical_inventory","Conferir insumos e estoque químico crítico","Inventário"],
+    ["documents","Atualizar OS, RFF, relatórios e controles","Documentação"],
+    ["qhse","Verificar ocorrências, ações QHSE e condições inseguras","QHSE"],
+    ["housekeeping","Manter sala e áreas operacionais organizadas","Housekeeping"],
+    ["handover","Registrar operações em andamento e pendências do próximo turno","Passagem"]
+  ];
+
+  function selectedHandoverApproval(selection=ensureHandoverSelection()) {
+    return state.data.handoverApprovals.find(item=>item.shift_date===selection.date&&item.shift_type===selection.shift)||null;
+  }
+
+  function checklistForShift(selection=ensureHandoverSelection()) {
+    const saved=state.data.shiftChecklist.filter(item=>item.shift_date===selection.date&&item.shift_type===selection.shift);
+    return SHIFT_CHECKLIST_TEMPLATE.map(([key,label,category])=>saved.find(item=>item.item_key===key)||{item_key:key,item_label:label,category,completed:false,notes:""});
+  }
+
+  function handoverApprovalCard(selection,snapshot) {
+    const approval=selectedHandoverApproval(selection); const locked=approval?.status==="Aprovada";
+    const delivered=state.data.users.find(u=>u.id===approval?.delivered_by)?.name||"-";
+    const received=state.data.users.find(u=>u.id===approval?.received_by)?.name||"-";
+    return `<div class="card handover-approval-card ${locked?"approved":""}"><div><small>Controle da passagem</small><h3>${approval?.sequence_no?`Passagem nº ${String(approval.sequence_no).padStart(5,"0")}`:"Passagem ainda não entregue"}</h3><p>${approval?`Status: ${approval.status}`:"Revise o checklist e entregue ao próximo turno."}</p></div><div class="handover-approval-people"><span>Entregue por<strong>${esc(delivered)}</strong><small>${dateTime(approval?.delivered_at)}</small></span><span>Recebida por<strong>${esc(received)}</strong><small>${dateTime(approval?.received_at)}</small></span></div><div class="row-actions">${!locked&&canManageHandover()?`<button class="btn primary" data-action="deliver-handover">Entregar passagem</button>`:""}${approval?.status==="Entregue"&&canApproveHandover()?`<button class="btn primary" data-action="approve-handover">Confirmar recebimento</button>`:""}${locked&&hasRole(["supervisor"])?`<button class="btn secondary" data-action="reopen-handover">Reabrir</button>`:""}${approval?.snapshot_text?`<button class="btn secondary" data-action="view-approved-handover">Ver versão entregue</button>`:""}</div></div>`;
+  }
+
+  function shiftChecklistHtml(selection=ensureHandoverSelection()) {
+    const approval=selectedHandoverApproval(selection); const locked=approval?.status==="Aprovada"&&!hasRole(["supervisor"]);
+    const items=checklistForShift(selection); const done=items.filter(x=>x.completed).length;
+    return `<div class="card shift-checklist-card"><div class="kpi-row"><div><h3>Checklist do turno</h3><span class="muted">${done} de ${items.length} itens concluídos</span></div>${badge(done===items.length?"Concluído":"Pendente")}</div><div class="checklist-progress"><span style="width:${done/items.length*100}%"></span></div><div class="shift-checklist-list">${items.map(item=>`<label class="shift-checklist-row ${item.completed?"done":""}"><input type="checkbox" data-shift-checklist="${esc(item.item_key)}" ${item.completed?"checked":""} ${locked?"disabled":""}><span><strong>${esc(item.item_label)}</strong><small>${esc(item.category)}</small></span><input class="checklist-note" data-shift-checklist-note="${esc(item.item_key)}" value="${esc(item.notes||"")}" placeholder="Observação" ${locked?"disabled":""}></label>`).join("")}</div></div>`;
+  }
+
+  function periodStats(days,offsetDays=0) {
+    const end=new Date(); end.setHours(23,59,59,999); end.setDate(end.getDate()-offsetDays);
+    const start=new Date(end); start.setDate(start.getDate()-days+1); start.setHours(0,0,0,0);
+    const ops=state.data.operations.filter(op=>{const d=new Date(op.end_at||op.start_at||op.created_at);return d>=start&&d<=end&&op.status==="Concluída"});
+    const trucks=state.data.trucks.filter(t=>{const d=new Date(`${t.date}T12:00:00`);return d>=start&&d<=end});
+    return { operations:ops.length, bbl:ops.filter(o=>o.unit==="bbl").reduce((s,o)=>s+Number(o.executed||0),0), ton:ops.filter(o=>o.unit==="ton").reduce((s,o)=>s+Number(o.executed||0),0), trucks:trucks.length, downtime:ops.reduce((s,o)=>s+Number(o.paused_minutes||0),0)/60 };
+  }
+
+  function metricComparison(label,current,previous,suffix="") {
+    const diff=previous?((current-previous)/previous*100):(current?100:0); const arrow=diff>0?"↑":diff<0?"↓":"→";
+    return `<div class="metric-comparison"><span>${esc(label)}</span><strong>${fmt.format(current)}${suffix}</strong><small class="${diff<0?"down":diff>0?"up":""}">${arrow} ${fmt.format(Math.abs(diff))}% contra período anterior</small></div>`;
+  }
+
+
   function handoverPendingForm(item = {}) {
     return `<form id="handoverPendingForm" data-id="${item.id || ""}">
       <div class="form-grid">
@@ -1947,7 +2218,7 @@
       <header class="handover-print-header">
         <div><span class="handover-logo">OC</span></div>
         <div><h1>PASSAGEM DE SERVIÇO</h1><p>B-Port LMP — OpsControl IA</p></div>
-        <div class="handover-print-meta"><strong>${dateOnly(s.selection.date)}</strong><span>${esc(s.window.label)}</span><small>Gerado em ${generated.toLocaleString("pt-BR")}</small></div>
+        <div class="handover-print-meta"><strong>${dateOnly(s.selection.date)}</strong><span>${esc(s.window.label)}</span>${selectedHandoverApproval(s.selection)?.sequence_no?`<span>Passagem nº ${String(selectedHandoverApproval(s.selection).sequence_no).padStart(5,"0")} • ${esc(selectedHandoverApproval(s.selection).status)}</span>`:""}<small>Gerado em ${generated.toLocaleString("pt-BR")}</small></div>
       </header>
 
       <div class="handover-summary-grid">
@@ -1963,8 +2234,9 @@
       ${handoverSection("4. Movimentações de carretas", truckItems, itemRenderer, "Nenhuma carreta registrada no período.")}
       ${handoverSection("5. QHSE e manutenção", [...qhseItems, ...maintenanceItems], itemRenderer, "Nenhuma atividade QHSE ou de manutenção registrada.")}
       ${handoverSection("6. Pendências para o próximo turno", pendingItems, itemRenderer, "Nenhuma pendência identificada.")}
+      <section class="handover-section"><h3>7. Checklist do turno</h3><ol>${checklistForShift(s.selection).map(item=>`<li><strong>${item.completed?"☑":"☐"} ${esc(item.item_label)}</strong>${item.notes?`<span>${esc(item.notes)}</span>`:""}</li>`).join("")}</ol></section>
 
-      <section class="handover-section observations"><h3>7. Observações</h3><p>${esc(s.observations || "Manter os controles atualizados, a sala organizada e registrar todas as alterações no OpsControl IA.")}</p></section>
+      <section class="handover-section observations"><h3>8. Observações</h3><p>${esc(s.observations || "Manter os controles atualizados, a sala organizada e registrar todas as alterações no OpsControl IA.")}</p></section>
 
       <footer class="handover-signatures">
         <div><span>Responsável pelo turno</span><strong>${esc(state.data.profile.name)}</strong></div>
@@ -2009,56 +2281,41 @@
 
 
   function renderReports() {
-    const selection = ensureHandoverSelection();
-    const snapshot = handoverSnapshot(selection);
-    const reportCard = (title, description, page, exportKind = "") => `<div class="card report-card"><h3>${title}</h3><p>${description}</p><div class="row-actions"><button class="btn primary" data-print-page="${page}">Gerar / Imprimir</button>${exportKind ? `<button class="btn secondary" data-export="${exportKind}">Exportar CSV</button>` : ""}</div></div>`;
-
-    const pendingCards = snapshot.openPendings.map(item => `<div class="handover-pending-card">
-      <div><span>${badge(item.priority)}</span><small>${esc(item.category)}</small><h4>${esc(item.title)}</h4><p>${esc(item.description || "Sem descrição")}</p><footer><span>${esc(item.responsible || "Sem responsável")}</span><span>${item.due_at ? dateTime(item.due_at) : "Sem prazo"}</span></footer></div>
-      ${canManageHandover() ? `<div class="row-actions"><button class="btn small secondary" data-edit-handover-pending="${item.id}">Editar</button><button class="btn small primary" data-toggle-handover-pending="${item.id}">Concluir</button>${canDeleteHandoverPending() ? `<button class="btn small danger" data-delete-handover-pending="${item.id}">Excluir</button>` : ""}</div>` : ""}
-    </div>`).join("");
-
-    $("#page-reports").innerHTML =
-      header("Relatórios", "Relatórios operacionais e passagem de serviço automática.",
-        `<button class="btn secondary" data-action="copy-handover">Copiar passagem</button>
-         <button class="btn primary" data-action="print-handover">Imprimir passagem</button>`) +
-
-      `<div class="card handover-controls no-print">
-        <div class="handover-control-copy"><strong>Passagem automática do turno</strong><span>O sistema reúne operações, eventos, movimentações, carretas, QHSE e manutenção.</span></div>
-        <div><label>Data do turno</label><input id="handoverDate" type="date" value="${esc(selection.date)}"></div>
-        <div><label>Turno</label><select id="handoverShift"><option value="day" ${selection.shift === "day" ? "selected" : ""}>Dia — 07h às 19h</option><option value="night" ${selection.shift === "night" ? "selected" : ""}>Noite — 19h às 07h</option></select></div>
-        <button class="btn secondary" data-action="apply-handover-filter">Atualizar período</button>
-        ${canManageHandover() ? `<button class="btn primary" data-action="new-handover-pending">+ Adicionar pendência</button>` : ""}
-      </div>
-
-      <div class="handover-layout">
-        <div>
-          ${handoverSheetHtml(snapshot)}
-        </div>
-        <aside class="handover-side no-print">
-          <div class="card"><h3>Observações do turno</h3><p>Este texto será incluído na impressão e na cópia para WhatsApp.</p><textarea id="handoverObservations" rows="8">${esc(snapshot.observations)}</textarea>${canManageHandover() ? `<button class="btn primary full" data-action="save-handover-note">Salvar observações</button>` : ""}</div>
-          <div class="card"><div class="kpi-row"><div><h3>Pendências manuais</h3><span class="muted">Continuam abertas até serem concluídas.</span></div>${badge(snapshot.openPendings.length)}</div><div class="handover-pending-list">${pendingCards || `<div class="empty">Nenhuma pendência manual aberta.</div>`}</div></div>
-        </aside>
-      </div>
-
-      <div class="section-title no-print">Outros relatórios</div>
-      <div class="grid two no-print">
-        ${reportCard("Relatório gerencial", "KPIs, clientes, produtos, riscos e produtividade.", "dashboard", "operations")}
-        ${reportCard("Operações", "Vazão, volume, paralisações, tancagem e status.", "operations", "operations")}
-        ${reportCard("Inventário de tancagem", "Produto, lote, volume, capacidade e responsável.", "tanks", "tanks")}
-        ${reportCard("QHSE", "Registros, severidades e itens de ação.", "qhse")}
-        ${reportCard("Manutenção", "Equipamentos, diesel, preventivas e ordens de serviço.", "maintenance", "maintenance")}
-        ${reportCard("Carretas", "Entradas, saídas, NF, placa, motorista e anexos.", "trucks", "trucks")}
-        ${reportCard("Inventário químico", "Produtos, lotes, FEFO, validade, estoque mínimo e saldo.", "chemicals", "chemicals")}
-      </div>`;
+    const selection=ensureHandoverSelection(); const snapshot=handoverSnapshot(selection); const approval=selectedHandoverApproval(selection);
+    const locked=approval?.status==="Aprovada"&&!hasRole(["supervisor"]);
+    const reportCard=(title,description,page,exportKind="")=>`<div class="card report-card"><h3>${title}</h3><p>${description}</p><div class="row-actions"><button class="btn primary" data-print-page="${page}">Gerar / Imprimir</button>${exportKind?`<button class="btn secondary" data-export="${exportKind}">Exportar CSV</button>`:""}</div></div>`;
+    const pendingCards=snapshot.openPendings.map(item=>`<div class="handover-pending-card"><div><span>${badge(item.priority)}</span><small>${esc(item.category)}</small><h4>${esc(item.title)}</h4><p>${esc(item.description||"Sem descrição")}</p><footer><span>${esc(item.responsible||"Sem responsável")}</span><span>${item.due_at?dateTime(item.due_at):"Sem prazo"}</span></footer></div>${canManageHandover()?`<div class="row-actions"><button class="btn small secondary" data-edit-handover-pending="${item.id}">Editar</button><button class="btn small primary" data-toggle-handover-pending="${item.id}">Concluir</button>${canDeleteHandoverPending()?`<button class="btn small danger" data-delete-handover-pending="${item.id}">Excluir</button>`:""}</div>`:""}</div>`).join("");
+    const week=periodStats(7),prevWeek=periodStats(7,7),month=periodStats(30),prevMonth=periodStats(30,30);
+    $("#page-reports").innerHTML=header("Relatórios","Passagem aprovada, indicadores e exportações gerenciais.",`<button class="btn secondary" data-action="copy-handover">Copiar passagem</button><button class="btn primary" data-action="print-handover">Imprimir passagem</button>`)+
+      `${handoverApprovalCard(selection,snapshot)}
+       <div class="card handover-controls no-print"><div class="handover-control-copy"><strong>Passagem automática do turno</strong><span>Operações, eventos, movimentações, carretas, QHSE e manutenção.</span></div><div><label>Data do turno</label><input id="handoverDate" type="date" value="${esc(selection.date)}"></div><div><label>Turno</label><select id="handoverShift"><option value="day" ${selection.shift==="day"?"selected":""}>Dia — 07h às 19h</option><option value="night" ${selection.shift==="night"?"selected":""}>Noite — 19h às 07h</option></select></div><button class="btn secondary" data-action="apply-handover-filter">Atualizar período</button>${canManageHandover()&&!locked?`<button class="btn primary" data-action="new-handover-pending">+ Adicionar pendência</button>`:""}</div>
+       <div class="handover-layout"><div>${handoverSheetHtml(snapshot)}</div><aside class="handover-side no-print"><div class="card"><h3>Observações do turno</h3><p>Incluídas na impressão e na cópia para WhatsApp.</p><textarea id="handoverObservations" rows="7" ${locked?"disabled":""}>${esc(snapshot.observations)}</textarea>${canManageHandover()&&!locked?`<button class="btn primary full" data-action="save-handover-note">Salvar observações</button>`:""}</div>${shiftChecklistHtml(selection)}<div class="card"><div class="kpi-row"><div><h3>Pendências manuais</h3><span class="muted">Continuam abertas até a conclusão.</span></div>${badge(snapshot.openPendings.length)}</div><div class="handover-pending-list">${pendingCards||`<div class="empty">Nenhuma pendência manual aberta.</div>`}</div></div></aside></div>
+       <div class="section-title no-print">Indicadores comparativos</div><div class="grid two no-print"><div class="card"><h3>Últimos 7 dias</h3><div class="metric-grid">${metricComparison("Operações",week.operations,prevWeek.operations)}${metricComparison("Volume de fluidos",week.bbl,prevWeek.bbl," bbl")}${metricComparison("Granéis",week.ton,prevWeek.ton," ton")}${metricComparison("Carretas",week.trucks,prevWeek.trucks)}</div></div><div class="card"><h3>Últimos 30 dias</h3><div class="metric-grid">${metricComparison("Operações",month.operations,prevMonth.operations)}${metricComparison("Volume de fluidos",month.bbl,prevMonth.bbl," bbl")}${metricComparison("Granéis",month.ton,prevMonth.ton," ton")}${metricComparison("Horas paradas",month.downtime,prevMonth.downtime," h")}</div></div></div>
+       <div class="section-title no-print">Exportação e backup</div><div class="grid three no-print"><div class="card report-card"><h3>Backup completo</h3><p>Dados operacionais em JSON para guarda externa.</p><button class="btn primary" data-action="backup-json">Baixar backup</button></div><div class="card report-card"><h3>Auditoria</h3><p>Alterações de usuários e registros.</p><button class="btn secondary" data-page-link="audit">Abrir auditoria</button></div><div class="card report-card"><h3>Fila offline</h3><p>${offlineQueue().length} registro(s) aguardando sincronização.</p><button class="btn secondary" data-action="sync-offline">Sincronizar agora</button></div></div>
+       <div class="section-title no-print">Outros relatórios</div><div class="grid two no-print">${reportCard("Relatório gerencial","KPIs, clientes, produtos, riscos e produtividade.","dashboard","operations")}${reportCard("Operações","Vazão, volume, paralisações e tancagem.","operations","operations")}${reportCard("Inventário de tancagem","Produto, lote, volume e capacidade.","tanks","tanks")}${reportCard("QHSE","Registros, severidades e itens de ação.","qhse")}${reportCard("Manutenção","Equipamentos, diesel e ordens.","maintenance","maintenance")}${reportCard("Carretas","Entradas, saídas, NF, placa e motorista.","trucks","trucks")}</div>`;
   }
+
+
+
+  function auditChangeSummary(item) {
+    const before=item.old_data||{},after=item.new_data||{}; const keys=[...new Set([...Object.keys(before),...Object.keys(after)])].filter(k=>JSON.stringify(before[k])!==JSON.stringify(after[k])).slice(0,6);
+    return keys.map(key=>`${key}: ${before[key]??"-"} → ${after[key]??"-"}`).join(" | ")||"Registro criado/removido";
+  }
+
+  function renderAudit() {
+    const page=$("#page-audit"); if(!page)return;
+    if(!canViewAudit()){page.innerHTML=header("Auditoria","Acesso restrito.")+`<div class="card empty">Somente administração e supervisão podem consultar a auditoria.</div>`;return;}
+    const rows=(state.data.auditLogs||[]).map(item=>{const user=state.data.users.find(u=>u.id===item.changed_by)?.name||"Sistema";return `<tr><td>${dateTime(item.created_at)}</td><td><strong>${esc(user)}</strong></td><td>${esc(item.table_name)}</td><td>${badge(item.action)}</td><td>${esc(item.record_id||"-")}</td><td><small>${esc(auditChangeSummary(item))}</small></td></tr>`}).join("");
+    page.innerHTML=header("Auditoria do sistema","Quem alterou, quando, em qual módulo e o que mudou.",`<button class="btn secondary" data-export="audit">Exportar CSV</button>`)+`<div class="grid four audit-kpis"><div class="card"><span>Registros carregados</span><strong>${state.data.auditLogs.length}</strong></div><div class="card"><span>Usuários envolvidos</span><strong>${new Set(state.data.auditLogs.map(x=>x.changed_by).filter(Boolean)).size}</strong></div><div class="card"><span>Módulos alterados</span><strong>${new Set(state.data.auditLogs.map(x=>x.table_name)).size}</strong></div><div class="card"><span>Última alteração</span><strong>${state.data.auditLogs[0]?dateTime(state.data.auditLogs[0].created_at):"-"}</strong></div></div><div class="card table-wrap"><table class="data-table"><thead><tr><th>Data</th><th>Usuário</th><th>Tabela</th><th>Ação</th><th>Registro</th><th>Alterações</th></tr></thead><tbody>${rows||`<tr><td colspan="6" class="empty">Nenhuma auditoria disponível.</td></tr>`}</tbody></table></div>`;
+  }
+
 
   function renderSettings() {
     const users = state.data.users || [];
     const userRows = users.map(user => `<tr><td><strong>${esc(user.name)}</strong><br><small>${esc(user.email)}</small></td><td>${badge(user.role)}</td><td>${esc(user.department || "-")}</td><td>${badge(user.active ? "Ativo" : "Inativo")}</td><td>${dateOnly(user.created_at)}</td><td>${isAdmin() ? `<button class="btn small primary" data-edit-user="${user.id}">Gerenciar</button>` : ""}</td></tr>`).join("");
     const lastSync = state.lastSync ? state.lastSync.toLocaleString("pt-BR") : "Não sincronizado";
     const errors = state.data.systemErrors || [];
-    $("#page-settings").innerHTML = header("Configurações", "Perfil, usuários, permissões, diagnóstico e aparência.", `<button class="btn secondary" data-action="toggle-theme">Alternar tema</button>${isAdmin() ? `<button class="btn primary" data-action="new-user">+ Novo usuário</button>` : ""}`) + `<div class="grid two"><div class="card"><h3>Meu perfil</h3><div class="kpi-list" style="margin-top:14px"><div class="kpi-row"><span>Nome</span><strong>${esc(state.data.profile.name)}</strong></div><div class="kpi-row"><span>E-mail</span><strong>${esc(state.data.profile.email)}</strong></div><div class="kpi-row"><span>Cargo</span>${badge(state.data.profile.role)}</div><div class="kpi-row"><span>Departamento</span><strong>${esc(state.data.profile.department || "-")}</strong></div></div></div><div class="card"><h3>Diagnóstico do sistema</h3><div class="kpi-list" style="margin-top:14px"><div class="kpi-row"><span>Última sincronização</span><strong>${esc(lastSync)}</strong></div><div class="kpi-row"><span>Tanques e silos</span><strong>${state.data.tanks.length}</strong></div><div class="kpi-row"><span>Operações</span><strong>${state.data.operations.length}</strong></div><div class="kpi-row"><span>Alertas automáticos</span><strong>${state.data.systemAlerts.length}</strong></div><div class="kpi-row"><span>Erros registrados</span><strong>${errors.length}</strong></div></div><div class="info-box" style="margin-top:12px">Movimentações automáticas e transferências são executadas por transações no Supabase.</div>${isAdmin() ? `<div class="admin-edit-notice" style="margin-top:12px"><strong>Edição total ativa</strong><span>O administrador pode editar registros operacionais de todos os módulos. Históricos e auditorias permanecem protegidos.</span></div>` : ""}</div></div><div class="section-title">Usuários e permissões</div><div class="card table-wrap">${isAdmin() ? "" : `<div class="info-box" style="margin-bottom:12px">Somente o administrador pode alterar cargo, setor, status e permissões.</div>`}<table class="data-table"><thead><tr><th>Usuário</th><th>Cargo</th><th>Departamento</th><th>Status</th><th>Cadastro</th><th>Ação</th></tr></thead><tbody>${userRows}</tbody></table></div>${isAdmin() && errors.length ? `<div class="section-title">Erros recentes</div><div class="card table-wrap"><table class="data-table"><thead><tr><th>Data</th><th>Contexto</th><th>Mensagem</th></tr></thead><tbody>${errors.slice(0,20).map(e => `<tr><td>${dateTime(e.created_at)}</td><td>${esc(e.context || "-")}</td><td>${esc(e.message)}</td></tr>`).join("")}</tbody></table></div>` : ""}`;
+    $("#page-settings").innerHTML = header("Configurações", "Perfil, usuários, permissões, diagnóstico e aparência.", `<button class="btn secondary" data-action="toggle-theme">Alternar tema</button>${isAdmin() ? `<button class="btn primary" data-action="new-user">+ Novo usuário</button>` : ""}`) + `<div class="grid two"><div class="card"><h3>Meu perfil</h3><div class="kpi-list" style="margin-top:14px"><div class="kpi-row"><span>Nome</span><strong>${esc(state.data.profile.name)}</strong></div><div class="kpi-row"><span>E-mail</span><strong>${esc(state.data.profile.email)}</strong></div><div class="kpi-row"><span>Cargo</span>${badge(state.data.profile.role)}</div><div class="kpi-row"><span>Departamento</span><strong>${esc(state.data.profile.department || "-")}</strong></div></div></div><div class="card"><h3>Diagnóstico do sistema</h3><div class="kpi-list" style="margin-top:14px"><div class="kpi-row"><span>Última sincronização</span><strong>${esc(lastSync)}</strong></div><div class="kpi-row"><span>Tanques e silos</span><strong>${state.data.tanks.length}</strong></div><div class="kpi-row"><span>Operações</span><strong>${state.data.operations.length}</strong></div><div class="kpi-row"><span>Alertas automáticos</span><strong>${state.data.systemAlerts.length}</strong></div><div class="kpi-row"><span>Erros registrados</span><strong>${errors.length}</strong></div><div class="kpi-row"><span>Fila offline</span><strong>${offlineQueue().length}</strong></div><div class="kpi-row"><span>Backup local</span><strong>${latestLocalBackup()?.created_at ? dateTime(latestLocalBackup().created_at) : "-"}</strong></div></div><div class="row-actions" style="margin-top:12px"><button class="btn primary" data-action="backup-json">Backup JSON</button><button class="btn secondary" data-action="sync-offline">Sincronizar offline</button></div><div class="info-box" style="margin-top:12px">Movimentações automáticas e transferências são executadas por transações no Supabase.</div>${isAdmin() ? `<div class="admin-edit-notice" style="margin-top:12px"><strong>Edição total ativa</strong><span>O administrador pode editar registros operacionais de todos os módulos. Históricos e auditorias permanecem protegidos.</span></div>` : ""}</div></div><div class="section-title">Usuários e permissões</div><div class="card table-wrap">${isAdmin() ? "" : `<div class="info-box" style="margin-bottom:12px">Somente o administrador pode alterar cargo, setor, status e permissões.</div>`}<table class="data-table"><thead><tr><th>Usuário</th><th>Cargo</th><th>Departamento</th><th>Status</th><th>Cadastro</th><th>Ação</th></tr></thead><tbody>${userRows}</tbody></table></div>${isAdmin() && errors.length ? `<div class="section-title">Erros recentes</div><div class="card table-wrap"><table class="data-table"><thead><tr><th>Data</th><th>Contexto</th><th>Mensagem</th></tr></thead><tbody>${errors.slice(0,20).map(e => `<tr><td>${dateTime(e.created_at)}</td><td>${esc(e.context || "-")}</td><td>${esc(e.message)}</td></tr>`).join("")}</tbody></table></div>` : ""}`;
   }
 
 
@@ -2283,7 +2540,7 @@
   }
 
   function newUserForm() {
-    return `<form id="newUserForm"><div class="form-grid"><div class="wide"><label>Nome completo *</label><input name="full_name" required></div><div><label>E-mail *</label><input name="email" type="email" required></div><div><label>Senha inicial *</label><input name="password" type="password" minlength="8" required></div><div><label>Cargo</label><select name="role">${["user","operador","logistica","mecanico","qhse","lider","supervisor","admin"].map(x => `<option>${x}</option>`).join("")}</select></div><div><label>Departamento</label><input name="department"></div><div class="wide info-box">A conta será criada pelo cadastro seguro do Supabase. Dependendo da configuração, o usuário poderá receber uma confirmação por e-mail.</div></div>${formActions("Criar usuário")}</form>`;
+    return `<form id="newUserForm"><div class="form-grid"><div class="wide"><label>Nome completo *</label><input name="full_name" required></div><div><label>E-mail *</label><input name="email" type="email" required></div><div><label>Senha inicial *</label><input name="password" type="password" minlength="8" required></div><div><label>Cargo</label><select name="role">${["user","tv","operador","logistica","mecanico","qhse","lider","supervisor","admin"].map(x => `<option>${x}</option>`).join("")}</select></div><div><label>Departamento</label><input name="department"></div><div class="wide info-box">A conta será criada pelo cadastro seguro do Supabase. Dependendo da configuração, o usuário poderá receber uma confirmação por e-mail.</div></div>${formActions("Criar usuário")}</form>`;
   }
 
   function userForm(user) {
@@ -2291,12 +2548,12 @@
       ["dashboard", "Dashboard"], ["tv", "Painel TV"], ["operations", "Operações"], ["tanks", "Tanques"],
       ["fluids", "Fluidos"], ["chemicals", "Inventário Químico"], ["trucks", "Carretas"], ["qhse", "QHSE"],
       ["maintenance", "Manutenção"], ["certificates", "Certificados"],
-      ["alerts", "Alertas"], ["reports", "Relatórios"]
+      ["alerts", "Alertas"], ["reports", "Relatórios"], ["audit", "Auditoria"]
     ];
     return `<form id="userForm" data-user-id="${user.id}"><div class="form-grid">
       <div class="wide"><label>Nome</label><input name="full_name" required value="${esc(user.name)}"></div>
       <div><label>E-mail</label><input value="${esc(user.email)}" disabled></div>
-      <div><label>Cargo</label><select name="role">${["admin", "supervisor", "lider", "operador", "logistica", "mecanico", "qhse", "user"].map(x => `<option ${user.role === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
+      <div><label>Cargo</label><select name="role">${["admin", "supervisor", "lider", "operador", "logistica", "mecanico", "qhse", "tv", "user"].map(x => `<option ${user.role === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
       <div><label>Departamento</label><input name="department" value="${esc(user.department)}"></div>
       <div><label>Status</label><select name="active"><option value="true" ${user.active ? "selected" : ""}>Ativo</option><option value="false" ${!user.active ? "selected" : ""}>Bloqueado</option></select></div>
       <div class="wide"><label>Permissões por módulo</label><div class="permission-grid">${modules.map(([key, label]) => `<label class="permission-item"><input type="checkbox" name="perm_${key}" ${user.permissions?.[key] !== false ? "checked" : ""}><span>${label}</span></label>`).join("")}</div></div>
@@ -2658,6 +2915,7 @@
   }
 
   function showPage(page) {
+    if (role() === "tv" && page !== "tv") page = "tv";
     if (!moduleAllowed(page)) return toast("Seu perfil não possui acesso a este módulo.", "error");
     state.page = page;
     $$(".page").forEach(item => item.classList.remove("active"));
@@ -2742,6 +3000,13 @@
   document.addEventListener("submit", async event => {
     event.preventDefault();
     const form = event.target;
+    if (!navigator.onLine && form.id !== "loginForm") {
+      if (queueOfflineForm(form)) {
+        closeModal(); toast("Registro salvo na fila offline. Será sincronizado quando a internet voltar.", "success");
+        return;
+      }
+      return toast("Este registro altera saldo ou dados críticos e exige conexão com o Supabase.", "error");
+    }
     try {
       if (!navigator.onLine) throw new Error("Sem internet. Reconecte para salvar alterações.");
 
@@ -2968,9 +3233,10 @@
           throw new Error("O administrador atual não pode remover o próprio cargo.");
         }
         const permissions = {};
-        ["dashboard", "tv", "operations", "tanks", "fluids", "chemicals", "trucks", "qhse", "maintenance", "certificates", "alerts", "reports"].forEach(module => {
+        ["dashboard", "tv", "operations", "tanks", "fluids", "chemicals", "trucks", "qhse", "maintenance", "certificates", "alerts", "reports", "audit"].forEach(module => {
           permissions[module] = form.querySelector(`[name="perm_${module}"]`)?.checked === true;
         });
+        if (payload.role === "tv") Object.keys(permissions).forEach(key => permissions[key] = key === "tv");
         const { error } = await state.client.from("profiles").update({
           full_name: payload.full_name,
           role: payload.role,
@@ -3010,6 +3276,9 @@
     if (button.classList.contains("nav-item")) return showPage(button.dataset.page);
     if (button.closest(".user-chip")) return showPage("settings");
     if (button.id === "notificationsBtn") return showPage("alerts");
+
+    if (button.dataset.pageLink) { showPage(button.dataset.pageLink); return; }
+    if (button.dataset.alertPage) { showPage(button.dataset.alertPage); return; }
 
     if (button.hasAttribute("data-tv-slide")) {
       state.tv.slide = Number(button.dataset.tvSlide || 0);
@@ -3088,6 +3357,35 @@
       return;
     }
 
+    if (action === "backup-json") {
+      downloadJson(`opscontrol-backup-${localDateKey()}.json`, backupPayload());
+      return toast("Backup completo gerado.", "success");
+    }
+    if (action === "sync-offline") {
+      if (!navigator.onLine) return toast("Sem conexão para sincronizar.", "error");
+      await syncOfflineQueue(); return;
+    }
+    if (action === "deliver-handover") {
+      const selection=ensureHandoverSelection(); const snapshot=handoverSnapshot(selection);
+      const checklist=checklistForShift(selection); const missing=checklist.filter(x=>!x.completed);
+      if (missing.length&&!confirm(`Existem ${missing.length} itens do checklist pendentes. Entregar mesmo assim?`)) return;
+      const summary={ selection, generated_at:new Date().toISOString(), delivered_by:state.data.profile.name,
+        counts:{operations:snapshot.completedOperations.length,events:snapshot.events.length,movements:snapshot.tankMovements.length,pendings:snapshot.openPendings.length}, checklist, observations:snapshot.observations };
+      const {error}=await state.client.rpc("submit_shift_handover",{p_shift_date:selection.date,p_shift_type:selection.shift,p_snapshot_json:summary,p_snapshot_text:handoverText(selection)});
+      if(error)return toast(error.message,"error"); await loadData();renderReports();return toast("Passagem entregue e numerada.","success");
+    }
+    if (action === "approve-handover") {
+      const selection=ensureHandoverSelection(); const {error}=await state.client.rpc("approve_shift_handover",{p_shift_date:selection.date,p_shift_type:selection.shift});
+      if(error)return toast(error.message,"error"); await loadData();renderReports();return toast("Recebimento confirmado. Passagem bloqueada.","success");
+    }
+    if (action === "reopen-handover") {
+      const selection=ensureHandoverSelection(); if(!confirm("Reabrir esta passagem aprovada?"))return;
+      const {error}=await state.client.rpc("reopen_shift_handover",{p_shift_date:selection.date,p_shift_type:selection.shift});
+      if(error)return toast(error.message,"error"); await loadData();renderReports();return toast("Passagem reaberta.","success");
+    }
+    if (action === "view-approved-handover") {
+      const approval=selectedHandoverApproval(); return openModal(`Passagem nº ${String(approval.sequence_no).padStart(5,"0")}`,`<pre class="approved-handover-text">${esc(approval.snapshot_text||"Sem versão salva.")}</pre>`,`VERSÃO ENTREGUE`);
+    }
     if (action === "refresh") {
       const original = button.textContent;
       button.disabled = true;
@@ -3291,11 +3589,13 @@
     if (button.dataset.tankHistory) {
       const tank = state.data.tanks.find(x => x.id === button.dataset.tankHistory);
       const history = state.data.tankHistory.filter(x => x.tank_id === tank.id);
-      return openModal(`Histórico — ${tank.name}`, `<div class="timeline professional-timeline">${history.map(item => {
-        const user = state.data.users.find(x => x.id === item.changed_by)?.name || "Usuário";
-        return `<div class="timeline-item"><span class="timeline-dot"></span><div><strong>${esc(item.previous_product || "Vazio")} → ${esc(item.new_product || "Vazio")}</strong><small>${dateTime(item.created_at)} • ${esc(user)}</small><p>Lote: ${esc(item.previous_lot || "-")} → ${esc(item.new_lot || "-")}<br>Volume: ${fmt.format(item.previous_volume || 0)} → ${fmt.format(item.new_volume || 0)}<br>Densidade: ${item.previous_density !== null && item.previous_density !== undefined ? `${fmt.format(item.previous_density)} ${esc(item.previous_density_unit || "")}` : "-"} → ${item.new_density !== null && item.new_density !== undefined ? `${fmt.format(item.new_density)} ${esc(item.new_density_unit || "")}` : "-"}<br>Status: ${esc(item.previous_status || "-")} → ${esc(item.new_status || "-")}</p></div></div>`;
-      }).join("") || `<div class="empty">Sem histórico.</div>`}</div>`, "HISTÓRICO");
+      const timeline = history.map(item => {
+        const user = state.data.users.find(x => x.id === item.changed_by)?.name || "Sistema";
+        return `<div class="timeline-item"><span class="timeline-dot"></span><div><strong>${esc(item.previous_product || "Vazio")} → ${esc(item.new_product || "Vazio")}</strong><small>${dateTime(item.created_at)} • ${esc(user)}</small><p>Lote: ${esc(item.previous_lot || "-")} → ${esc(item.new_lot || "-")}<br>Volume: ${fmt.format(item.previous_volume || 0)} → ${fmt.format(item.new_volume || 0)} ${esc(tank.unit)}<br>Densidade: ${item.previous_density != null ? `${fmt.format(item.previous_density)} ${esc(item.previous_density_unit || "")}` : "-"} → ${item.new_density != null ? `${fmt.format(item.new_density)} ${esc(item.new_density_unit || "")}` : "-"}<br>Status: ${esc(item.previous_status || "-")} → ${esc(item.new_status || "-")}</p></div></div>`;
+      }).join("") || `<div class="empty">Sem histórico.</div>`;
+      return openModal(`Histórico — ${tank.name}`, `${tankHistoryVisual(tank,history)}<div class="section-title">Linha do tempo</div><div class="timeline professional-timeline">${timeline}</div>`, "RASTREABILIDADE");
     }
+
 
     if (button.dataset.tankMovements) {
       const tank = state.data.tanks.find(x => x.id === button.dataset.tankMovements);
@@ -3359,7 +3659,7 @@
     }
   });
 
-  document.addEventListener("change", event => {
+  document.addEventListener("change", async event => {
     if (event.target.closest("#operationForm") && ["activity","unit","status","apply_tank_movement"].includes(event.target.name)) syncOperationTankFields(event.target.closest("#operationForm"));
     if (event.target.closest("#operationForm") && event.target.matches("[data-allocation-tank]")) updateOperationAllocationSummary(event.target.closest("#operationForm"));
     if (event.target.closest("#tankTransferForm")) updateTransferPreview(event.target.closest("#tankTransferForm"));
@@ -3371,6 +3671,13 @@
       const option = event.target.selectedOptions?.[0];
       const owner = form.elements.owner;
       if (owner && option?.dataset.userName) owner.value = option.dataset.userName;
+    }
+    if (event.target.matches("[data-shift-checklist]")) {
+      const selection=ensureHandoverSelection(); const key=event.target.dataset.shiftChecklist;
+      const template=SHIFT_CHECKLIST_TEMPLATE.find(item=>item[0]===key); const note=document.querySelector(`[data-shift-checklist-note="${key}"]`)?.value||"";
+      const completed=event.target.checked;
+      const {error}=await state.client.from("shift_checklist_items").upsert({shift_date:selection.date,shift_type:selection.shift,item_key:key,item_label:template?.[1]||key,category:template?.[2]||"Operacional",completed,notes:note,completed_by:completed?state.user.id:null,completed_at:completed?new Date().toISOString():null,created_by:state.user.id},{onConflict:"shift_date,shift_type,item_key"});
+      if(error){event.target.checked=!completed;return toast(error.message,"error");} await loadData();renderReports();
     }
   });
 
@@ -3390,8 +3697,19 @@
     if (event.key === "Enter") login();
   });
 
+
+  document.addEventListener("focusout", async event => {
+    if (!event.target.matches("[data-shift-checklist-note]")) return;
+    const selection=ensureHandoverSelection(); const key=event.target.dataset.shiftChecklistNote;
+    const template=SHIFT_CHECKLIST_TEMPLATE.find(item=>item[0]===key);
+    const current=checklistForShift(selection).find(item=>item.item_key===key);
+    const {error}=await state.client.from("shift_checklist_items").upsert({shift_date:selection.date,shift_type:selection.shift,item_key:key,item_label:template?.[1]||key,category:template?.[2]||"Operacional",completed:current?.completed||false,notes:event.target.value||null,completed_by:current?.completed_by||null,completed_at:current?.completed_at||null,created_by:state.user.id},{onConflict:"shift_date,shift_type,item_key"});
+    if(error)toast(error.message,"error"); else await loadData();
+  });
+
   window.addEventListener("online", () => {
     updateConnectionBadge();
+    syncOfflineQueue();
     refreshRealtime("conexão restaurada");
   });
   window.addEventListener("offline", updateConnectionBadge);

@@ -731,8 +731,23 @@
       header("Tanques e silos", "Volumetria, transferências, produto, lote, status e histórico.",
         `<button class="btn secondary" data-export="tanks">Exportar CSV</button>${hasRole(["supervisor", "lider", "operador", "logistica"]) ? `<button class="btn primary" data-action="new-tank-transfer">Transferir entre tanques</button>` : ""}`) +
       ["Phase #1", "Phase #2"].map(phase => {
-        const tanks = state.data.tanks.filter(tank => tank.phase === phase).sort((a, b) => a.order - b.order);
-        return `<div class="section-title">${phase}</div><div class="grid tank-grid compact-tank-grid">${tanks.map(tankCard).join("")}</div>`;
+        const phaseItems = state.data.tanks
+          .filter(item => item.phase === phase)
+          .sort((a, b) => a.order - b.order);
+        const tanks = phaseItems.filter(item => String(item.kind).toLowerCase() !== "silo");
+        const silos = phaseItems.filter(item => String(item.kind).toLowerCase() === "silo");
+
+        return `<section class="tancagem-phase-block">
+          <div class="phase-heading"><div><span>ÁREA OPERACIONAL</span><h2>${phase}</h2></div><small>${tanks.length} tanque(s) • ${silos.length} silo(s)</small></div>
+          <div class="asset-group tank-asset-group">
+            <div class="asset-group-heading"><div class="asset-group-icon tank-group-icon">TK</div><div><h3>Tanques e Mix Tanks</h3><p>Fluidos, salmouras e produtos líquidos.</p></div></div>
+            <div class="grid tank-grid compact-tank-grid">${tanks.map(tankCard).join("") || `<div class="empty asset-empty">Nenhum tanque nesta fase.</div>`}</div>
+          </div>
+          <div class="asset-group silo-asset-group">
+            <div class="asset-group-heading"><div class="asset-group-icon silo-group-icon">SL</div><div><h3>Silos de Granéis</h3><p>Barita, bentonita, calcita e outros granéis.</p></div></div>
+            <div class="grid tank-grid compact-tank-grid silo-grid">${silos.map(tankCard).join("") || `<div class="empty asset-empty">Nenhum silo nesta fase.</div>`}</div>
+          </div>
+        </section>`;
       }).join("");
   }
 
@@ -890,6 +905,7 @@
   }
 
   function renderQhse() {
+    const canAddQhse = hasRole(["supervisor", "lider", "qhse", "operador"]);
     const rows = state.data.qhse.map(item => {
       const openActions = state.data.actionItems.filter(a => a.qhse_record_id === item.id && a.status !== "Concluído").length;
       return `<tr>
@@ -902,23 +918,42 @@
         </div></td>
       </tr>`;
     }).join("");
+    const mobile = state.data.qhse.map(item => {
+      const openActions = state.data.actionItems.filter(a => a.qhse_record_id === item.id && a.status !== "Concluído").length;
+      return `<div class="card mobile-record-card"><div class="mobile-record-head"><div><strong>${esc(item.title)}</strong><small>${dateOnly(item.date)} • ${esc(item.type)}</small></div>${badge(item.status)}</div><p>${esc(item.description || "Sem descrição")}</p><div class="mobile-record-grid"><span>Responsável<strong>${esc(item.responsible || "-")}</strong></span><span>Severidade<strong>${esc(item.severity)}</strong></span></div><div class="row-actions"><button class="btn small secondary" data-qhse-actions="${item.id}">Ações (${openActions})</button><button class="btn small secondary" data-attachments="qhse:${item.id}" data-attachment-title="${esc(item.title)}">Anexos (${attachmentCount("qhse", item.id)})</button></div></div>`;
+    }).join("");
+
+    const actions = canAddQhse ? `<button class="btn primary" data-action="new-qhse">+ Novo registro QHSE</button>` : "";
+    const quickAction = canAddQhse ? `<div class="module-action-bar"><div class="module-action-copy"><span class="module-action-icon">+</span><div><strong>Adicionar registro QHSE</strong><small>Registre DDS, APR, inspeção, risco, ocorrência ou evidência.</small></div></div><button class="btn primary" data-action="new-qhse">Novo registro</button></div>` : "";
+
     $("#page-qhse").innerHTML =
-      header("QHSE", "DDS, APR, inspeções, riscos, itens de ação e evidências.",
-        hasRole(["supervisor", "lider", "qhse", "operador"]) ? `<button class="btn primary" data-action="new-qhse">+ Novo registro</button>` : "") +
-      `<div class="card table-wrap"><table class="data-table"><thead><tr><th>Data</th><th>Tipo</th><th>Registro</th><th>Responsável</th><th>Severidade</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+      header("QHSE", "DDS, APR, inspeções, riscos, itens de ação e evidências.", actions) + quickAction +
+      `<div class="card table-wrap desktop-record-table"><table class="data-table"><thead><tr><th>Data</th><th>Tipo</th><th>Registro</th><th>Responsável</th><th>Severidade</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows || `<tr><td colspan="7" class="empty">Nenhum registro QHSE cadastrado.</td></tr>`}</tbody></table></div><div class="mobile-record-list">${mobile || `<div class="card empty">Nenhum registro QHSE cadastrado.</div>`}</div>`;
   }
 
   function renderMaintenance() {
+    const canManageMaintenance = hasRole(["supervisor", "lider", "mecanico"]);
     const equipmentRows = state.data.equipment.map(item => {
       const used = Math.max(0, item.diesel_initial + item.refueled - item.diesel_final);
       const average = item.last_hours ? used / item.last_hours : 0;
       const openOrders = state.data.maintenanceOrders.filter(order => order.equipment_id === item.id && !["Concluída", "Fechada", "Cancelada"].includes(order.status)).length;
       const hoursDue = item.maintenance_due_hourmeter > 0 ? item.maintenance_due_hourmeter - item.hourmeter : null;
       const preventive = hoursDue !== null && hoursDue <= 0 ? "Vencida por horímetro" : item.next_maintenance_date ? `${dateOnly(item.next_maintenance_date)}${hoursDue !== null ? ` • ${fmt.format(hoursDue)} h` : ""}` : hoursDue !== null ? `${fmt.format(hoursDue)} h restantes` : "Não programada";
-      return `<tr><td><strong>${esc(item.name)}</strong><br><small>${esc(item.category)} • ${esc(item.location || "-")}</small></td><td>${badge(item.status)}</td><td>${fmt.format(item.hourmeter)} h</td><td>${esc(preventive)}</td><td>${fmt.format(used)} L</td><td>${fmt.format(average)} L/h</td><td>${openOrders}</td><td>${hasRole(["supervisor", "lider", "mecanico"]) ? `<button class="btn small primary" data-new-order-equipment="${item.id}">Abrir OS</button>` : ""}</td></tr>`;
+      return `<tr><td><strong>${esc(item.name)}</strong><br><small>${esc(item.category)} • ${esc(item.location || "-")}</small></td><td>${badge(item.status)}</td><td>${fmt.format(item.hourmeter)} h</td><td>${esc(preventive)}</td><td>${fmt.format(used)} L</td><td>${fmt.format(average)} L/h</td><td>${openOrders}</td><td>${canManageMaintenance ? `<button class="btn small primary" data-new-order-equipment="${item.id}">Abrir OS</button>` : ""}</td></tr>`;
     }).join("");
-    const orderRows = state.data.maintenanceOrders.map(order => { const equipment = state.data.equipment.find(x => x.id === order.equipment_id)?.name || "Equipamento removido"; return `<tr><td><strong>${esc(order.title)}</strong><br><small>${esc(equipment)} • ${esc(order.maintenance_type)}</small></td><td>${badge(order.priority)}</td><td>${badge(order.status)}</td><td>${esc(order.responsible || "-")}</td><td>${dateOnly(order.due_date)}</td><td>${money.format(order.actual_cost || order.estimated_cost || 0)}</td><td><div class="row-actions"><button class="btn small secondary" data-attachments="maintenance:${order.id}" data-attachment-title="${esc(order.title)}">📎 ${attachmentCount("maintenance", order.id)}</button>${hasRole(["supervisor", "lider", "mecanico"]) ? `<button class="btn small primary" data-edit-order="${order.id}">Editar</button>` : ""}</div></td></tr>`; }).join("");
-    $("#page-maintenance").innerHTML = header("Manutenção", "Equipamentos, preventiva, horímetro, diesel e ordens de serviço.", `<button class="btn secondary" data-export="maintenance">Exportar CSV</button>${hasRole(["supervisor", "lider", "mecanico"]) ? `<button class="btn secondary" data-action="new-equipment">+ Equipamento</button><button class="btn primary" data-action="new-maintenance-order">+ Ordem de serviço</button>` : ""}`) + `<div class="section-title">Equipamentos</div><div class="card table-wrap"><table class="data-table"><thead><tr><th>Equipamento</th><th>Status</th><th>Horímetro</th><th>Preventiva</th><th>Diesel</th><th>Média</th><th>OS abertas</th><th>Ação</th></tr></thead><tbody>${equipmentRows}</tbody></table></div><div class="section-title">Ordens de serviço</div><div class="card table-wrap"><table class="data-table"><thead><tr><th>Ordem</th><th>Prioridade</th><th>Status</th><th>Responsável</th><th>Prazo</th><th>Custo</th><th>Ações</th></tr></thead><tbody>${orderRows || `<tr><td colspan="7" class="empty">Nenhuma ordem de serviço.</td></tr>`}</tbody></table></div>`;
+    const orderRows = state.data.maintenanceOrders.map(order => {
+      const equipment = state.data.equipment.find(x => x.id === order.equipment_id)?.name || "Equipamento removido";
+      return `<tr><td><strong>${esc(order.title)}</strong><br><small>${esc(equipment)} • ${esc(order.maintenance_type)}</small></td><td>${badge(order.priority)}</td><td>${badge(order.status)}</td><td>${esc(order.responsible || "-")}</td><td>${dateOnly(order.due_date)}</td><td>${money.format(order.actual_cost || order.estimated_cost || 0)}</td><td><div class="row-actions"><button class="btn small secondary" data-attachments="maintenance:${order.id}" data-attachment-title="${esc(order.title)}">📎 ${attachmentCount("maintenance", order.id)}</button>${canManageMaintenance ? `<button class="btn small primary" data-edit-order="${order.id}">Editar</button>` : ""}</div></td></tr>`;
+    }).join("");
+    const mobileOrders = state.data.maintenanceOrders.map(order => {
+      const equipment = state.data.equipment.find(x => x.id === order.equipment_id)?.name || "Equipamento removido";
+      return `<div class="card mobile-record-card"><div class="mobile-record-head"><div><strong>${esc(order.title)}</strong><small>${esc(equipment)} • ${esc(order.maintenance_type)}</small></div>${badge(order.status)}</div><div class="mobile-record-grid"><span>Prioridade<strong>${esc(order.priority)}</strong></span><span>Prazo<strong>${dateOnly(order.due_date)}</strong></span><span>Responsável<strong>${esc(order.responsible || "-")}</strong></span><span>Custo<strong>${money.format(order.actual_cost || order.estimated_cost || 0)}</strong></span></div><div class="row-actions"><button class="btn small secondary" data-attachments="maintenance:${order.id}" data-attachment-title="${esc(order.title)}">Anexos (${attachmentCount("maintenance", order.id)})</button>${canManageMaintenance ? `<button class="btn small primary" data-edit-order="${order.id}">Editar</button>` : ""}</div></div>`;
+    }).join("");
+
+    const headerActions = `<button class="btn secondary" data-export="maintenance">Exportar CSV</button>${canManageMaintenance ? `<button class="btn secondary" data-action="new-equipment">+ Novo equipamento</button><button class="btn primary" data-action="new-maintenance-order">+ Nova ordem de serviço</button>` : ""}`;
+    const quickActions = canManageMaintenance ? `<div class="module-action-grid"><button class="module-action-card" data-action="new-equipment"><span class="module-action-card-icon">EQ</span><span><strong>Adicionar equipamento</strong><small>Cadastre motor a diesel, bomba, compressor ou outro ativo.</small></span><b>+</b></button><button class="module-action-card primary-action-card" data-action="new-maintenance-order"><span class="module-action-card-icon">OS</span><span><strong>Abrir ordem de serviço</strong><small>Registre manutenção preventiva ou corretiva.</small></span><b>+</b></button></div>` : "";
+
+    $("#page-maintenance").innerHTML = header("Manutenção", "Equipamentos, preventiva, horímetro, diesel e ordens de serviço.", headerActions) + quickActions + `<div class="section-title">Equipamentos</div><div class="card table-wrap"><table class="data-table"><thead><tr><th>Equipamento</th><th>Status</th><th>Horímetro</th><th>Preventiva</th><th>Diesel</th><th>Média</th><th>OS abertas</th><th>Ação</th></tr></thead><tbody>${equipmentRows || `<tr><td colspan="8" class="empty">Nenhum equipamento cadastrado.</td></tr>`}</tbody></table></div><div class="section-title">Ordens de serviço</div><div class="card table-wrap desktop-record-table"><table class="data-table"><thead><tr><th>Ordem</th><th>Prioridade</th><th>Status</th><th>Responsável</th><th>Prazo</th><th>Custo</th><th>Ações</th></tr></thead><tbody>${orderRows || `<tr><td colspan="7" class="empty">Nenhuma ordem de serviço.</td></tr>`}</tbody></table></div><div class="mobile-record-list">${mobileOrders || `<div class="card empty">Nenhuma ordem de serviço.</div>`}</div>`;
   }
 
   function renderCertificates() {

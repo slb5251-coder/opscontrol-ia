@@ -619,31 +619,63 @@
 
   function renderTanks() {
     $("#page-tanks").innerHTML =
-      header("Tanques e tancagem", "Nível visual, produto, lote, status, responsável e histórico.") +
+      header("Tanques e silos", "Volumetria, produto, lote, status, responsável e histórico.") +
       ["Phase #1", "Phase #2"].map(phase => {
-        const tanks = state.data.tanks.filter(t => t.phase === phase).sort((a, b) => a.order - b.order);
-        return `<div class="section-title">${phase}</div><div class="grid tank-grid">${tanks.map(tankCard).join("")}</div>`;
+        const tanks = state.data.tanks
+          .filter(tank => tank.phase === phase)
+          .sort((a, b) => a.order - b.order);
+
+        return `<div class="section-title">${phase}</div>
+          <div class="grid tank-grid compact-tank-grid">${tanks.map(tankCard).join("")}</div>`;
       }).join("");
   }
 
   function tankCard(tank) {
-    const pct = tank.capacity ? Math.min(100, Math.round(tank.volume / tank.capacity * 100)) : 0;
-    const updater = state.data.users.find(x => x.id === tank.updated_by)?.name || "Não informado";
-    const cls = productClass(tank.product);
-    return `<div class="card tank-card visual-tank-card">
-      <div class="tank-top"><div><h3>${esc(tank.name)}</h3><span class="tag">${esc(tank.kind)}</span></div>${badge(tank.status)}</div>
-      <div class="tank-visual ${cls}">
-        <div class="tank-liquid" style="height:${pct}%"><span>${pct}%</span></div>
+    const volume = Number(tank.volume || 0);
+    const capacity = Number(tank.capacity || 0);
+    const pct = capacity > 0 ? Math.max(0, Math.min(100, (volume / capacity) * 100)) : 0;
+    const updater = state.data.users.find(user => user.id === tank.updated_by)?.name || "Não informado";
+    const productType = productClass(tank.product);
+
+    return `<div class="card tank-card compact-tank-card">
+      <div class="tank-top">
+        <div>
+          <h3>${esc(tank.name)}</h3>
+          <span class="tag">${esc(tank.kind)}</span>
+        </div>
+        ${badge(tank.status)}
       </div>
-      <div class="tank-details">
+
+      <div class="compact-tank-product">
         <strong>${esc(tank.product || "Sem produto")}</strong>
         <span>Lote: ${esc(tank.lot || "-")}</span>
-        <span>${fmt.format(tank.volume)} / ${fmt.format(tank.capacity)} ${esc(tank.unit)}</span>
+      </div>
+
+      <div class="tank-volume-line">
+        <strong>${fmt.format(volume)} ${esc(tank.unit)}</strong>
+        <span>de ${fmt.format(capacity)} ${esc(tank.unit)}</span>
+      </div>
+
+      <div class="tank-progress ${productType}" role="progressbar"
+        aria-label="Ocupação de ${esc(tank.name)}"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow="${pct.toFixed(1)}">
+        <span style="width:${pct.toFixed(2)}%"></span>
+      </div>
+
+      <div class="tank-progress-caption">
+        <strong>${fmt.format(pct)}%</strong>
+        <span>${fmt.format(Math.max(0, capacity - volume))} ${esc(tank.unit)} livres</span>
+      </div>
+
+      <div class="tank-update-meta">
         <span>Atualizado por: ${esc(updater)}</span>
         <span>${dateTime(tank.updated_at)}</span>
       </div>
+
       <div class="row-actions">
-        ${hasRole(["supervisor", "lider", "operador", "logistica"]) ? `<button class="btn small primary" data-edit-tank="${tank.id}">Atualizar</button>` : ""}
+        ${hasRole(["supervisor", "lider", "operador", "logistica"]) ? `<button class="btn small primary" data-edit-tank="${tank.id}">Atualizar volume</button>` : ""}
         <button class="btn small secondary" data-tank-history="${tank.id}">Histórico</button>
       </div>
     </div>`;
@@ -1318,24 +1350,75 @@
 
       if (form.id === "tankForm") {
         const payload = Object.fromEntries(new FormData(form));
-        const tank = state.data.tanks.find(x => x.id === payload.id);
-        if (Number(payload.volume) > tank.capacity) throw new Error("O volume não pode ultrapassar a capacidade do tanque.");
+        const tank = state.data.tanks.find(item => item.id === payload.id);
+
+        if (!tank) throw new Error("Tanque ou silo não localizado.");
+
+        const normalizedVolume = String(payload.volume ?? "")
+          .trim()
+          .replace(",", ".");
+        const newVolume = Number(normalizedVolume);
+
+        if (!Number.isFinite(newVolume)) {
+          throw new Error("Informe uma volumetria válida.");
+        }
+        if (newVolume < 0) {
+          throw new Error("A volumetria não pode ser negativa.");
+        }
+        if (newVolume > Number(tank.capacity)) {
+          throw new Error(`O volume não pode ultrapassar ${fmt.format(tank.capacity)} ${tank.unit}.`);
+        }
+
         const before = { ...tank };
-        const { error } = await state.client.from("tanks").update({
-          status: payload.status, current_product: payload.product || null,
-          current_lot: payload.lot || null, current_volume: Number(payload.volume),
-          updated_by: state.user.id
-        }).eq("id", tank.id);
+        const updatedAt = new Date().toISOString();
+
+        const { data: updatedTank, error } = await state.client
+          .from("tanks")
+          .update({
+            status: payload.status,
+            current_product: payload.product?.trim() || null,
+            current_lot: payload.lot?.trim() || null,
+            current_volume: newVolume,
+            updated_by: state.user.id,
+            updated_at: updatedAt
+          })
+          .eq("id", tank.id)
+          .select("id,current_volume,current_product,current_lot,status,updated_by,updated_at")
+          .single();
+
         if (error) throw error;
+        if (!updatedTank) throw new Error("O Supabase não confirmou a atualização da volumetria.");
+
+        Object.assign(tank, {
+          volume: Number(updatedTank.current_volume || 0),
+          product: updatedTank.current_product || "",
+          lot: updatedTank.current_lot || "",
+          status: updatedTank.status,
+          updated_by: updatedTank.updated_by,
+          updated_at: updatedTank.updated_at
+        });
+
+        renderTanks();
+        renderDashboard();
+
         const { error: historyError } = await state.client.from("tank_history").insert({
-          tank_id: tank.id, tank_name: tank.name,
-          previous_product: before.product || null, new_product: payload.product || null,
-          previous_lot: before.lot || null, new_lot: payload.lot || null,
-          previous_volume: before.volume, new_volume: Number(payload.volume),
-          previous_status: before.status, new_status: payload.status,
+          tank_id: tank.id,
+          tank_name: tank.name,
+          previous_product: before.product || null,
+          new_product: tank.product || null,
+          previous_lot: before.lot || null,
+          new_lot: tank.lot || null,
+          previous_volume: Number(before.volume || 0),
+          new_volume: Number(tank.volume || 0),
+          previous_status: before.status,
+          new_status: tank.status,
           changed_by: state.user.id
         });
-        if (historyError) throw historyError;
+
+        if (historyError) {
+          console.error("Falha ao registrar histórico da tancagem:", historyError);
+          toast("Volume atualizado, mas o histórico não foi registrado.", "warning");
+        }
       }
 
       if (form.id === "genericForm") {

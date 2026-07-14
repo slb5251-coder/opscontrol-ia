@@ -682,17 +682,26 @@
   }
 
   function tankForm(tank) {
-    return `<form id="tankForm">
+    return `<form id="tankForm" novalidate>
       <input type="hidden" name="id" value="${tank.id}">
       <div class="form-grid">
-        <div><label>Tanque</label><input value="${esc(tank.name)}" disabled></div>
+        <div><label>Tanque ou silo</label><input value="${esc(tank.name)}" disabled></div>
         <div><label>Capacidade</label><input value="${fmt.format(tank.capacity)} ${esc(tank.unit)}" disabled></div>
         <div><label>Status</label><select name="status">${["Disponível", "Liberado", "Em uso", "Bloqueado", "Limpeza", "Manutenção"].map(x => `<option ${tank.status === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
-        <div><label>Volume atual</label><input name="volume" type="number" min="0" max="${tank.capacity}" step="0.01" required value="${tank.volume}"></div>
+        <div>
+          <label>Volume atual (${esc(tank.unit)})</label>
+          <input name="volume" type="text" inputmode="decimal" autocomplete="off"
+            value="${String(tank.volume).replace(".", ",")}" required>
+          <small class="field-help">Ex.: 850 ou 850,50.</small>
+        </div>
         <div class="wide"><label>Produto</label><input name="product" value="${esc(tank.product)}"></div>
         <div class="wide"><label>Lote</label><input name="lot" value="${esc(tank.lot)}"></div>
       </div>
-      ${formActions("Atualizar tancagem")}
+      <div id="tankSaveMessage" class="message hidden"></div>
+      <div class="form-actions">
+        <button type="button" class="btn secondary" data-close-modal>Cancelar</button>
+        <button type="button" class="btn primary" data-action="save-tank-volume">Salvar volume</button>
+      </div>
     </form>`;
   }
 
@@ -1160,6 +1169,98 @@
     `, "ANEXOS");
   }
 
+
+  function parseTankVolume(value) {
+    const normalized = String(value ?? "")
+      .trim()
+      .replace(/\s/g, "")
+      .replace(/\.(?=\d{3}(?:\D|$))/g, "")
+      .replace(",", ".");
+    const number = Number(normalized);
+    return Number.isFinite(number) ? number : NaN;
+  }
+
+  async function saveTankVolume(form, button = null) {
+    if (!form) throw new Error("Formulário de tancagem não localizado.");
+    if (!state.client || !state.user) throw new Error("Sessão inválida. Entre novamente.");
+
+    const payload = Object.fromEntries(new FormData(form));
+    const tank = state.data.tanks.find(item => item.id === payload.id);
+    if (!tank) throw new Error("Tanque ou silo não localizado.");
+
+    const newVolume = parseTankVolume(payload.volume);
+    const capacity = Number(tank.capacity || 0);
+
+    if (!Number.isFinite(newVolume)) throw new Error("Informe o volume somente com números.");
+    if (newVolume < 0) throw new Error("O volume não pode ser negativo.");
+    if (newVolume > capacity) {
+      throw new Error(`O volume não pode ultrapassar ${fmt.format(capacity)} ${tank.unit}.`);
+    }
+
+    const originalLabel = button?.textContent || "Salvar volume";
+    const message = form.querySelector("#tankSaveMessage");
+
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Salvando...";
+    }
+    if (message) {
+      message.classList.add("hidden");
+      message.textContent = "";
+    }
+
+    try {
+      const { data, error } = await state.client.rpc("update_tank_volume", {
+        p_tank_id: tank.id,
+        p_volume: newVolume,
+        p_status: payload.status,
+        p_product: payload.product?.trim() || null,
+        p_lot: payload.lot?.trim() || null
+      });
+
+      if (error) throw error;
+
+      const updated = Array.isArray(data) ? data[0] : data;
+      if (!updated?.id) {
+        throw new Error("O Supabase não confirmou a atualização.");
+      }
+
+      await loadData();
+
+      const confirmed = state.data.tanks.find(item => item.id === tank.id);
+      if (!confirmed || Math.abs(Number(confirmed.volume) - newVolume) > 0.001) {
+        throw new Error("O novo volume não foi confirmado após a leitura do banco.");
+      }
+
+      renderAll();
+      closeModal();
+      toast(`${tank.name}: ${fmt.format(newVolume)} ${tank.unit}.`, "success");
+      return confirmed;
+    } catch (error) {
+      if (message) {
+        message.textContent = error.message;
+        message.classList.remove("hidden");
+      }
+
+      try {
+        await state.client.from("system_errors").insert({
+          user_id: state.user.id,
+          context: "tank_volume_update",
+          message: error.message,
+          stack: error.stack || null,
+          user_agent: navigator.userAgent
+        });
+      } catch (_) {}
+
+      throw error;
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = originalLabel;
+      }
+    }
+  }
+
   async function saveOperation(payload, id = null) {
     const start = payload.start_at ? new Date(payload.start_at) : null;
     const end = payload.end_at ? new Date(payload.end_at) : null;
@@ -1349,76 +1450,8 @@
       }
 
       if (form.id === "tankForm") {
-        const payload = Object.fromEntries(new FormData(form));
-        const tank = state.data.tanks.find(item => item.id === payload.id);
-
-        if (!tank) throw new Error("Tanque ou silo não localizado.");
-
-        const normalizedVolume = String(payload.volume ?? "")
-          .trim()
-          .replace(",", ".");
-        const newVolume = Number(normalizedVolume);
-
-        if (!Number.isFinite(newVolume)) {
-          throw new Error("Informe uma volumetria válida.");
-        }
-        if (newVolume < 0) {
-          throw new Error("A volumetria não pode ser negativa.");
-        }
-        if (newVolume > Number(tank.capacity)) {
-          throw new Error(`O volume não pode ultrapassar ${fmt.format(tank.capacity)} ${tank.unit}.`);
-        }
-
-        const before = { ...tank };
-        const updatedAt = new Date().toISOString();
-
-        const { data: updatedTank, error } = await state.client
-          .from("tanks")
-          .update({
-            status: payload.status,
-            current_product: payload.product?.trim() || null,
-            current_lot: payload.lot?.trim() || null,
-            current_volume: newVolume,
-            updated_by: state.user.id,
-            updated_at: updatedAt
-          })
-          .eq("id", tank.id)
-          .select("id,current_volume,current_product,current_lot,status,updated_by,updated_at")
-          .single();
-
-        if (error) throw error;
-        if (!updatedTank) throw new Error("O Supabase não confirmou a atualização da volumetria.");
-
-        Object.assign(tank, {
-          volume: Number(updatedTank.current_volume || 0),
-          product: updatedTank.current_product || "",
-          lot: updatedTank.current_lot || "",
-          status: updatedTank.status,
-          updated_by: updatedTank.updated_by,
-          updated_at: updatedTank.updated_at
-        });
-
-        renderTanks();
-        renderDashboard();
-
-        const { error: historyError } = await state.client.from("tank_history").insert({
-          tank_id: tank.id,
-          tank_name: tank.name,
-          previous_product: before.product || null,
-          new_product: tank.product || null,
-          previous_lot: before.lot || null,
-          new_lot: tank.lot || null,
-          previous_volume: Number(before.volume || 0),
-          new_volume: Number(tank.volume || 0),
-          previous_status: before.status,
-          new_status: tank.status,
-          changed_by: state.user.id
-        });
-
-        if (historyError) {
-          console.error("Falha ao registrar histórico da tancagem:", historyError);
-          toast("Volume atualizado, mas o histórico não foi registrado.", "warning");
-        }
+        await saveTankVolume(form, form.querySelector('[data-action="save-tank-volume"]'));
+        return;
       }
 
       if (form.id === "genericForm") {
@@ -1596,6 +1629,15 @@
     const action = button.dataset.action;
     if (action === "refresh") {
       try { await loadData(); renderAll(); toast("Dados atualizados."); } catch (e) { toast(e.message, "error"); }
+      return;
+    }
+
+    if (action === "save-tank-volume") {
+      try {
+        await saveTankVolume(button.closest("form"), button);
+      } catch (error) {
+        toast(`Erro ao atualizar volume: ${error.message}`, "error");
+      }
       return;
     }
     if (action === "new-operation") return openModal("Nova operação", operationForm(), "OPERAÇÃO");

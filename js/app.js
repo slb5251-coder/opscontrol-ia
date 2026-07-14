@@ -659,7 +659,7 @@
     const rows = operations.map(op => {
       const pct = op.planned ? Math.min(100, Math.round(op.executed / op.planned * 100)) : 0;
       const flow = operationFlow(op);
-      const canEdit = !op.locked || hasRole(["supervisor"]);
+      const canEdit = isAdmin() || !op.locked || hasRole(["supervisor"]);
       const source = state.data.tanks.find(t => t.id === op.source_tank_id)?.name;
       const destination = state.data.tanks.find(t => t.id === op.destination_tank_id)?.name;
       const tankLabel = source ? `Origem: ${source}` : destination ? `Destino: ${destination}` : "Não vinculada";
@@ -684,7 +684,7 @@
     const mobile = operations.map(op => {
       const source = state.data.tanks.find(t => t.id === op.source_tank_id)?.name;
       const destination = state.data.tanks.find(t => t.id === op.destination_tank_id)?.name;
-      return `<div class="card mobile-record-card"><div class="mobile-record-head"><div><strong>${esc(op.client)}</strong><small>${esc(op.vessel)} • ${esc(op.activity)}</small></div>${badge(op.status)}</div><div class="mobile-record-grid"><span>Produto<strong>${esc(op.product)}</strong></span><span>Executado<strong>${fmt.format(op.executed)} ${esc(op.unit)}</strong></span><span>Tancagem<strong>${esc(source || destination || "Manual")}</strong></span><span>Vazão<strong>${fmt.format(operationFlow(op))} ${esc(op.unit)}/h</strong></span></div><div class="row-actions"><button class="btn small secondary" data-operation-timeline="${op.id}">Timeline</button>${!op.locked || hasRole(["supervisor"]) ? `<button class="btn small primary" data-edit-operation="${op.id}">Editar</button>` : ""}</div></div>`;
+      return `<div class="card mobile-record-card"><div class="mobile-record-head"><div><strong>${esc(op.client)}</strong><small>${esc(op.vessel)} • ${esc(op.activity)}</small></div>${badge(op.status)}</div><div class="mobile-record-grid"><span>Produto<strong>${esc(op.product)}</strong></span><span>Executado<strong>${fmt.format(op.executed)} ${esc(op.unit)}</strong></span><span>Tancagem<strong>${esc(source || destination || "Manual")}</strong></span><span>Vazão<strong>${fmt.format(operationFlow(op))} ${esc(op.unit)}/h</strong></span></div><div class="row-actions"><button class="btn small secondary" data-operation-timeline="${op.id}">Timeline</button>${isAdmin() || !op.locked || hasRole(["supervisor"]) ? `<button class="btn small primary" data-edit-operation="${op.id}">Editar</button>` : ""}</div></div>`;
     }).join("");
 
     $("#page-operations").innerHTML =
@@ -696,7 +696,7 @@
   function operationForm(op = {}) {
     const responsibleOptions = state.data.users.map(user => `<option value="${user.id}" ${op.responsible_id === user.id ? "selected" : ""}>${esc(user.name)}</option>`).join("");
     const tankOptions = state.data.tanks.map(tank => `<option value="${tank.id}" ${op.source_tank_id === tank.id || op.destination_tank_id === tank.id ? "selected" : ""}>${esc(tank.name)} — ${fmt.format(tank.volume)}/${fmt.format(tank.capacity)} ${esc(tank.unit)} — ${esc(tank.product || "Vazio")}</option>`).join("");
-    const applied = op.tank_movement_applied === true;
+    const applied = op.tank_movement_applied === true && !isAdmin();
     return `<form id="operationForm" data-id="${op.id || ""}"><div class="form-grid">
       <div><label>Cliente *</label><input name="client" required value="${esc(op.client || "")}"></div>
       <div><label>Embarcação *</label><input name="vessel" required value="${esc(op.vessel || "")}"></div>
@@ -796,7 +796,7 @@
       </div>
 
       <div class="row-actions">
-        ${hasRole(["supervisor", "lider", "operador", "logistica"]) ? `<button class="btn small primary" data-edit-tank="${tank.id}">Atualizar volume</button>` : ""}
+        ${hasRole(["supervisor", "lider", "operador", "logistica"]) ? `<button class="btn small primary" data-edit-tank="${tank.id}">${isAdmin() ? "Editar tudo" : "Atualizar volume"}</button>` : ""}
         <button class="btn small secondary" data-tank-history="${tank.id}">Histórico</button>
         <button class="btn small secondary" data-tank-movements="${tank.id}">Movimentações</button>
       </div>
@@ -830,25 +830,36 @@
   }
 
   function tankForm(tank) {
-    return `<form id="tankForm" novalidate>
+    const admin = isAdmin();
+    return `<form id="tankForm" data-admin-full="${admin ? "true" : "false"}" novalidate>
       <input type="hidden" name="id" value="${tank.id}">
       <div class="form-grid">
-        <div><label>Tanque ou silo</label><input value="${esc(tank.name)}" disabled></div>
-        <div><label>Capacidade</label><input value="${fmt.format(tank.capacity)} ${esc(tank.unit)}" disabled></div>
+        ${admin ? `
+          <div><label>Nome *</label><input name="name" required value="${esc(tank.name)}"></div>
+          <div><label>Fase *</label><select name="phase">${["Phase #1", "Phase #2"].map(x => `<option ${tank.phase === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
+          <div><label>Tipo *</label><select name="kind">${["Tanque", "Mix Tank", "Silo"].map(x => `<option ${tank.kind === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
+          <div><label>Ordem de exibição</label><input name="display_order" type="number" min="0" step="1" value="${tank.order ?? 0}"></div>
+          <div><label>Capacidade *</label><input name="capacity" type="text" inputmode="decimal" value="${String(tank.capacity).replace(".", ",")}" required></div>
+          <div><label>Unidade *</label><select name="unit">${["bbl", "ton", "m³"].map(x => `<option ${tank.unit === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
+        ` : `
+          <div><label>Tanque ou silo</label><input value="${esc(tank.name)}" disabled></div>
+          <div><label>Capacidade</label><input value="${fmt.format(tank.capacity)} ${esc(tank.unit)}" disabled></div>
+        `}
         <div><label>Status</label><select name="status">${["Disponível", "Liberado", "Em uso", "Bloqueado", "Limpeza", "Manutenção"].map(x => `<option ${tank.status === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
         <div>
-          <label>Volume atual (${esc(tank.unit)})</label>
+          <label>Volume atual (${esc(tank.unit)}) *</label>
           <input name="volume" type="text" inputmode="decimal" autocomplete="off"
             value="${String(tank.volume).replace(".", ",")}" required>
           <small class="field-help">Ex.: 850 ou 850,50.</small>
         </div>
         <div class="wide"><label>Produto</label><input name="product" value="${esc(tank.product)}"></div>
         <div class="wide"><label>Lote</label><input name="lot" value="${esc(tank.lot)}"></div>
+        ${admin ? `<div class="wide admin-edit-notice"><strong>Modo administrador</strong><span>Você pode alterar toda a configuração deste tanque ou silo. O histórico continuará sendo registrado automaticamente.</span></div>` : ""}
       </div>
       <div id="tankSaveMessage" class="message hidden"></div>
       <div class="form-actions">
         <button type="button" class="btn secondary" data-close-modal>Cancelar</button>
-        <button type="button" class="btn primary" data-action="save-tank-volume">Salvar volume</button>
+        <button type="button" class="btn primary" data-action="save-tank-volume">${admin ? "Salvar todas as alterações" : "Salvar volume"}</button>
       </div>
     </form>`;
   }
@@ -857,12 +868,12 @@
     const rows = state.data.fluids.map(item => `<tr>
       <td><strong>${esc(item.name)}</strong><br><small>${item.density ? `${fmt.format(item.density)} ppg` : "Densidade não informada"}</small></td>
       <td>${badge(item.type)}</td><td>${esc(item.unit || "-")}</td><td>${badge(item.active ? "Ativo" : "Inativo")}</td>
-      <td><button class="btn small secondary" data-attachments="fluid:${item.id}" data-attachment-title="${esc(item.name)}">📎 ${attachmentCount("fluid", item.id)}</button></td>
+      <td><div class="row-actions"><button class="btn small secondary" data-attachments="fluid:${item.id}" data-attachment-title="${esc(item.name)}">📎 ${attachmentCount("fluid", item.id)}</button>${isAdmin() ? `<button class="btn small primary" data-edit-fluid="${item.id}">Editar</button>` : ""}</div></td>
     </tr>`).join("");
     $("#page-fluids").innerHTML =
       header("Fluidos e granéis", "Produtos, densidades, unidades e documentos.",
         hasRole(["supervisor", "lider", "logistica"]) ? `<button class="btn primary" data-action="new-fluid">+ Adicionar produto</button>` : "") +
-      `<div class="card table-wrap"><table class="data-table"><thead><tr><th>Produto</th><th>Classificação</th><th>Unidade</th><th>Status</th><th>Anexos</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+      `<div class="card table-wrap"><table class="data-table"><thead><tr><th>Produto</th><th>Classificação</th><th>Unidade</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }
 
 
@@ -890,7 +901,7 @@
       return `<tr><td><strong>${esc(item.name)}</strong><br><small>${esc(item.category || "Produto químico")}</small></td><td>${esc(item.lot || "-")}<br><small>FEFO #${fefoRank.get(item.id) || "-"}</small></td><td><strong>${fmt.format(item.quantity)} ${esc(item.unit)}</strong><br><small>Mínimo: ${fmt.format(item.minimum)} ${esc(item.unit)}</small></td><td>${dateOnly(item.expiry_date)}${days !== null ? `<br><small>${days < 0 ? `${Math.abs(days)} dias vencido` : `${days} dias restantes`}</small>` : ""}</td><td>${esc(item.location || "-")}</td><td>${badge(status)}</td><td><div class="row-actions">${canMove ? `<button class="btn small primary" data-chemical-move="${item.id}">Movimentar</button><button class="btn small secondary" data-edit-chemical="${item.id}">Editar</button>` : ""}<button class="btn small secondary" data-chemical-history="${item.id}">Histórico</button><button class="btn small secondary" data-attachments="chemical:${item.id}" data-attachment-title="${esc(item.name)}">📎 ${attachmentCount("chemical", item.id)}</button></div></td></tr>`;
     }).join("");
 
-    const mobile = items.map(item => `<div class="card mobile-record-card"><div class="mobile-record-head"><div><strong>${esc(item.name)}</strong><small>Lote ${esc(item.lot || "-")} • FEFO #${fefoRank.get(item.id) || "-"}</small></div>${badge(chemicalDisplayStatus(item))}</div><div class="mobile-record-grid"><span>Saldo<strong>${fmt.format(item.quantity)} ${esc(item.unit)}</strong></span><span>Mínimo<strong>${fmt.format(item.minimum)} ${esc(item.unit)}</strong></span><span>Validade<strong>${dateOnly(item.expiry_date)}</strong></span><span>Local<strong>${esc(item.location || "-")}</strong></span></div><div class="row-actions"><button class="btn small primary" data-chemical-move="${item.id}">Movimentar</button><button class="btn small secondary" data-chemical-history="${item.id}">Histórico</button></div></div>`).join("");
+    const mobile = items.map(item => `<div class="card mobile-record-card"><div class="mobile-record-head"><div><strong>${esc(item.name)}</strong><small>Lote ${esc(item.lot || "-")} • FEFO #${fefoRank.get(item.id) || "-"}</small></div>${badge(chemicalDisplayStatus(item))}</div><div class="mobile-record-grid"><span>Saldo<strong>${fmt.format(item.quantity)} ${esc(item.unit)}</strong></span><span>Mínimo<strong>${fmt.format(item.minimum)} ${esc(item.unit)}</strong></span><span>Validade<strong>${dateOnly(item.expiry_date)}</strong></span><span>Local<strong>${esc(item.location || "-")}</strong></span></div><div class="row-actions"><button class="btn small primary" data-chemical-move="${item.id}">Movimentar</button>${isAdmin() ? `<button class="btn small secondary" data-edit-chemical="${item.id}">Editar</button>` : ""}<button class="btn small secondary" data-chemical-history="${item.id}">Histórico</button></div></div>`).join("");
 
     $("#page-chemicals").innerHTML = header("Inventário de produtos químicos", "Saldo por produto e lote, FEFO, validade, estoque mínimo e rastreabilidade.", `${hasRole(["supervisor", "lider", "logistica", "qhse"]) ? `<button class="btn primary" data-action="new-chemical">+ Novo produto/lote</button>` : ""}<button class="btn secondary" data-action="show-fefo">Ordem FEFO</button><button class="btn secondary" data-export="chemicals">Exportar CSV</button>`) +
       `<div class="grid four">${statCard("Produtos e lotes", fmt.format(totalLots), "itens cadastrados", "▧")}${statCard("Baixo estoque", fmt.format(lowStock), "abaixo do mínimo", "⚠")}${statCard("Próximos do vencimento", fmt.format(expiring), "até 60 dias", "⏳")}${statCard("Vencidos", fmt.format(expired), "exigem tratamento", "✕")}</div>
@@ -899,8 +910,8 @@
 
   function renderTrucks() {
     const trucks = filteredTrucks();
-    const rows = trucks.map(item => `<tr><td>${dateOnly(item.date)}</td><td>${badge(item.movement)}</td><td>${esc(item.supplier)}<br><small>${esc(item.client || "-")}</small></td><td><strong>${esc(item.product)}</strong><br><small>${fmt.format(item.quantity)} ${esc(item.unit)} • Lote ${esc(item.lot || "-")}</small></td><td>${esc(item.plate || "-")}<br><small>${esc(item.driver || "-")}</small></td><td>${esc(item.invoice || "-")}</td><td>${badge(item.status)}</td><td><button class="btn small secondary" data-attachments="truck:${item.id}" data-attachment-title="${esc(item.plate || item.product)}">📎 ${attachmentCount("truck", item.id)}</button></td></tr>`).join("");
-    const mobile = trucks.map(item => `<div class="card mobile-record-card"><div class="mobile-record-head"><div><strong>${esc(item.product)}</strong><small>${dateOnly(item.date)} • ${esc(item.movement)}</small></div>${badge(item.status)}</div><div class="mobile-record-grid"><span>Quantidade<strong>${fmt.format(item.quantity)} ${esc(item.unit)}</strong></span><span>Origem/Destino<strong>${esc(item.supplier)}</strong></span><span>Placa<strong>${esc(item.plate || "-")}</strong></span><span>NF<strong>${esc(item.invoice || "-")}</strong></span></div></div>`).join("");
+    const rows = trucks.map(item => `<tr><td>${dateOnly(item.date)}</td><td>${badge(item.movement)}</td><td>${esc(item.supplier)}<br><small>${esc(item.client || "-")}</small></td><td><strong>${esc(item.product)}</strong><br><small>${fmt.format(item.quantity)} ${esc(item.unit)} • Lote ${esc(item.lot || "-")}</small></td><td>${esc(item.plate || "-")}<br><small>${esc(item.driver || "-")}</small></td><td>${esc(item.invoice || "-")}</td><td>${badge(item.status)}</td><td><div class="row-actions"><button class="btn small secondary" data-attachments="truck:${item.id}" data-attachment-title="${esc(item.plate || item.product)}">📎 ${attachmentCount("truck", item.id)}</button>${isAdmin() ? `<button class="btn small primary" data-edit-truck="${item.id}">Editar</button>` : ""}</div></td></tr>`).join("");
+    const mobile = trucks.map(item => `<div class="card mobile-record-card"><div class="mobile-record-head"><div><strong>${esc(item.product)}</strong><small>${dateOnly(item.date)} • ${esc(item.movement)}</small></div>${badge(item.status)}</div><div class="mobile-record-grid"><span>Quantidade<strong>${fmt.format(item.quantity)} ${esc(item.unit)}</strong></span><span>Origem/Destino<strong>${esc(item.supplier)}</strong></span><span>Placa<strong>${esc(item.plate || "-")}</strong></span><span>NF<strong>${esc(item.invoice || "-")}</strong></span></div>${isAdmin() ? `<div class="row-actions"><button class="btn small primary" data-edit-truck="${item.id}">Editar</button></div>` : ""}</div>`).join("");
     $("#page-trucks").innerHTML = header("Carretas", "Entradas, saídas, NF, motorista e documentos.", `<button class="btn secondary" data-export="trucks">Exportar CSV</button>${hasRole(["supervisor", "lider", "logistica"]) ? `<button class="btn primary" data-action="new-truck">+ Nova movimentação</button>` : ""}`) + `<div class="card table-wrap desktop-record-table"><table class="data-table"><thead><tr><th>Data</th><th>Movimento</th><th>Origem / Cliente</th><th>Produto</th><th>Placa / Motorista</th><th>NF</th><th>Status</th><th>Anexos</th></tr></thead><tbody>${rows || `<tr><td colspan="8" class="empty">Nenhuma movimentação.</td></tr>`}</tbody></table></div><div class="mobile-record-list">${mobile}</div>`;
   }
 
@@ -914,13 +925,13 @@
         <td>${esc(item.responsible || "-")}</td><td>${badge(item.severity)}</td><td>${badge(item.status)}</td>
         <td><div class="row-actions">
           <button class="btn small secondary" data-qhse-actions="${item.id}">Ações (${openActions})</button>
-          <button class="btn small secondary" data-attachments="qhse:${item.id}" data-attachment-title="${esc(item.title)}">📎 ${attachmentCount("qhse", item.id)}</button>
+          <button class="btn small secondary" data-attachments="qhse:${item.id}" data-attachment-title="${esc(item.title)}">📎 ${attachmentCount("qhse", item.id)}</button>${isAdmin() ? `<button class="btn small primary" data-edit-qhse="${item.id}">Editar</button>` : ""}
         </div></td>
       </tr>`;
     }).join("");
     const mobile = state.data.qhse.map(item => {
       const openActions = state.data.actionItems.filter(a => a.qhse_record_id === item.id && a.status !== "Concluído").length;
-      return `<div class="card mobile-record-card"><div class="mobile-record-head"><div><strong>${esc(item.title)}</strong><small>${dateOnly(item.date)} • ${esc(item.type)}</small></div>${badge(item.status)}</div><p>${esc(item.description || "Sem descrição")}</p><div class="mobile-record-grid"><span>Responsável<strong>${esc(item.responsible || "-")}</strong></span><span>Severidade<strong>${esc(item.severity)}</strong></span></div><div class="row-actions"><button class="btn small secondary" data-qhse-actions="${item.id}">Ações (${openActions})</button><button class="btn small secondary" data-attachments="qhse:${item.id}" data-attachment-title="${esc(item.title)}">Anexos (${attachmentCount("qhse", item.id)})</button></div></div>`;
+      return `<div class="card mobile-record-card"><div class="mobile-record-head"><div><strong>${esc(item.title)}</strong><small>${dateOnly(item.date)} • ${esc(item.type)}</small></div>${badge(item.status)}</div><p>${esc(item.description || "Sem descrição")}</p><div class="mobile-record-grid"><span>Responsável<strong>${esc(item.responsible || "-")}</strong></span><span>Severidade<strong>${esc(item.severity)}</strong></span></div><div class="row-actions"><button class="btn small secondary" data-qhse-actions="${item.id}">Ações (${openActions})</button><button class="btn small secondary" data-attachments="qhse:${item.id}" data-attachment-title="${esc(item.title)}">Anexos (${attachmentCount("qhse", item.id)})</button>${isAdmin() ? `<button class="btn small primary" data-edit-qhse="${item.id}">Editar</button>` : ""}</div></div>`;
     }).join("");
 
     const actions = canAddQhse ? `<button class="btn primary" data-action="new-qhse">+ Novo registro QHSE</button>` : "";
@@ -939,7 +950,7 @@
       const openOrders = state.data.maintenanceOrders.filter(order => order.equipment_id === item.id && !["Concluída", "Fechada", "Cancelada"].includes(order.status)).length;
       const hoursDue = item.maintenance_due_hourmeter > 0 ? item.maintenance_due_hourmeter - item.hourmeter : null;
       const preventive = hoursDue !== null && hoursDue <= 0 ? "Vencida por horímetro" : item.next_maintenance_date ? `${dateOnly(item.next_maintenance_date)}${hoursDue !== null ? ` • ${fmt.format(hoursDue)} h` : ""}` : hoursDue !== null ? `${fmt.format(hoursDue)} h restantes` : "Não programada";
-      return `<tr><td><strong>${esc(item.name)}</strong><br><small>${esc(item.category)} • ${esc(item.location || "-")}</small></td><td>${badge(item.status)}</td><td>${fmt.format(item.hourmeter)} h</td><td>${esc(preventive)}</td><td>${fmt.format(used)} L</td><td>${fmt.format(average)} L/h</td><td>${openOrders}</td><td>${canManageMaintenance ? `<button class="btn small primary" data-new-order-equipment="${item.id}">Abrir OS</button>` : ""}</td></tr>`;
+      return `<tr><td><strong>${esc(item.name)}</strong><br><small>${esc(item.category)} • ${esc(item.location || "-")}</small></td><td>${badge(item.status)}</td><td>${fmt.format(item.hourmeter)} h</td><td>${esc(preventive)}</td><td>${fmt.format(used)} L</td><td>${fmt.format(average)} L/h</td><td>${openOrders}</td><td><div class="row-actions">${canManageMaintenance ? `<button class="btn small primary" data-new-order-equipment="${item.id}">Abrir OS</button>` : ""}${isAdmin() ? `<button class="btn small secondary" data-edit-equipment="${item.id}">Editar</button>` : ""}</div></td></tr>`;
     }).join("");
     const orderRows = state.data.maintenanceOrders.map(order => {
       const equipment = state.data.equipment.find(x => x.id === order.equipment_id)?.name || "Equipamento removido";
@@ -964,18 +975,18 @@
         <td><strong>${esc(item.title)}</strong><br><small>${esc(item.issuer || "-")}</small></td>
         <td>${esc(item.owner)}</td><td>${dateOnly(item.expires_at)}${days !== null ? `<br><small>${days < 0 ? `${Math.abs(days)} dias vencido` : `${days} dias restantes`}</small>` : ""}</td>
         <td>${badge(automaticStatus)}</td>
-        <td><button class="btn small secondary" data-attachments="certificate:${item.id}" data-attachment-title="${esc(item.title)}">📎 ${attachmentCount("certificate", item.id)}</button></td>
+        <td><div class="row-actions"><button class="btn small secondary" data-attachments="certificate:${item.id}" data-attachment-title="${esc(item.title)}">📎 ${attachmentCount("certificate", item.id)}</button>${isAdmin() ? `<button class="btn small primary" data-edit-certificate="${item.id}">Editar</button>` : ""}</div></td>
       </tr>`;
     }).join("");
     $("#page-certificates").innerHTML =
       header("Certificados", "Validade, alertas automáticos e arquivos privados.",
         `<button class="btn primary" data-action="new-certificate">+ Adicionar certificado</button>`) +
-      `<div class="card table-wrap"><table class="data-table"><thead><tr><th>Certificado</th><th>Colaborador</th><th>Validade</th><th>Status</th><th>Arquivo</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+      `<div class="card table-wrap"><table class="data-table"><thead><tr><th>Certificado</th><th>Colaborador</th><th>Validade</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table></div>`;
   }
 
   function renderAlerts() {
     const automatic = state.data.systemAlerts.map(item => `<div class="card alert-card automatic-alert"><div class="kpi-row"><div><strong>${esc(item.title)}</strong><span class="muted">Automático • ${dateTime(item.created_at)}</span></div>${badge(item.level)}</div><p>${esc(item.message)}</p><button class="btn small secondary" data-go-module="${esc(item.module)}">Abrir seção</button></div>`).join("");
-    const alerts = state.data.alerts.map(item => `<div class="card alert-card"><div class="kpi-row"><div><strong>${esc(item.title)}</strong><span class="muted">${esc(item.target || "Todos")} • ${dateTime(item.created_at)}</span></div>${badge(item.level)}</div><p>${esc(item.message)}</p></div>`).join("");
+    const alerts = state.data.alerts.map(item => `<div class="card alert-card"><div class="kpi-row"><div><strong>${esc(item.title)}</strong><span class="muted">${esc(item.target || "Todos")} • ${dateTime(item.created_at)}</span></div>${badge(item.level)}</div><p>${esc(item.message)}</p>${isAdmin() ? `<button class="btn small primary" data-edit-alert="${item.id}">Editar alerta</button>` : ""}</div>`).join("");
     const messages = state.data.messages.map(item => `<div class="chat-message ${item.mine ? "mine" : ""}"><strong>${esc(item.sender)}</strong><br>${esc(item.text)}<br><small>${dateTime(item.created_at)}</small></div>`).join("");
     $("#page-alerts").innerHTML = header("Alertas e chat", "Alertas automáticos e comunicação interna por equipe.", `<button class="btn primary" data-action="new-alert">+ Novo alerta</button>`) + `<div class="chat-layout"><div><div class="section-title">Alertas automáticos</div><div style="display:grid;gap:9px">${automatic || `<div class="empty">Nenhum risco automático identificado.</div>`}</div><div class="section-title">Alertas enviados</div><div style="display:grid;gap:9px">${alerts || `<div class="empty">Nenhum alerta enviado.</div>`}</div></div><div class="card chat-panel"><h3>Canal Operação Geral</h3><div id="messages" class="messages">${messages}</div><div class="chat-input"><input id="chatText" placeholder="Digite uma mensagem..."><button class="btn primary" data-action="send-message">Enviar</button></div></div></div>`;
   }
@@ -1013,136 +1024,95 @@
     const userRows = users.map(user => `<tr><td><strong>${esc(user.name)}</strong><br><small>${esc(user.email)}</small></td><td>${badge(user.role)}</td><td>${esc(user.department || "-")}</td><td>${badge(user.active ? "Ativo" : "Inativo")}</td><td>${dateOnly(user.created_at)}</td><td>${isAdmin() ? `<button class="btn small primary" data-edit-user="${user.id}">Gerenciar</button>` : ""}</td></tr>`).join("");
     const lastSync = state.lastSync ? state.lastSync.toLocaleString("pt-BR") : "Não sincronizado";
     const errors = state.data.systemErrors || [];
-    $("#page-settings").innerHTML = header("Configurações", "Perfil, usuários, permissões, diagnóstico e aparência.", `<button class="btn secondary" data-action="toggle-theme">Alternar tema</button>${isAdmin() ? `<button class="btn primary" data-action="new-user">+ Novo usuário</button>` : ""}`) + `<div class="grid two"><div class="card"><h3>Meu perfil</h3><div class="kpi-list" style="margin-top:14px"><div class="kpi-row"><span>Nome</span><strong>${esc(state.data.profile.name)}</strong></div><div class="kpi-row"><span>E-mail</span><strong>${esc(state.data.profile.email)}</strong></div><div class="kpi-row"><span>Cargo</span>${badge(state.data.profile.role)}</div><div class="kpi-row"><span>Departamento</span><strong>${esc(state.data.profile.department || "-")}</strong></div></div></div><div class="card"><h3>Diagnóstico do sistema</h3><div class="kpi-list" style="margin-top:14px"><div class="kpi-row"><span>Última sincronização</span><strong>${esc(lastSync)}</strong></div><div class="kpi-row"><span>Tanques e silos</span><strong>${state.data.tanks.length}</strong></div><div class="kpi-row"><span>Operações</span><strong>${state.data.operations.length}</strong></div><div class="kpi-row"><span>Alertas automáticos</span><strong>${state.data.systemAlerts.length}</strong></div><div class="kpi-row"><span>Erros registrados</span><strong>${errors.length}</strong></div></div><div class="info-box" style="margin-top:12px">Movimentações automáticas e transferências são executadas por transações no Supabase.</div></div></div><div class="section-title">Usuários e permissões</div><div class="card table-wrap">${isAdmin() ? "" : `<div class="info-box" style="margin-bottom:12px">Somente o administrador pode alterar cargo, setor, status e permissões.</div>`}<table class="data-table"><thead><tr><th>Usuário</th><th>Cargo</th><th>Departamento</th><th>Status</th><th>Cadastro</th><th>Ação</th></tr></thead><tbody>${userRows}</tbody></table></div>${isAdmin() && errors.length ? `<div class="section-title">Erros recentes</div><div class="card table-wrap"><table class="data-table"><thead><tr><th>Data</th><th>Contexto</th><th>Mensagem</th></tr></thead><tbody>${errors.slice(0,20).map(e => `<tr><td>${dateTime(e.created_at)}</td><td>${esc(e.context || "-")}</td><td>${esc(e.message)}</td></tr>`).join("")}</tbody></table></div>` : ""}`;
+    $("#page-settings").innerHTML = header("Configurações", "Perfil, usuários, permissões, diagnóstico e aparência.", `<button class="btn secondary" data-action="toggle-theme">Alternar tema</button>${isAdmin() ? `<button class="btn primary" data-action="new-user">+ Novo usuário</button>` : ""}`) + `<div class="grid two"><div class="card"><h3>Meu perfil</h3><div class="kpi-list" style="margin-top:14px"><div class="kpi-row"><span>Nome</span><strong>${esc(state.data.profile.name)}</strong></div><div class="kpi-row"><span>E-mail</span><strong>${esc(state.data.profile.email)}</strong></div><div class="kpi-row"><span>Cargo</span>${badge(state.data.profile.role)}</div><div class="kpi-row"><span>Departamento</span><strong>${esc(state.data.profile.department || "-")}</strong></div></div></div><div class="card"><h3>Diagnóstico do sistema</h3><div class="kpi-list" style="margin-top:14px"><div class="kpi-row"><span>Última sincronização</span><strong>${esc(lastSync)}</strong></div><div class="kpi-row"><span>Tanques e silos</span><strong>${state.data.tanks.length}</strong></div><div class="kpi-row"><span>Operações</span><strong>${state.data.operations.length}</strong></div><div class="kpi-row"><span>Alertas automáticos</span><strong>${state.data.systemAlerts.length}</strong></div><div class="kpi-row"><span>Erros registrados</span><strong>${errors.length}</strong></div></div><div class="info-box" style="margin-top:12px">Movimentações automáticas e transferências são executadas por transações no Supabase.</div>${isAdmin() ? `<div class="admin-edit-notice" style="margin-top:12px"><strong>Edição total ativa</strong><span>O administrador pode editar registros operacionais de todos os módulos. Históricos e auditorias permanecem protegidos.</span></div>` : ""}</div></div><div class="section-title">Usuários e permissões</div><div class="card table-wrap">${isAdmin() ? "" : `<div class="info-box" style="margin-bottom:12px">Somente o administrador pode alterar cargo, setor, status e permissões.</div>`}<table class="data-table"><thead><tr><th>Usuário</th><th>Cargo</th><th>Departamento</th><th>Status</th><th>Cadastro</th><th>Ação</th></tr></thead><tbody>${userRows}</tbody></table></div>${isAdmin() && errors.length ? `<div class="section-title">Erros recentes</div><div class="card table-wrap"><table class="data-table"><thead><tr><th>Data</th><th>Contexto</th><th>Mensagem</th></tr></thead><tbody>${errors.slice(0,20).map(e => `<tr><td>${dateTime(e.created_at)}</td><td>${esc(e.context || "-")}</td><td>${esc(e.message)}</td></tr>`).join("")}</tbody></table></div>` : ""}`;
   }
 
-  function genericForm(kind) {
+  function genericForm(kind, item = {}) {
+    const sel = (value, option) => String(value ?? "") === String(option) ? "selected" : "";
+    const id = item.id || "";
     const forms = {
-      fluid: `<form id="genericForm" data-kind="fluid"><div class="form-grid">
-        <div class="wide"><label>Nome do produto *</label><input name="name" required></div>
-        <div><label>Classificação</label><select name="type"><option>WBM</option><option>Brine</option><option>SBM</option><option>Olefina</option><option>Granel</option><option>Insumo</option></select></div>
-        <div><label>Unidade</label><select name="unit"><option>bbl</option><option>ton</option><option>m³</option><option>kg</option></select></div>
-        <div><label>Densidade (ppg)</label><input name="density" type="number" min="0" step="0.001"></div>
-        <div><label>Ativo</label><select name="active"><option value="true">Sim</option><option value="false">Não</option></select></div>
+      fluid: `<form id="genericForm" data-kind="fluid" data-id="${id}"><div class="form-grid">
+        <div class="wide"><label>Nome do produto *</label><input name="name" required value="${esc(item.name || "")}"></div>
+        <div><label>Classificação</label><select name="type">${["WBM","Brine","SBM","Olefina","Granel","Insumo"].map(x => `<option ${sel(item.type,x)}>${x}</option>`).join("")}</select></div>
+        <div><label>Unidade</label><select name="unit">${["bbl","ton","m³","kg"].map(x => `<option ${sel(item.unit,x)}>${x}</option>`).join("")}</select></div>
+        <div><label>Densidade (ppg)</label><input name="density" type="number" min="0" step="0.001" value="${item.density || ""}"></div>
+        <div><label>Ativo</label><select name="active"><option value="true" ${item.active !== false ? "selected" : ""}>Sim</option><option value="false" ${item.active === false ? "selected" : ""}>Não</option></select></div>
         <div class="wide"><label>Documentos ou fotos</label><input name="attachment" type="file" accept=".pdf,image/jpeg,image/png,image/webp,image/heic,image/heif" multiple></div>
-      </div>${formActions("Salvar produto")}</form>`,
+      </div>${formActions(id ? "Salvar alterações" : "Salvar produto")}</form>`,
 
-      truck: `<form id="genericForm" data-kind="truck"><div class="form-grid">
-        <div><label>Data *</label><input name="date" type="date" required value="${new Date().toISOString().slice(0,10)}"></div>
-        <div><label>Movimento</label><select name="movement"><option>Entrada</option><option>Saída</option><option>Backload</option></select></div>
-        <div><label>Origem / Destino *</label><input name="supplier" required></div>
-        <div><label>Cliente</label><input name="client"></div>
-        <div><label>Produto *</label><input name="product" required></div>
-        <div><label>Lote</label><input name="lot"></div>
-        <div><label>Quantidade *</label><input name="quantity" type="number" min="0" step="0.01" required></div>
-        <div><label>Unidade</label><select name="unit"><option>ton</option><option>bbl</option><option>m³</option></select></div>
-        <div><label>Placa</label><input name="plate"></div>
-        <div><label>Motorista</label><input name="driver"></div>
-        <div><label>Nota fiscal</label><input name="invoice"></div>
-        <div><label>Status</label><select name="status"><option>Programada</option><option>Recebida</option><option>Concluída</option></select></div>
-        <div class="wide"><label>Observações</label><textarea name="notes"></textarea></div>
+      truck: `<form id="genericForm" data-kind="truck" data-id="${id}"><div class="form-grid">
+        <div><label>Data *</label><input name="date" type="date" required value="${String(item.date || new Date().toISOString()).slice(0,10)}"></div>
+        <div><label>Movimento</label><select name="movement">${["Entrada","Saída","Backload"].map(x => `<option ${sel(item.movement,x)}>${x}</option>`).join("")}</select></div>
+        <div><label>Origem / Destino *</label><input name="supplier" required value="${esc(item.supplier || "")}"></div>
+        <div><label>Cliente</label><input name="client" value="${esc(item.client || "")}"></div>
+        <div><label>Produto *</label><input name="product" required value="${esc(item.product || "")}"></div>
+        <div><label>Lote</label><input name="lot" value="${esc(item.lot || "")}"></div>
+        <div><label>Quantidade *</label><input name="quantity" type="number" min="0" step="0.01" required value="${item.quantity ?? 0}"></div>
+        <div><label>Unidade</label><select name="unit">${["ton","bbl","m³"].map(x => `<option ${sel(item.unit,x)}>${x}</option>`).join("")}</select></div>
+        <div><label>Placa</label><input name="plate" value="${esc(item.plate || "")}"></div>
+        <div><label>Motorista</label><input name="driver" value="${esc(item.driver || "")}"></div>
+        <div><label>Nota fiscal</label><input name="invoice" value="${esc(item.invoice || "")}"></div>
+        <div><label>Status</label><select name="status">${["Programada","Recebida","Concluída"].map(x => `<option ${sel(item.status,x)}>${x}</option>`).join("")}</select></div>
+        <div class="wide"><label>Observações</label><textarea name="notes">${esc(item.notes || "")}</textarea></div>
         <div class="wide"><label>NF, documento ou foto</label><input name="attachment" type="file" accept=".pdf,image/jpeg,image/png,image/webp,image/heic,image/heif" multiple capture="environment"></div>
-      </div>${formActions("Salvar movimentação")}</form>`,
+      </div>${formActions(id ? "Salvar alterações" : "Salvar movimentação")}</form>`,
 
-      qhse: `<form id="genericForm" data-kind="qhse"><div class="form-grid">
-        <div><label>Data</label><input name="date" type="date" value="${new Date().toISOString().slice(0,10)}"></div>
-        <div><label>Tipo</label><select name="type"><option>DDS</option><option>APR</option><option>Inspeção</option><option>RIR</option><option>Auditoria</option><option>Observação</option></select></div>
-        <div class="wide"><label>Título *</label><input name="title" required></div>
-        <div class="wide"><label>Descrição</label><textarea name="description"></textarea></div>
-        <div><label>Responsável</label><input name="responsible"></div>
-        <div><label>Severidade</label><select name="severity"><option>Baixa</option><option>Média</option><option>Alta</option><option>Crítica</option></select></div>
-        <div><label>Status</label><select name="status"><option>Pendente</option><option>Em andamento</option><option>Concluído</option></select></div>
+      qhse: `<form id="genericForm" data-kind="qhse" data-id="${id}"><div class="form-grid">
+        <div><label>Data</label><input name="date" type="date" value="${String(item.date || new Date().toISOString()).slice(0,10)}"></div>
+        <div><label>Tipo</label><select name="type">${["DDS","APR","Inspeção","RIR","Auditoria","Observação"].map(x => `<option ${sel(item.type,x)}>${x}</option>`).join("")}</select></div>
+        <div class="wide"><label>Título *</label><input name="title" required value="${esc(item.title || "")}"></div>
+        <div class="wide"><label>Descrição</label><textarea name="description">${esc(item.description || "")}</textarea></div>
+        <div><label>Responsável</label><input name="responsible" value="${esc(item.responsible || "")}"></div>
+        <div><label>Severidade</label><select name="severity">${["Baixa","Média","Alta","Crítica"].map(x => `<option ${sel(item.severity,x)}>${x}</option>`).join("")}</select></div>
+        <div><label>Status</label><select name="status">${["Pendente","Em andamento","Concluído"].map(x => `<option ${sel(item.status,x)}>${x}</option>`).join("")}</select></div>
         <div class="wide"><label>Fotos ou documentos</label><input name="attachment" type="file" accept=".pdf,image/jpeg,image/png,image/webp,image/heic,image/heif" multiple capture="environment"></div>
-      </div>${formActions("Salvar registro")}</form>`,
+      </div>${formActions(id ? "Salvar alterações" : "Salvar registro")}</form>`,
 
-      equipment: `<form id="genericForm" data-kind="equipment"><div class="form-grid">
-        <div><label>Equipamento *</label><input name="name" required></div>
-        <div><label>Categoria</label><select name="category"><option>Motor a diesel</option><option>Bomba</option><option>Compressor</option><option>Empilhadeira</option><option>Outro</option></select></div>
-        <div><label>Localização</label><input name="location"></div>
-        <div><label>Status</label><select name="status"><option>Operando</option><option>Disponível</option><option>Parado</option><option>Manutenção</option></select></div>
-        <div><label>Horímetro final</label><input name="hourmeter" type="number" min="0" step="0.1" value="0"></div>
-        <div><label>Horas trabalhadas</label><input name="last_hours" type="number" min="0" step="0.1" value="0"></div>
-        <div><label>Diesel inicial (L)</label><input name="diesel_initial" type="number" min="0" step="0.1" value="0"></div>
-        <div><label>Abastecido (L)</label><input name="refueled" type="number" min="0" step="0.1" value="0"></div>
-        <div><label>Diesel final (L)</label><input name="diesel_final" type="number" min="0" step="0.1" value="0"></div>
-        <div><label>Próxima preventiva</label><input name="next_maintenance_date" type="date"></div>
-        <div><label>Preventiva no horímetro</label><input name="maintenance_due_hourmeter" type="number" min="0" step="0.1"></div>
-        <div><label>Intervalo preventivo (h)</label><input name="maintenance_interval_hours" type="number" min="0" step="0.1"></div>
-        <div class="wide"><label>Observações</label><textarea name="notes"></textarea></div>
-      </div>${formActions("Salvar equipamento")}</form>`,
+      equipment: `<form id="genericForm" data-kind="equipment" data-id="${id}"><div class="form-grid">
+        <div><label>Equipamento *</label><input name="name" required value="${esc(item.name || "")}"></div>
+        <div><label>Categoria</label><select name="category">${["Motor a diesel","Bomba","Compressor","Empilhadeira","Outro"].map(x => `<option ${sel(item.category,x)}>${x}</option>`).join("")}</select></div>
+        <div><label>Localização</label><input name="location" value="${esc(item.location || "")}"></div>
+        <div><label>Status</label><select name="status">${["Operando","Disponível","Parado","Manutenção"].map(x => `<option ${sel(item.status,x)}>${x}</option>`).join("")}</select></div>
+        <div><label>Horímetro final</label><input name="hourmeter" type="number" min="0" step="0.1" value="${item.hourmeter || 0}"></div>
+        <div><label>Horas trabalhadas</label><input name="last_hours" type="number" min="0" step="0.1" value="${item.last_hours || 0}"></div>
+        <div><label>Diesel inicial (L)</label><input name="diesel_initial" type="number" min="0" step="0.1" value="${item.diesel_initial || 0}"></div>
+        <div><label>Abastecido (L)</label><input name="refueled" type="number" min="0" step="0.1" value="${item.refueled || 0}"></div>
+        <div><label>Diesel final (L)</label><input name="diesel_final" type="number" min="0" step="0.1" value="${item.diesel_final || 0}"></div>
+        <div><label>Próxima preventiva</label><input name="next_maintenance_date" type="date" value="${String(item.next_maintenance_date || "").slice(0,10)}"></div>
+        <div><label>Preventiva no horímetro</label><input name="maintenance_due_hourmeter" type="number" min="0" step="0.1" value="${item.maintenance_due_hourmeter || ""}"></div>
+        <div><label>Intervalo preventivo (h)</label><input name="maintenance_interval_hours" type="number" min="0" step="0.1" value="${item.maintenance_interval_hours || ""}"></div>
+        <div class="wide"><label>Observações</label><textarea name="notes">${esc(item.notes || "")}</textarea></div>
+      </div>${formActions(id ? "Salvar alterações" : "Salvar equipamento")}</form>`,
 
-      certificate: `<form id="genericForm" data-kind="certificate"><div class="form-grid">
-        <div class="wide"><label>Certificado *</label><input name="title" required></div>
-        <div><label>Colaborador</label><select name="user_id"><option value="">Sem vínculo</option>${state.data.users.map(user => `<option value="${user.id}">${esc(user.name)}</option>`).join("")}</select></div>
-        <div><label>Nome no certificado *</label><input name="owner" value="${esc(state.data.profile.name)}" required></div>
-        <div><label>Emissor</label><input name="issuer"></div>
-        <div><label>Emissão</label><input name="issued_at" type="date"></div>
-        <div><label>Validade</label><input name="expires_at" type="date"></div>
-        <div><label>Status</label><select name="status"><option>Válido</option><option>A vencer</option><option>Vencido</option></select></div>
+      certificate: `<form id="genericForm" data-kind="certificate" data-id="${id}"><div class="form-grid">
+        <div class="wide"><label>Certificado *</label><input name="title" required value="${esc(item.title || "")}"></div>
+        <div><label>Colaborador</label><select name="user_id"><option value="">Sem vínculo</option>${state.data.users.map(user => `<option value="${user.id}" ${item.user_id === user.id ? "selected" : ""}>${esc(user.name)}</option>`).join("")}</select></div>
+        <div><label>Nome no certificado *</label><input name="owner" value="${esc(item.owner || state.data.profile.name)}" required></div>
+        <div><label>Emissor</label><input name="issuer" value="${esc(item.issuer || "")}"></div>
+        <div><label>Emissão</label><input name="issued_at" type="date" value="${String(item.issued_at || "").slice(0,10)}"></div>
+        <div><label>Validade</label><input name="expires_at" type="date" value="${String(item.expires_at || "").slice(0,10)}"></div>
+        <div><label>Status</label><select name="status">${["Válido","A vencer","Vencido"].map(x => `<option ${sel(item.status,x)}>${x}</option>`).join("")}</select></div>
         <div class="wide"><label>Certificado em PDF ou foto</label><input name="attachment" type="file" accept=".pdf,image/jpeg,image/png,image/webp,image/heic,image/heif" multiple></div>
-      </div>${formActions("Salvar certificado")}</form>`,
+      </div>${formActions(id ? "Salvar alterações" : "Salvar certificado")}</form>`,
 
-      alert: `<form id="genericForm" data-kind="alert"><div class="form-grid">
-        <div class="wide"><label>Título *</label><input name="title" required></div>
-        <div class="wide"><label>Mensagem *</label><textarea name="message" required></textarea></div>
-        <div><label>Nível</label><select name="level"><option>Informativo</option><option>Atenção</option><option>Crítico</option></select></div>
-        <div><label>Destinatário / grupo</label><input name="target"></div>
-      </div>${formActions("Enviar alerta")}</form>`
+      alert: `<form id="genericForm" data-kind="alert" data-id="${id}"><div class="form-grid">
+        <div class="wide"><label>Título *</label><input name="title" required value="${esc(item.title || "")}"></div>
+        <div class="wide"><label>Mensagem *</label><textarea name="message" required>${esc(item.message || "")}</textarea></div>
+        <div><label>Nível</label><select name="level">${["Informativo","Atenção","Crítico"].map(x => `<option ${sel(item.level,x)}>${x}</option>`).join("")}</select></div>
+        <div><label>Grupo / Destino</label><input name="target" value="${esc(item.target || "")}" placeholder="Ex.: mecânicos, operação"></div>
+      </div>${formActions(id ? "Salvar alterações" : "Criar alerta")}</form>`
     };
-    return forms[kind];
+    return forms[kind] || "";
   }
 
-
-  function chemicalForm(item = {}) {
-    const editing = Boolean(item.id);
-    return `<form id="chemicalForm" data-id="${item.id || ""}"><div class="form-grid">
-      <div class="wide"><label>Produto químico *</label><input name="product_name" required value="${esc(item.name || "")}"></div>
-      <div><label>Categoria</label><input name="category" value="${esc(item.category || "")}" placeholder="Ex.: Aditivo, Alcalinizante"></div>
-      <div><label>Lote</label><input name="lot" value="${esc(item.lot || "")}"></div>
-      <div><label>Unidade</label><select name="unit">${["kg","L","saco","tambor","big bag","unidade"].map(x => `<option ${item.unit === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
-      ${editing
-        ? `<div><label>Saldo atual</label><input value="${fmt.format(item.quantity)} ${esc(item.unit)}" disabled></div>`
-        : `<div><label>Quantidade inicial</label><input name="quantity" type="number" min="0" step="0.01" value="0"></div>`}
-      <div><label>Estoque mínimo</label><input name="minimum_quantity" type="number" min="0" step="0.01" value="${item.minimum || 0}"></div>
-      <div><label>Validade</label><input name="expiry_date" type="date" value="${String(item.expiry_date || "").slice(0,10)}"></div>
-      <div><label>Localização</label><input name="location" value="${esc(item.location || "")}" placeholder="Ex.: Almoxarifado A"></div>
-      <div><label>Fornecedor</label><input name="supplier" value="${esc(item.supplier || "")}"></div>
-      <div><label>Status</label><select name="status">${["Disponível","Quarentena","Bloqueado","Vencido","Descartado"].map(x => `<option ${item.status === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
-      <div class="wide"><label>Observações</label><textarea name="notes">${esc(item.notes || "")}</textarea></div>
-      <div class="wide"><label>FISPQ, NF, certificado ou foto</label><input name="attachment" type="file" accept=".pdf,image/jpeg,image/png,image/webp,image/heic,image/heif" multiple capture="environment"></div>
-    </div>${formActions(editing ? "Salvar alterações" : "Cadastrar produto")}</form>`;
-  }
-
-  function chemicalMovementForm(item) {
-    return `<form id="chemicalMovementForm" data-id="${item.id}"><div class="info-box"><strong>${esc(item.name)}</strong><br>Lote: ${esc(item.lot || "-")} • Saldo atual: ${fmt.format(item.quantity)} ${esc(item.unit)}</div>
-      <div class="form-grid" style="margin-top:12px">
-        <div><label>Tipo de movimentação</label><select name="movement_type"><option>Entrada</option><option>Saída</option><option>Ajuste</option></select></div>
-        <div><label>Quantidade *</label><input name="quantity" type="number" min="0.01" step="0.01" required></div>
-        <div class="wide"><small class="field-help">Em “Ajuste”, informe o novo saldo contado fisicamente.</small></div>
-        <div><label>Referência</label><input name="reference" placeholder="NF, OS, inventário, operação"></div>
-        <div class="wide"><label>Observação</label><textarea name="notes"></textarea></div>
-      </div>${formActions("Confirmar movimentação")}</form>`;
-  }
-
-  function eventForm(operationId) {
-    return `<form id="eventForm" data-operation-id="${operationId}"><div class="form-grid">
-      <div><label>Data e hora *</label><input name="event_time" type="datetime-local" required value="${toLocalInput(new Date())}"></div>
-      <div><label>Tipo</label><select name="event_type"><option>Atualização</option><option>Início</option><option>Pausa</option><option>Retomada</option><option>Bombeio</option><option>Backload</option><option>Ocorrência</option><option>Término</option></select></div>
-      <div class="wide"><label>Título *</label><input name="title" required></div>
-      <div class="wide"><label>Descrição</label><textarea name="description"></textarea></div>
-      <div><label>Quantidade</label><input name="quantity" type="number" min="0" step="0.01"></div>
-      <div><label>Unidade</label><select name="unit"><option>bbl</option><option>ton</option><option>m³</option><option>-</option></select></div>
-    </div>${formActions("Adicionar evento")}</form>`;
-  }
-
-  function actionItemForm(qhseId) {
-    return `<form id="actionItemForm" data-qhse-id="${qhseId}"><div class="form-grid">
-      <div class="wide"><label>Ação *</label><input name="title" required></div>
-      <div class="wide"><label>Descrição</label><textarea name="description"></textarea></div>
-      <div><label>Responsável</label><input name="responsible"></div>
-      <div><label>Prazo</label><input name="due_date" type="date"></div>
-      <div><label>Status</label><select name="status"><option>Pendente</option><option>Em andamento</option><option>Concluído</option></select></div>
-    </div>${formActions("Salvar ação")}</form>`;
+  function actionItemForm(qhseId, item = {}) {
+    return `<form id="actionItemForm" data-qhse-id="${qhseId}" data-id="${item.id || ""}"><div class="form-grid">
+      <div class="wide"><label>Ação *</label><input name="title" required value="${esc(item.title || "")}"></div>
+      <div class="wide"><label>Descrição</label><textarea name="description">${esc(item.description || "")}</textarea></div>
+      <div><label>Responsável</label><input name="responsible" value="${esc(item.responsible || "")}"></div>
+      <div><label>Prazo</label><input name="due_date" type="date" value="${String(item.due_date || "").slice(0,10)}"></div>
+      <div><label>Status</label><select name="status">${["Pendente","Em andamento","Concluído"].map(x => `<option ${item.status === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
+    </div>${formActions(item.id ? "Salvar alterações" : "Salvar ação")}</form>`;
   }
 
   function maintenanceOrderForm(order = {}, equipmentId = "") {
@@ -1251,21 +1221,23 @@
     const tank = state.data.tanks.find(item => item.id === payload.id);
     if (!tank) throw new Error("Tanque ou silo não localizado.");
 
+    const adminFull = form.dataset.adminFull === "true" && isAdmin();
     const newVolume = parseTankVolume(payload.volume);
-    const capacity = Number(tank.capacity || 0);
+    const newCapacity = adminFull ? parseTankVolume(payload.capacity) : Number(tank.capacity || 0);
 
-    if (!Number.isFinite(newVolume)) throw new Error("Informe o volume somente com números.");
+    if (!Number.isFinite(newVolume)) throw new Error("Informe um volume válido.");
+    if (!Number.isFinite(newCapacity) || newCapacity <= 0) throw new Error("Informe uma capacidade válida.");
     if (newVolume < 0) throw new Error("O volume não pode ser negativo.");
-    if (newVolume > capacity) {
-      throw new Error(`O volume não pode ultrapassar ${fmt.format(capacity)} ${tank.unit}.`);
+    if (newVolume > newCapacity) {
+      throw new Error(`O volume não pode ultrapassar ${fmt.format(newCapacity)} ${adminFull ? payload.unit : tank.unit}.`);
     }
 
-    const originalLabel = button?.textContent || "Salvar volume";
+    const originalLabel = button?.textContent || "Salvar";
     const message = form.querySelector("#tankSaveMessage");
 
     if (button) {
       button.disabled = true;
-      button.textContent = "Salvando...";
+      button.textContent = "Salvando no banco...";
     }
     if (message) {
       message.classList.add("hidden");
@@ -1273,48 +1245,92 @@
     }
 
     try {
-      const { data, error } = await state.client.rpc("update_tank_volume", {
+      const rpcName = adminFull ? "admin_update_tank_full" : "update_tank_volume";
+      const rpcPayload = adminFull ? {
+        p_tank_id: tank.id,
+        p_name: payload.name?.trim(),
+        p_phase: payload.phase,
+        p_kind: payload.kind,
+        p_capacity: newCapacity,
+        p_unit: payload.unit,
+        p_display_order: Number(payload.display_order || 0),
+        p_volume: newVolume,
+        p_status: payload.status,
+        p_product: payload.product?.trim() || null,
+        p_lot: payload.lot?.trim() || null
+      } : {
         p_tank_id: tank.id,
         p_volume: newVolume,
         p_status: payload.status,
         p_product: payload.product?.trim() || null,
         p_lot: payload.lot?.trim() || null
-      });
+      };
 
+      const { data, error } = await state.client.rpc(rpcName, rpcPayload);
       if (error) throw error;
 
-      const updated = Array.isArray(data) ? data[0] : data;
-      if (!updated?.id) {
-        throw new Error("O Supabase não confirmou a atualização.");
+      const rpcRow = Array.isArray(data) ? data[0] : data;
+      if (!rpcRow?.id) throw new Error("O Supabase não confirmou a atualização.");
+
+      const { data: serverRow, error: confirmError } = await state.client
+        .from("tanks")
+        .select("*")
+        .eq("id", tank.id)
+        .single();
+
+      if (confirmError) throw confirmError;
+      if (!serverRow) throw new Error("Não foi possível reler o tanque atualizado.");
+
+      const confirmedVolume = Number(serverRow.current_volume || 0);
+      if (Math.abs(confirmedVolume - newVolume) > 0.001) {
+        throw new Error(`O banco retornou ${fmt.format(confirmedVolume)}, diferente do valor informado.`);
       }
 
-      await loadData();
+      const mapped = {
+        id: serverRow.id,
+        name: serverRow.name,
+        phase: serverRow.phase,
+        kind: serverRow.kind,
+        capacity: Number(serverRow.capacity || 0),
+        unit: serverRow.unit,
+        volume: confirmedVolume,
+        product: serverRow.current_product || "",
+        lot: serverRow.current_lot || "",
+        status: serverRow.status,
+        order: serverRow.display_order,
+        updated_by: serverRow.updated_by,
+        updated_at: serverRow.updated_at
+      };
 
-      const confirmed = state.data.tanks.find(item => item.id === tank.id);
-      if (!confirmed || Math.abs(Number(confirmed.volume) - newVolume) > 0.001) {
-        throw new Error("O novo volume não foi confirmado após a leitura do banco.");
-      }
+      const index = state.data.tanks.findIndex(item => item.id === tank.id);
+      if (index >= 0) state.data.tanks[index] = mapped;
 
-      renderAll();
+      renderTanks();
+      renderDashboard();
       closeModal();
-      toast(`${tank.name}: ${fmt.format(newVolume)} ${tank.unit}.`, "success");
-      return confirmed;
+      toast(`${mapped.name} confirmado em ${fmt.format(mapped.volume)} ${mapped.unit}.`, "success");
+
+      // Sincronização completa em segundo plano. Uma falha em outro módulo
+      // não impede a confirmação visual do tanque que já foi salvo.
+      setTimeout(() => {
+        loadData().then(renderAll).catch(error => console.error("Sincronização posterior:", error));
+      }, 50);
+
+      return mapped;
     } catch (error) {
       if (message) {
         message.textContent = error.message;
         message.classList.remove("hidden");
       }
-
       try {
         await state.client.from("system_errors").insert({
           user_id: state.user.id,
-          context: "tank_volume_update",
+          context: `tank_volume_update:${tank.name}`,
           message: error.message,
           stack: error.stack || null,
           user_agent: navigator.userAgent
         });
       } catch (_) {}
-
       throw error;
     } finally {
       if (button) {
@@ -1399,6 +1415,7 @@
       }]
     };
     const [table, row] = maps[kind];
+    if (id && Object.prototype.hasOwnProperty.call(row, "created_by")) delete row.created_by;
     const query = id
       ? state.client.from(table).update(row).eq("id", id).select("id").single()
       : state.client.from(table).insert(row).select("id").single();
@@ -1575,7 +1592,7 @@
         const payload = Object.fromEntries(new FormData(form));
         delete payload.attachment;
         if ("active" in payload) payload.active = payload.active === "true";
-        const recordId = await saveEntity(kind, payload);
+        const recordId = await saveEntity(kind, payload, form.dataset.id || null);
         if (files.length && ["fluid", "truck", "qhse", "certificate"].includes(kind)) {
           await uploadAttachments(kind, recordId, files);
         }
@@ -1673,13 +1690,16 @@
 
       if (form.id === "actionItemForm") {
         const payload = Object.fromEntries(new FormData(form));
-        const { error } = await state.client.from("action_items").insert({
+        const row = {
           qhse_record_id: form.dataset.qhseId, title: payload.title,
           description: payload.description || null, responsible: payload.responsible || null,
           due_date: payload.due_date || null, status: payload.status,
-          completed_at: payload.status === "Concluído" ? new Date().toISOString() : null,
-          created_by: state.user.id
-        });
+          completed_at: payload.status === "Concluído" ? new Date().toISOString() : null
+        };
+        const query = form.dataset.id
+          ? state.client.from("action_items").update(row).eq("id", form.dataset.id)
+          : state.client.from("action_items").insert({ ...row, created_by: state.user.id });
+        const { error } = await query;
         if (error) throw error;
       }
 
@@ -1815,6 +1835,36 @@
       return;
     }
 
+    if (button.dataset.editFluid) {
+      const item = state.data.fluids.find(x => x.id === button.dataset.editFluid);
+      return openModal(`Editar produto — ${item.name}`, genericForm("fluid", item), "ADMIN");
+    }
+
+    if (button.dataset.editTruck) {
+      const item = state.data.trucks.find(x => x.id === button.dataset.editTruck);
+      return openModal(`Editar carreta — ${item.plate || item.product}`, genericForm("truck", item), "ADMIN");
+    }
+
+    if (button.dataset.editQhse) {
+      const item = state.data.qhse.find(x => x.id === button.dataset.editQhse);
+      return openModal(`Editar QHSE — ${item.title}`, genericForm("qhse", item), "ADMIN");
+    }
+
+    if (button.dataset.editEquipment) {
+      const item = state.data.equipment.find(x => x.id === button.dataset.editEquipment);
+      return openModal(`Editar equipamento — ${item.name}`, genericForm("equipment", item), "ADMIN");
+    }
+
+    if (button.dataset.editCertificate) {
+      const item = state.data.certificates.find(x => x.id === button.dataset.editCertificate);
+      return openModal(`Editar certificado — ${item.title}`, genericForm("certificate", item), "ADMIN");
+    }
+
+    if (button.dataset.editAlert) {
+      const item = state.data.alerts.find(x => x.id === button.dataset.editAlert);
+      return openModal(`Editar alerta — ${item.title}`, genericForm("alert", item), "ADMIN");
+    }
+
     if (button.dataset.editChemical) {
       const item = state.data.chemicals.find(x => x.id === button.dataset.editChemical);
       return openModal(`Editar — ${item.name}`, chemicalForm(item), "INVENTÁRIO");
@@ -1905,11 +1955,15 @@
       return openModal(`Ações — ${record.title}`, `
         ${hasRole(["supervisor", "lider", "qhse"]) ? `<button class="btn primary" data-add-action="${record.id}">+ Nova ação</button>` : ""}
         <div class="section-title">Itens de ação</div>
-        <div class="attachment-list">${actions.map(item => `<div class="attachment-item"><div class="attachment-icon">✓</div><div class="attachment-info"><strong>${esc(item.title)}</strong><small>${esc(item.responsible || "Sem responsável")} • Prazo ${dateOnly(item.due_date)}</small></div>${badge(item.status)}</div>`).join("") || `<div class="empty">Nenhuma ação cadastrada.</div>`}</div>
+        <div class="attachment-list">${actions.map(item => `<div class="attachment-item"><div class="attachment-icon">✓</div><div class="attachment-info"><strong>${esc(item.title)}</strong><small>${esc(item.responsible || "Sem responsável")} • Prazo ${dateOnly(item.due_date)}</small></div>${badge(item.status)}${isAdmin() ? `<button class="btn small primary" data-edit-action="${item.id}">Editar</button>` : ""}</div>`).join("") || `<div class="empty">Nenhuma ação cadastrada.</div>`}</div>
       `, "QHSE");
     }
 
     if (button.dataset.addAction) return openModal("Nova ação QHSE", actionItemForm(button.dataset.addAction), "AÇÃO");
+    if (button.dataset.editAction) {
+      const item = state.data.actionItems.find(x => x.id === button.dataset.editAction);
+      return openModal("Editar ação QHSE", actionItemForm(item.qhse_record_id, item), "ADMIN");
+    }
 
     if (button.dataset.newOrderEquipment) return openModal("Nova ordem de serviço", maintenanceOrderForm({}, button.dataset.newOrderEquipment), "MANUTENÇÃO");
 

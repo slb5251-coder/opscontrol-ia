@@ -133,3 +133,8 @@
   .module-action-bar{align-items:stretch;flex-direction:column}
   .module-action-bar .btn{width:100%}
 }
+
+.admin-edit-notice{display:flex;flex-direction:column;gap:5px;padding:13px 14px;border-radius:14px;background:#fff4d6;border:1px solid #edc76b;color:#76500b}
+.admin-edit-notice strong{font-size:13px}
+.admin-edit-notice span{font-size:11px;line-height:1.45}
+:root[data-theme="dark"] .admin-edit-notice{background:#382b10;border-color:#735a21;color:#f3d98c}

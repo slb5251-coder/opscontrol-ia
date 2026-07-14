@@ -164,3 +164,9 @@
 :root[data-theme="dark"] .tank-progress{background:#27364a}
 :root[data-theme="dark"] .tank-progress.generic{--tank-fill:#7896ff}
 :root[data-theme="dark"] .tank-progress.bulk{--tank-fill:#d5a24c}
+
+/* Catálogo de fluidos e granéis vinculado à tancagem */
+#tankForm select[name="fluid_type_id"]{font-weight:800}
+#tankForm input[name="density"]{font-weight:850}
+.compact-tank-product span:last-child{color:#51627a;font-weight:700}
+:root[data-theme="dark"] .compact-tank-product span:last-child{color:#aabbd2}

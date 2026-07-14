@@ -1,10 +1,10 @@
-const CACHE="opscontrol-20260714-tank-bars-all-assets-1";
+const CACHE="opscontrol-20260714-fluid-catalog-tanks-1";
 const FILES=[
   "./",
   "./index.html",
-  "./app.css?v=20260714-tank-bars-all-assets-1",
-  "./js/config.js?v=20260714-tank-bars-all-assets-1",
-  "./js/app.js?v=20260714-tank-bars-all-assets-1",
+  "./app.css?v=20260714-fluid-catalog-tanks-1",
+  "./js/config.js?v=20260714-fluid-catalog-tanks-1",
+  "./js/app.js?v=20260714-fluid-catalog-tanks-1",
   "./manifest.json",
   "./assets/icon.svg"
 ];

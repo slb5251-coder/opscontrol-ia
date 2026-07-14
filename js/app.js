@@ -400,13 +400,19 @@
       })),
       fluids: (results[2].data || []).map(x => ({
         id: x.id, name: x.name, type: x.category, unit: x.default_unit,
-        density: Number(x.density_ppg || 0), active: x.active
+        density: Number(x.density_value ?? x.density_ppg ?? 0),
+        densityUnit: x.density_unit || (["granel", "insumo"].includes(String(x.category || "").toLowerCase()) ? "t/m³" : "ppg"),
+        active: x.active
       })),
       tanks: (results[3].data || []).map(x => ({
         id: x.id, name: x.name, phase: x.phase, kind: x.kind,
         capacity: Number(x.capacity), unit: x.unit, volume: Number(x.current_volume || 0),
-        product: x.current_product || "", lot: x.current_lot || "", status: x.status,
-        order: x.display_order, updated_by: x.updated_by, updated_at: x.updated_at
+        fluidTypeId: x.current_fluid_type_id || null,
+        product: x.current_product || "", lot: x.current_lot || "",
+        density: x.current_density === null || x.current_density === undefined ? null : Number(x.current_density),
+        densityUnit: x.current_density_unit || null,
+        status: x.status, order: x.display_order,
+        updated_by: x.updated_by, updated_at: x.updated_at
       })),
       tankHistory: results[4].data || [],
       operations: (results[5].data || []).map(x => ({
@@ -787,6 +793,7 @@
       <div class="compact-tank-product">
         <strong>${esc(tank.product || (volume > 0 ? "Produto não informado" : "Sem produto"))}</strong>
         <span>Lote: ${esc(tank.lot || "-")}${volume > 0 && !tank.product ? ` • volume registrado` : ""}</span>
+        <span>Densidade: ${tank.density !== null && tank.density !== undefined ? `${fmt.format(tank.density)} ${esc(tank.densityUnit || (String(tank.kind).toLowerCase().includes("silo") ? "t/m³" : "ppg"))}` : "não informada"}</span>
       </div>
 
       <div class="tank-volume-line">
@@ -846,9 +853,93 @@
     box.textContent = `${source.name}: ${fmt.format(source.volume)} → ${fmt.format(source.volume - quantity)} ${source.unit} | ${destination.name}: ${fmt.format(destination.volume)} → ${fmt.format(destination.volume + quantity)} ${destination.unit}`;
   }
 
+
+  function defaultDensityUnit(category = "", kind = "") {
+    const categoryText = String(category || "").toLowerCase();
+    const kindText = String(kind || "").toLowerCase();
+    return kindText.includes("silo") || ["granel", "insumo"].includes(categoryText) ? "t/m³" : "ppg";
+  }
+
+  function compatibleTankFluids(tank) {
+    const isSilo = String(tank.kind || "").toLowerCase().includes("silo");
+    return (state.data.fluids || [])
+      .filter(item => item.active !== false || item.id === tank.fluidTypeId)
+      .filter(item => {
+        if (item.id === tank.fluidTypeId) return true;
+        const category = String(item.type || "").toLowerCase();
+        return isSilo ? ["granel", "insumo"].includes(category) : !["granel", "insumo"].includes(category);
+      })
+      .sort((a, b) => `${a.type} ${a.name}`.localeCompare(`${b.type} ${b.name}`, "pt-BR"));
+  }
+
+  function catalogProductOptions(tank) {
+    const groups = new Map();
+    compatibleTankFluids(tank).forEach(item => {
+      const group = item.type || "Outros";
+      if (!groups.has(group)) groups.set(group, []);
+      groups.get(group).push(item);
+    });
+
+    return [...groups.entries()].map(([group, items]) =>
+      `<optgroup label="${esc(group)}">${items.map(item => `
+        <option value="${item.id}"
+          data-product="${esc(item.name)}"
+          data-density="${item.density || ""}"
+          data-density-unit="${esc(item.densityUnit || defaultDensityUnit(item.type, tank.kind))}"
+          ${tank.fluidTypeId === item.id ? "selected" : ""}>
+          ${esc(item.name)}${item.density ? ` — ${fmt.format(item.density)} ${esc(item.densityUnit || defaultDensityUnit(item.type, tank.kind))}` : ""}
+        </option>`).join("")}</optgroup>`
+    ).join("");
+  }
+
+  function syncTankCatalogFields(form) {
+    if (!form) return;
+    const select = form.elements.fluid_type_id;
+    const option = select?.selectedOptions?.[0];
+    const customWrap = form.querySelector("[data-custom-product-wrap]");
+    const productInput = form.elements.product;
+    const densityInput = form.elements.density;
+    const densityUnit = form.elements.density_unit;
+    const tankKind = form.dataset.tankKind || "";
+
+    if (!select || !option) return;
+
+    if (select.value === "__custom__") {
+      customWrap?.classList.remove("hidden");
+      productInput?.focus();
+      if (!densityUnit.value) densityUnit.value = defaultDensityUnit("", tankKind);
+      return;
+    }
+
+    customWrap?.classList.add("hidden");
+
+    if (!select.value) {
+      if (productInput) productInput.value = "";
+      if (densityInput) densityInput.value = "";
+      if (densityUnit) densityUnit.value = defaultDensityUnit("", tankKind);
+      return;
+    }
+
+    if (productInput) productInput.value = option.dataset.product || option.textContent.trim();
+    if (densityInput) densityInput.value = option.dataset.density || "";
+    if (densityUnit) densityUnit.value = option.dataset.densityUnit || defaultDensityUnit("", tankKind);
+  }
+
+  function syncFluidDensityUnit(form) {
+    if (!form) return;
+    const category = form.elements.type?.value || "";
+    const densityUnit = form.elements.density_unit;
+    if (densityUnit) densityUnit.value = defaultDensityUnit(category, "");
+  }
+
   function tankForm(tank) {
     const admin = isAdmin();
-    return `<form id="tankForm" data-admin-full="${admin ? "true" : "false"}" novalidate>
+    const linkedFluid = (state.data.fluids || []).find(item => item.id === tank.fluidTypeId);
+    const customCurrent = Boolean(tank.product && !linkedFluid);
+    const currentDensity = tank.density ?? linkedFluid?.density ?? "";
+    const currentDensityUnit = tank.densityUnit || linkedFluid?.densityUnit || defaultDensityUnit(linkedFluid?.type, tank.kind);
+
+    return `<form id="tankForm" data-admin-full="${admin ? "true" : "false"}" data-tank-kind="${esc(tank.kind)}" novalidate>
       <input type="hidden" name="id" value="${tank.id}">
       <div class="form-grid">
         ${admin ? `
@@ -862,35 +953,67 @@
           <div><label>Tanque ou silo</label><input value="${esc(tank.name)}" disabled></div>
           <div><label>Capacidade</label><input value="${fmt.format(tank.capacity)} ${esc(tank.unit)}" disabled></div>
         `}
+
         <div><label>Status</label><select name="status">${["Disponível", "Liberado", "Em uso", "Bloqueado", "Limpeza", "Manutenção"].map(x => `<option ${tank.status === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
         <div>
           <label>Volume atual (${esc(tank.unit)}) *</label>
-          <input name="volume" type="text" inputmode="decimal" autocomplete="off"
-            value="${String(tank.volume).replace(".", ",")}" required>
+          <input name="volume" type="text" inputmode="decimal" autocomplete="off" value="${String(tank.volume).replace(".", ",")}" required>
           <small class="field-help">Ex.: 850 ou 850,50.</small>
         </div>
-        <div class="wide"><label>Produto</label><input name="product" value="${esc(tank.product)}"></div>
+
+        <div class="wide">
+          <label>Produto cadastrado em Fluidos e Granéis</label>
+          <select name="fluid_type_id" data-tank-product-select>
+            <option value="" ${!tank.fluidTypeId && !customCurrent ? "selected" : ""}>Sem produto</option>
+            ${catalogProductOptions(tank)}
+            <option value="__custom__" ${customCurrent ? "selected" : ""}>Outro produto — preenchimento manual</option>
+          </select>
+          <small class="field-help">Tanques exibem fluidos; silos exibem granéis e insumos.</small>
+        </div>
+
+        <div class="wide ${customCurrent ? "" : "hidden"}" data-custom-product-wrap>
+          <label>Produto manual</label>
+          <input name="product" value="${esc(customCurrent ? tank.product : linkedFluid?.name || "")}" placeholder="Informe o produto">
+        </div>
+
+        <div>
+          <label>Densidade</label>
+          <input name="density" type="text" inputmode="decimal" value="${currentDensity === "" ? "" : String(currentDensity).replace(".", ",")}" placeholder="Ex.: 9,7 ou 4,10">
+        </div>
+        <div>
+          <label>Unidade da densidade</label>
+          <select name="density_unit">
+            <option value="ppg" ${currentDensityUnit === "ppg" ? "selected" : ""}>ppg</option>
+            <option value="t/m³" ${currentDensityUnit === "t/m³" ? "selected" : ""}>t/m³</option>
+          </select>
+        </div>
+
         <div class="wide"><label>Lote</label><input name="lot" value="${esc(tank.lot)}"></div>
-        ${admin ? `<div class="wide admin-edit-notice"><strong>Modo administrador</strong><span>Você pode alterar toda a configuração deste tanque ou silo. O histórico continuará sendo registrado automaticamente.</span></div>` : ""}
+        ${admin ? `<div class="wide admin-edit-notice"><strong>Modo administrador</strong><span>Você pode alterar toda a configuração. Produto e densidade ficam vinculados ao cadastro de Fluidos e Granéis.</span></div>` : ""}
       </div>
+
       <div id="tankSaveMessage" class="message hidden"></div>
       <div class="form-actions">
         <button type="button" class="btn secondary" data-close-modal>Cancelar</button>
-        <button type="button" class="btn primary" data-action="save-tank-volume">${admin ? "Salvar todas as alterações" : "Salvar volume"}</button>
+        <button type="button" class="btn primary" data-action="save-tank-volume">${admin ? "Salvar todas as alterações" : "Salvar atualização"}</button>
       </div>
     </form>`;
   }
 
   function renderFluids() {
     const rows = state.data.fluids.map(item => `<tr>
-      <td><strong>${esc(item.name)}</strong><br><small>${item.density ? `${fmt.format(item.density)} ppg` : "Densidade não informada"}</small></td>
-      <td>${badge(item.type)}</td><td>${esc(item.unit || "-")}</td><td>${badge(item.active ? "Ativo" : "Inativo")}</td>
+      <td><strong>${esc(item.name)}</strong><br><small>${item.density ? `${fmt.format(item.density)} ${esc(item.densityUnit || defaultDensityUnit(item.type))}` : "Densidade não informada"}</small></td>
+      <td>${badge(item.type)}</td>
+      <td>${esc(item.unit || "-")}</td>
+      <td>${esc(item.densityUnit || defaultDensityUnit(item.type))}</td>
+      <td>${badge(item.active ? "Ativo" : "Inativo")}</td>
       <td><div class="row-actions"><button class="btn small secondary" data-attachments="fluid:${item.id}" data-attachment-title="${esc(item.name)}">📎 ${attachmentCount("fluid", item.id)}</button>${isAdmin() ? `<button class="btn small primary" data-edit-fluid="${item.id}">Editar</button>` : ""}</div></td>
     </tr>`).join("");
     $("#page-fluids").innerHTML =
-      header("Fluidos e granéis", "Produtos, densidades, unidades e documentos.",
+      header("Fluidos e granéis", "Catálogo vinculado à tancagem, com densidade padrão e documentos.",
         hasRole(["supervisor", "lider", "logistica"]) ? `<button class="btn primary" data-action="new-fluid">+ Adicionar produto</button>` : "") +
-      `<div class="card table-wrap"><table class="data-table"><thead><tr><th>Produto</th><th>Classificação</th><th>Unidade</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows}</tbody></table></div>`;
+      `<div class="info-box" style="margin-bottom:14px">Os produtos ativos desta aba aparecem automaticamente na lista de atualização dos tanques e silos.</div>
+       <div class="card table-wrap"><table class="data-table"><thead><tr><th>Produto</th><th>Classificação</th><th>Unidade de estoque</th><th>Unidade da densidade</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows || `<tr><td colspan="6" class="empty">Nenhum produto cadastrado.</td></tr>`}</tbody></table></div>`;
   }
 
 
@@ -1050,9 +1173,10 @@
     const forms = {
       fluid: `<form id="genericForm" data-kind="fluid" data-id="${id}"><div class="form-grid">
         <div class="wide"><label>Nome do produto *</label><input name="name" required value="${esc(item.name || "")}"></div>
-        <div><label>Classificação</label><select name="type">${["WBM","Brine","SBM","Olefina","Granel","Insumo"].map(x => `<option ${sel(item.type,x)}>${x}</option>`).join("")}</select></div>
-        <div><label>Unidade</label><select name="unit">${["bbl","ton","m³","kg"].map(x => `<option ${sel(item.unit,x)}>${x}</option>`).join("")}</select></div>
-        <div><label>Densidade (ppg)</label><input name="density" type="number" min="0" step="0.001" value="${item.density || ""}"></div>
+        <div><label>Classificação</label><select name="type" data-fluid-category>${["WBM","Brine","SBM","Olefina","Granel","Insumo"].map(x => `<option ${sel(item.type,x)}>${x}</option>`).join("")}</select></div>
+        <div><label>Unidade de estoque</label><select name="unit">${["bbl","ton","m³","kg"].map(x => `<option ${sel(item.unit,x)}>${x}</option>`).join("")}</select></div>
+        <div><label>Densidade padrão</label><input name="density" type="text" inputmode="decimal" value="${item.density || ""}" placeholder="Ex.: 9,7 ou 4,10"></div>
+        <div><label>Unidade da densidade</label><select name="density_unit"><option value="ppg" ${(item.densityUnit || defaultDensityUnit(item.type)) === "ppg" ? "selected" : ""}>ppg</option><option value="t/m³" ${(item.densityUnit || defaultDensityUnit(item.type)) === "t/m³" ? "selected" : ""}>t/m³</option></select></div>
         <div><label>Ativo</label><select name="active"><option value="true" ${item.active !== false ? "selected" : ""}>Sim</option><option value="false" ${item.active === false ? "selected" : ""}>Não</option></select></div>
         <div class="wide"><label>Documentos ou fotos</label><input name="attachment" type="file" accept=".pdf,image/jpeg,image/png,image/webp,image/heic,image/heif" multiple></div>
       </div>${formActions(id ? "Salvar alterações" : "Salvar produto")}</form>`,
@@ -1230,6 +1354,12 @@
     return Number.isFinite(number) ? number : NaN;
   }
 
+  function parseOptionalDecimal(value) {
+    if (value === null || value === undefined || String(value).trim() === "") return null;
+    const parsed = parseTankVolume(value);
+    return Number.isFinite(parsed) ? parsed : NaN;
+  }
+
   async function saveTankVolume(form, button = null) {
     if (!form) throw new Error("Formulário de tancagem não localizado.");
     if (!state.client || !state.user) throw new Error("Sessão inválida. Entre novamente.");
@@ -1241,9 +1371,16 @@
     const adminFull = form.dataset.adminFull === "true" && isAdmin();
     const newVolume = parseTankVolume(payload.volume);
     const newCapacity = adminFull ? parseTankVolume(payload.capacity) : Number(tank.capacity || 0);
+    const selectedFluidId = payload.fluid_type_id && payload.fluid_type_id !== "__custom__" ? payload.fluid_type_id : null;
+    const selectedFluid = (state.data.fluids || []).find(item => item.id === selectedFluidId);
+    const manualProduct = payload.fluid_type_id === "__custom__" ? payload.product?.trim() || null : null;
+    const newDensity = parseOptionalDecimal(payload.density);
+    const newDensityUnit = newDensity === null ? null : payload.density_unit;
 
     if (!Number.isFinite(newVolume)) throw new Error("Informe um volume válido.");
     if (!Number.isFinite(newCapacity) || newCapacity <= 0) throw new Error("Informe uma capacidade válida.");
+    if (Number.isNaN(newDensity)) throw new Error("Informe uma densidade válida.");
+    if (newDensity !== null && newDensity < 0) throw new Error("A densidade não pode ser negativa.");
     if (newVolume < 0) throw new Error("O volume não pode ser negativo.");
     if (newVolume > newCapacity) {
       throw new Error(`O volume não pode ultrapassar ${fmt.format(newCapacity)} ${adminFull ? payload.unit : tank.unit}.`);
@@ -1262,7 +1399,14 @@
     }
 
     try {
-      const rpcName = adminFull ? "admin_update_tank_full" : "update_tank_volume";
+      const rpcName = adminFull ? "admin_update_tank_with_product" : "update_tank_with_product";
+      const sharedProductPayload = {
+        p_fluid_type_id: selectedFluidId,
+        p_product: selectedFluid?.name || manualProduct,
+        p_lot: payload.lot?.trim() || null,
+        p_density: newDensity,
+        p_density_unit: newDensityUnit
+      };
       const rpcPayload = adminFull ? {
         p_tank_id: tank.id,
         p_name: payload.name?.trim(),
@@ -1273,14 +1417,12 @@
         p_display_order: Number(payload.display_order || 0),
         p_volume: newVolume,
         p_status: payload.status,
-        p_product: payload.product?.trim() || null,
-        p_lot: payload.lot?.trim() || null
+        ...sharedProductPayload
       } : {
         p_tank_id: tank.id,
         p_volume: newVolume,
         p_status: payload.status,
-        p_product: payload.product?.trim() || null,
-        p_lot: payload.lot?.trim() || null
+        ...sharedProductPayload
       };
 
       const { data, error } = await state.client.rpc(rpcName, rpcPayload);
@@ -1311,8 +1453,11 @@
         capacity: Number(serverRow.capacity || 0),
         unit: serverRow.unit,
         volume: confirmedVolume,
+        fluidTypeId: serverRow.current_fluid_type_id || null,
         product: serverRow.current_product || "",
         lot: serverRow.current_lot || "",
+        density: serverRow.current_density === null || serverRow.current_density === undefined ? null : Number(serverRow.current_density),
+        densityUnit: serverRow.current_density_unit || null,
         status: serverRow.status,
         order: serverRow.display_order,
         updated_by: serverRow.updated_by,
@@ -1394,7 +1539,10 @@
     const maps = {
       fluid: ["fluid_types", {
         name: payload.name, category: payload.type, default_unit: payload.unit,
-        density_ppg: Number(payload.density || 0) || null, active: payload.active
+        density_value: parseOptionalDecimal(payload.density),
+        density_unit: payload.density_unit || defaultDensityUnit(payload.type),
+        density_ppg: payload.density_unit === "ppg" ? parseOptionalDecimal(payload.density) : null,
+        active: payload.active === "true"
       }],
       truck: ["trucks", {
         movement_date: payload.date, movement_type: payload.movement, supplier: payload.supplier,
@@ -1950,7 +2098,7 @@
       const history = state.data.tankHistory.filter(x => x.tank_id === tank.id);
       return openModal(`Histórico — ${tank.name}`, `<div class="timeline professional-timeline">${history.map(item => {
         const user = state.data.users.find(x => x.id === item.changed_by)?.name || "Usuário";
-        return `<div class="timeline-item"><span class="timeline-dot"></span><div><strong>${esc(item.previous_product || "Vazio")} → ${esc(item.new_product || "Vazio")}</strong><small>${dateTime(item.created_at)} • ${esc(user)}</small><p>Lote: ${esc(item.previous_lot || "-")} → ${esc(item.new_lot || "-")}<br>Volume: ${fmt.format(item.previous_volume || 0)} → ${fmt.format(item.new_volume || 0)}<br>Status: ${esc(item.previous_status || "-")} → ${esc(item.new_status || "-")}</p></div></div>`;
+        return `<div class="timeline-item"><span class="timeline-dot"></span><div><strong>${esc(item.previous_product || "Vazio")} → ${esc(item.new_product || "Vazio")}</strong><small>${dateTime(item.created_at)} • ${esc(user)}</small><p>Lote: ${esc(item.previous_lot || "-")} → ${esc(item.new_lot || "-")}<br>Volume: ${fmt.format(item.previous_volume || 0)} → ${fmt.format(item.new_volume || 0)}<br>Densidade: ${item.previous_density !== null && item.previous_density !== undefined ? `${fmt.format(item.previous_density)} ${esc(item.previous_density_unit || "")}` : "-"} → ${item.new_density !== null && item.new_density !== undefined ? `${fmt.format(item.new_density)} ${esc(item.new_density_unit || "")}` : "-"}<br>Status: ${esc(item.previous_status || "-")} → ${esc(item.new_status || "-")}</p></div></div>`;
       }).join("") || `<div class="empty">Sem histórico.</div>`}</div>`, "HISTÓRICO");
     }
 
@@ -2019,6 +2167,8 @@
   document.addEventListener("change", event => {
     if (event.target.closest("#operationForm") && event.target.name === "activity") syncOperationTankFields(event.target.closest("#operationForm"));
     if (event.target.closest("#tankTransferForm")) updateTransferPreview(event.target.closest("#tankTransferForm"));
+    if (event.target.closest("#tankForm") && event.target.name === "fluid_type_id") syncTankCatalogFields(event.target.closest("#tankForm"));
+    if (event.target.closest('#genericForm[data-kind="fluid"]') && event.target.name === "type") syncFluidDensityUnit(event.target.closest("form"));
   });
 
   document.addEventListener("input", event => {

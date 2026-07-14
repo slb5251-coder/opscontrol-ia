@@ -144,14 +144,28 @@
     $("#modal").classList.add("hidden");
   }
 
-  function productClass(product = "") {
-    const p = String(product).toLowerCase();
-    if (p.includes("brine") || p.includes("nacl") || p.includes("cacl")) return "brine";
-    if (p.includes("sbm") || p.includes("rheliant") || p.includes("sintético") || p.includes("sintetico")) return "sbm";
-    if (p.includes("olef")) return "olefin";
-    if (p.includes("wb") || p.includes("glydril") || p.includes("water")) return "wbm";
-    if (p.includes("barita") || p.includes("bentonita") || p.includes("calcita")) return "bulk";
-    return "empty";
+  function productClass(product = "", kind = "", volume = 0) {
+    const numericVolume = Number(volume || 0);
+    if (numericVolume <= 0) return "empty";
+
+    const p = String(product || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+    const equipmentKind = String(kind || "").toLowerCase();
+
+    // Todo silo com saldo utiliza a cor de granel, mesmo sem produto informado.
+    if (equipmentKind.includes("silo")) return "bulk";
+
+    if (["brine", "nacl", "cacl", "salmoura", "cadit"].some(term => p.includes(term))) return "brine";
+    if (["sbm", "rheliant", "sintetico", "oleo base"].some(term => p.includes(term))) return "sbm";
+    if (["olef", "olefina"].some(term => p.includes(term))) return "olefin";
+    if (["wb", "wbdf", "flopro", "glydril", "glydrill", "water", "kcl polymer", "premix"].some(term => p.includes(term))) return "wbm";
+    if (["barita", "bentonita", "calcita", "cimento", "bulk", "granel"].some(term => p.includes(term))) return "bulk";
+
+    // Qualquer tanque/Mix Tank com volume e produto desconhecido recebe cor genérica.
+    return "generic";
   }
 
   function tankMovementMode(activity = "") {
@@ -755,8 +769,11 @@
     const volume = Number(tank.volume || 0);
     const capacity = Number(tank.capacity || 0);
     const pct = capacity > 0 ? Math.max(0, Math.min(100, (volume / capacity) * 100)) : 0;
+    // Um saldo positivo muito pequeno ainda precisa ficar visível na faixa.
+    const visualPct = volume > 0 ? Math.max(1.5, pct) : 0;
     const updater = state.data.users.find(user => user.id === tank.updated_by)?.name || "Não informado";
-    const productType = productClass(tank.product);
+    const productType = productClass(tank.product, tank.kind, volume);
+    const volumeState = volume > 0 ? "has-volume" : "no-volume";
 
     return `<div class="card tank-card compact-tank-card">
       <div class="tank-top">
@@ -768,8 +785,8 @@
       </div>
 
       <div class="compact-tank-product">
-        <strong>${esc(tank.product || "Sem produto")}</strong>
-        <span>Lote: ${esc(tank.lot || "-")}</span>
+        <strong>${esc(tank.product || (volume > 0 ? "Produto não informado" : "Sem produto"))}</strong>
+        <span>Lote: ${esc(tank.lot || "-")}${volume > 0 && !tank.product ? ` • volume registrado` : ""}</span>
       </div>
 
       <div class="tank-volume-line">
@@ -777,12 +794,12 @@
         <span>de ${fmt.format(capacity)} ${esc(tank.unit)}</span>
       </div>
 
-      <div class="tank-progress ${productType}" role="progressbar"
+      <div class="tank-progress ${productType} ${volumeState}" data-volume="${volume}" data-kind="${esc(tank.kind)}" role="progressbar"
         aria-label="Ocupação de ${esc(tank.name)}"
         aria-valuemin="0"
         aria-valuemax="100"
         aria-valuenow="${pct.toFixed(1)}">
-        <span style="width:${pct.toFixed(2)}%"></span>
+        <span style="width:${visualPct.toFixed(2)}%" title="${fmt.format(pct)}% ocupado"></span>
       </div>
 
       <div class="tank-progress-caption">

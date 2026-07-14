@@ -138,3 +138,29 @@
 .admin-edit-notice strong{font-size:13px}
 .admin-edit-notice span{font-size:11px;line-height:1.45}
 :root[data-theme="dark"] .admin-edit-notice{background:#382b10;border-color:#735a21;color:#f3d98c}
+
+/* Barras de volume — preenchimento garantido em tanques e silos */
+.tank-progress{
+  --tank-fill:#5b7cfa;
+  position:relative;
+  background:#e5eaf1;
+}
+.tank-progress.empty{--tank-fill:transparent}
+.tank-progress.generic{--tank-fill:#5b7cfa}
+.tank-progress.wbm{--tank-fill:#2a66e8}
+.tank-progress.brine{--tank-fill:#19a55b}
+.tank-progress.sbm{--tank-fill:#8b572a}
+.tank-progress.olefin{--tank-fill:#7c8798}
+.tank-progress.bulk{--tank-fill:#c18a36}
+.tank-progress>span{
+  display:block;
+  height:100%;
+  background:var(--tank-fill)!important;
+  opacity:1!important;
+  visibility:visible!important;
+}
+.tank-progress.has-volume>span{min-width:5px}
+.tank-progress.no-volume>span{width:0!important;min-width:0}
+:root[data-theme="dark"] .tank-progress{background:#27364a}
+:root[data-theme="dark"] .tank-progress.generic{--tank-fill:#7896ff}
+:root[data-theme="dark"] .tank-progress.bulk{--tank-fill:#d5a24c}

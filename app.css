@@ -745,3 +745,27 @@ body.kiosk-mode .pull-refresh-indicator{display:none!important}
 .truck-platform-product select{font-weight:750}
 .truck-platform-product option{font-weight:500}
 .truck-platform-product [data-truck-item-detail]{color:#49627f}
+
+
+/* Inserção robusta de produtos em tanques e silos */
+.catalog-linked-actions{display:flex;gap:7px;flex-wrap:wrap;justify-content:flex-end}
+.tank-product-availability{display:flex;align-items:center;gap:7px;margin-top:8px;padding:7px 9px;border-radius:10px;background:#eaf3ff;color:#214f8a}
+.tank-product-availability strong{font-size:16px}
+.tank-product-availability span{font-size:9px;font-weight:700}
+.catalog-linked-field input[readonly],.catalog-linked-field select:disabled{opacity:.85}
+@media(max-width:820px){
+  .catalog-linked-actions{display:grid;grid-template-columns:1fr 1fr;width:100%}
+  .catalog-linked-actions .btn{width:100%}
+}
+@media(max-width:390px){
+  .catalog-linked-actions{grid-template-columns:1fr}
+}
+
+
+/* Suite integrada: catálogo químico, fechamento, stepper e saneamento */
+.chemical-catalog-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:10px;margin-top:14px}.chemical-catalog-card.inactive{opacity:.7;border-style:dashed}.chemical-catalog-card p{color:var(--muted)}
+.operation-stepper-head{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-bottom:16px}.operation-stepper-head span{display:flex;align-items:center;gap:7px;padding:8px;border-radius:11px;background:var(--bg);color:var(--muted);border:1px solid var(--line)}.operation-stepper-head b{width:26px;height:26px;border-radius:50%;display:grid;place-items:center;background:#dce5f2}.operation-stepper-head small{font-size:9px;font-weight:800}.operation-stepper-head span.active{background:#edf4ff;border-color:#9dbff4;color:#1454ad}.operation-stepper-head span.active b,.operation-stepper-head span.done b{background:#1768ff;color:#fff}.operation-step{display:none}.operation-step.active{display:block}.operation-step-actions{display:flex;justify-content:space-between;gap:10px;margin-top:16px}.operation-review-card{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;padding:12px;border-radius:14px;background:#f4f8ff;border:1px solid #c6d9f4}.operation-review-card span,.operation-review-card strong{display:block}.operation-review-card span{font-size:9px;color:var(--muted)}.operation-review-card strong{margin-top:3px}
+.closing-layout{display:grid;grid-template-columns:minmax(0,2fr) minmax(250px,.8fr);gap:12px}.closing-action-card{display:flex;justify-content:space-between;align-items:center;gap:14px;background:linear-gradient(135deg,#eef5ff,#fff)}.closing-action-card h3{margin:4px 0}.closing-action-card p{color:var(--muted)}.closing-history-list{display:grid;gap:7px}.closing-history-button{display:flex;justify-content:space-between;align-items:center;padding:9px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--text)}.closing-summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}.closing-summary-grid span{padding:9px;border-radius:10px;background:var(--bg);font-size:9px;color:var(--muted)}.closing-summary-grid strong{display:block;font-size:18px;color:var(--text);margin-top:4px}.closing-tools{display:flex;align-items:center;gap:10px;margin:12px 0}.closing-tools span{font-size:10px;color:var(--muted)}.closing-count-group{border:1px solid var(--line);border-radius:13px;margin:10px 0;background:var(--card)}.closing-count-group summary{padding:12px;font-weight:900;cursor:pointer}.closing-count-group>div{padding:0 10px 10px}.closing-count-row{display:grid;grid-template-columns:1fr 150px;gap:10px;align-items:center;padding:7px;border-top:1px solid var(--line)}.closing-count-row strong,.closing-count-row small{display:block}.closing-count-row small{color:var(--muted);margin-top:2px}
+.sanitation-intro{background:#f2f7ff}.sanitation-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.sanitation-card{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.sanitation-card h3{margin:8px 0 4px}.sanitation-card p{color:var(--muted)}.truck-stock-lock{margin-bottom:12px}.truck-stock-lock strong,.truck-stock-lock span{display:block}.truck-stock-lock span{margin-top:4px;color:var(--muted)}.environment-card p{color:var(--muted)}
+@media(max-width:820px){.operation-stepper-head small{display:none}.operation-stepper-head span{justify-content:center}.operation-review-card{grid-template-columns:1fr}.closing-layout{grid-template-columns:1fr}.closing-summary-grid{grid-template-columns:repeat(2,1fr)}.closing-count-row{grid-template-columns:1fr 110px}.sanitation-grid{grid-template-columns:1fr}.closing-action-card{display:grid}.chemical-catalog-grid{grid-template-columns:1fr}}
+@media(max-width:390px){.closing-count-row{grid-template-columns:1fr}.operation-step-actions{display:grid;grid-template-columns:1fr}.operation-step-actions .btn{width:100%}}

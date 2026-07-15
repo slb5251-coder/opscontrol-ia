@@ -7,7 +7,7 @@
   <title>OpsControl IA Pro</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="app.css?v=20260715-platform-chemical-name-only-1">
+  <link rel="stylesheet" href="app.css?v=20260715-integrated-closing-suite-1">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -56,9 +56,11 @@
           <button class="nav-item active" data-page="dashboard"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13h8V3H3z"></path><path d="M13 21h8v-6h-8z"></path><path d="M13 11h8V3h-8z"></path><path d="M3 21h8v-6H3z"></path></svg></span><span class="nav-label">Dashboard</span></button>
           <button class="nav-item" data-page="tv"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="13" rx="2"></rect><path d="M8 21h8"></path><path d="M12 17v4"></path><path d="M7 9h4v4H7z"></path><path d="M14 9h3"></path><path d="M14 12h3"></path></svg></span><span class="nav-label">Painel TV</span></button>
           <button class="nav-item" data-page="quality"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8.7-7 10-4-1.3-7-5.5-7-10V6l7-3z"></path><path d="M8.5 12l2.2 2.2 4.8-5"></path></svg></span><span class="nav-label">Qualidade dos Dados</span></button>
+          <button class="nav-item" data-page="sanitation"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16"></path><path d="M7 5v14h10V5"></path><path d="M9 9h6"></path><path d="M9 13h6"></path><path d="M9 17h4"></path></svg></span><span class="nav-label">Saneamento de Dados</span></button>
           <button class="nav-item" data-page="operations"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v15"></path><path d="M8 7l4-4 4 4"></path><path d="M5 21h14"></path><path d="M4 17c2.5 0 3.5 1 5 1s2.5-1 4-1 2.5 1 4 1 2.5-1 3-1"></path></svg></span><span class="nav-label">Operações</span></button>
           <button class="nav-item" data-page="tanks"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4h10"></path><path d="M7 20h10"></path><path d="M8 4v16"></path><path d="M16 4v16"></path><path d="M8 9h8"></path><path d="M8 15h8"></path></svg></span><span class="nav-label">Tanques e Silos</span></button>
           <button class="nav-item" data-page="fluids"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v5.5L5.4 15a5 5 0 0 0 4.6 7h4a5 5 0 0 0 4.6-7L14 7.5V2"></path><path d="M8 2h8"></path><path d="M8 14h8"></path></svg></span><span class="nav-label">Fluidos e Granéis</span></button>
+          <button class="nav-item" data-page="chemical-catalog"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path></svg></span><span class="nav-label">Catálogo Químico</span></button>
           <button class="nav-item" data-page="chemicals"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v7.5L5 18a3 3 0 0 0 2.6 4.5h8.8A3 3 0 0 0 19 18l-5-8.5V2"></path><path d="M8 2h8"></path><path d="M8.5 14h7"></path></svg></span><span class="nav-label">Inventário Químico</span></button>
           <button class="nav-item" data-page="trucks"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 17h4"></path><path d="M3 6h11v9H3z"></path><path d="M14 9h3l4 4v2h-7z"></path><circle cx="7.5" cy="18" r="1.5"></circle><circle cx="17.5" cy="18" r="1.5"></circle></svg></span><span class="nav-label">Carretas</span></button>
           <button class="nav-item" data-page="qhse"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8.7-7 10-4-1.3-7-5.5-7-10V6l7-3z"></path><path d="M9.5 12.5l1.8 1.8 3.7-4"></path></svg></span><span class="nav-label">QHSE</span></button>
@@ -78,10 +80,12 @@
       <main class="main-content">
         <section id="page-dashboard" class="page active"></section>
         <section id="page-quality" class="page"></section>
+        <section id="page-sanitation" class="page"></section>
         <section id="page-tv" class="page"></section>
         <section id="page-operations" class="page"></section>
         <section id="page-tanks" class="page"></section>
         <section id="page-fluids" class="page"></section>
+        <section id="page-chemical-catalog" class="page"></section>
         <section id="page-chemicals" class="page"></section>
         <section id="page-trucks" class="page"></section>
         <section id="page-qhse" class="page"></section>
@@ -145,8 +149,8 @@
   </div>
 
   <div id="toastContainer" class="toast-container"></div>
-  <script src="js/config.js?v=20260715-platform-chemical-name-only-1"></script>
-  <script src="vendor/qrcode.js?v=20260715-platform-chemical-name-only-1"></script>
-  <script src="js/app.js?v=20260715-platform-chemical-name-only-1"></script>
+  <script src="js/config.js?v=20260715-integrated-closing-suite-1"></script>
+  <script src="vendor/qrcode.js?v=20260715-integrated-closing-suite-1"></script>
+  <script src="js/app.js?v=20260715-integrated-closing-suite-1"></script>
 </body>
 </html>

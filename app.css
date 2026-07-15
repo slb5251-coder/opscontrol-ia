@@ -739,3 +739,9 @@ body.kiosk-mode .pull-refresh-indicator{display:none!important}
 @media(max-width:390px){
   .tank-card .row-actions{grid-template-columns:1fr}
 }
+
+
+/* Produtos químicos da Plataforma: seleção somente pelo nome */
+.truck-platform-product select{font-weight:750}
+.truck-platform-product option{font-weight:500}
+.truck-platform-product [data-truck-item-detail]{color:#49627f}

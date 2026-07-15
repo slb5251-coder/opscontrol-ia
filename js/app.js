@@ -305,7 +305,7 @@
     (d.tanks || []).forEach(x => add("tank", x.id, "tanks", x.name, `${x.product || "Sem produto"} • lote ${x.lot || "-"}`, `${x.phase} ${x.kind} ${x.status}`));
     (d.operations || []).forEach(x => add("operation", x.id, "operations", `${x.client} • ${x.vessel}`, `${x.activity} de ${x.product}`, `${x.service_order} ${x.ticketNumber} ${x.rig} ${x.well} ${x.lot} ${x.status}`));
     (d.trucks || []).forEach(x => {
-      const itemTerms = (x.items || []).map(item => `${item.productName} ${item.lot} ${item.quantity} ${item.unit}`).join(" ");
+      const itemTerms = (x.items || []).map(item => `${item.productName} ${item.quantity} ${item.unit}`).join(" ");
       add("truck", x.id, "trucks", x.plate || x.product, `${x.truckType} • ${x.product} • NF ${x.invoice || "-"}`, `${x.driver} ${x.supplier} ${x.client} ${x.lot} ${itemTerms}`);
     });
     (d.chemicals || []).forEach(x => add("chemical", x.id, "chemicals", x.name, `Lote ${x.lot || "-"} • ${fmt.format(x.quantity)} ${x.unit}`, `${x.location} ${x.supplier} ${x.category}`));
@@ -969,7 +969,7 @@
     }
     if (kind === "trucks") {
       const rows = filteredTrucks().flatMap(t => t.truckType === "Plataforma" && t.items.length
-        ? t.items.map((item,index) => [t.date,t.movement,t.truckType,t.supplier,t.client,item.productName,item.lot,item.quantity,item.unit,index+1,t.items.length,t.plate,t.driver,t.invoice,t.status])
+        ? t.items.map((item,index) => [t.date,t.movement,t.truckType,t.supplier,t.client,item.productName,"",item.quantity,item.unit,index+1,t.items.length,t.plate,t.driver,t.invoice,t.status])
         : [[t.date,t.movement,t.truckType,t.supplier,t.client,t.product,t.lot,t.quantity,t.unit,1,1,t.plate,t.driver,t.invoice,t.status]]);
       return downloadCsv(`carretas-${date}.csv`, ["Data","Movimento","Tipo da carreta","Origem/Destino","Cliente","Produto","Lote","Quantidade","Unidade","Item","Total de itens","Placa","Motorista","NF","Status"], rows);
     }
@@ -3486,10 +3486,25 @@
     ).join("");
   }
 
+  function uniquePlatformChemicals(selectedId = "") {
+    const products = [...(state.data?.chemicals || [])].sort((a, b) => {
+      const nameOrder = a.name.localeCompare(b.name);
+      if (nameOrder !== 0) return nameOrder;
+      if (a.id === selectedId) return -1;
+      if (b.id === selectedId) return 1;
+      return Number(b.quantity || 0) - Number(a.quantity || 0);
+    });
+    const unique = new Map();
+    products.forEach(item => {
+      const key = normalizeSearch(item.name);
+      if (!unique.has(key) || item.id === selectedId) unique.set(key, item);
+    });
+    return [...unique.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
   function platformInventoryOptions(selectedId = "") {
-    return [...(state.data?.chemicals || [])]
-      .sort((a,b) => `${a.name} ${a.lot}`.localeCompare(`${b.name} ${b.lot}`))
-      .map(item => `<option value="${item.id}" data-unit="${esc(item.unit)}" data-product="${esc(item.name)}" data-lot="${esc(item.lot || "")}" ${item.id === selectedId ? "selected" : ""}>${esc(item.name)} — lote ${esc(item.lot || "-")} — saldo ${fmt.format(item.quantity)} ${esc(item.unit)}</option>`)
+    return uniquePlatformChemicals(selectedId)
+      .map(item => `<option value="${item.id}" data-unit="${esc(item.unit)}" data-product="${esc(item.name)}" ${item.id === selectedId ? "selected" : ""}>${esc(item.name)}</option>`)
       .join("");
   }
 
@@ -3498,12 +3513,12 @@
     const inventory = (state.data?.chemicals || []).find(product => product.id === selectedId);
     return `<div class="truck-platform-row" data-truck-platform-row>
       <div class="truck-platform-product">
-        <label>Produto / lote *</label>
+        <label>Produto químico *</label>
         <select data-truck-item-inventory>
-          <option value="">Selecione no Inventário Químico</option>
+          <option value="">Selecione o produto químico</option>
           ${platformInventoryOptions(selectedId)}
         </select>
-        <small data-truck-item-detail>${inventory ? `${esc(inventory.name)} • lote ${esc(inventory.lot || "-")}` : "Produto vinculado ao Inventário Químico."}</small>
+        <small data-truck-item-detail>${inventory ? `Produto selecionado: ${esc(inventory.name)}` : "A lista mostra somente o nome do produto."}</small>
       </div>
       <div><label>Quantidade *</label><input data-truck-item-quantity type="text" inputmode="decimal" value="${esc(item.quantity ?? "")}" placeholder="Ex.: 20"></div>
       <div><label>Unidade</label><input data-truck-item-unit value="${esc(item.unit || inventory?.unit || "")}" readonly></div>
@@ -3519,8 +3534,8 @@
     const detail = row.querySelector("[data-truck-item-detail]");
     if (unit) unit.value = inventory?.unit || "";
     if (detail) detail.textContent = inventory
-      ? `${inventory.name} • lote ${inventory.lot || "-"} • saldo atual ${fmt.format(inventory.quantity)} ${inventory.unit}`
-      : "Produto vinculado ao Inventário Químico.";
+      ? `Produto selecionado: ${inventory.name}`
+      : "A lista mostra somente o nome do produto.";
   }
 
   function syncTruckSingleProduct(form) {
@@ -3601,7 +3616,7 @@
     }
     if (!items.length) return `<strong>Plataforma</strong><small>Nenhum item detalhado.</small>`;
     const visible = detailed ? items : items.slice(0, 3);
-    return `<div class="truck-item-summary">${visible.map(product => `<span><strong>${esc(product.productName)}</strong><small>${fmt.format(product.quantity)} ${esc(product.unit)} • lote ${esc(product.lot || "-")}</small></span>`).join("")}${!detailed && items.length > 3 ? `<em>+ ${items.length - 3} produto(s)</em>` : ""}</div>`;
+    return `<div class="truck-item-summary">${visible.map(product => `<span><strong>${esc(product.productName)}</strong><small>${fmt.format(product.quantity)} ${esc(product.unit)}</small></span>`).join("")}${!detailed && items.length > 3 ? `<em>+ ${items.length - 3} produto(s)</em>` : ""}</div>`;
   }
 
   function truckForm(item = {}) {
@@ -3634,7 +3649,7 @@
 
         <section class="wide truck-platform-section ${type === "Plataforma" ? "" : "hidden"}" data-truck-platform-section>
           <div class="truck-platform-heading">
-            <div><label>Produtos da Plataforma *</label><small>Selecione os produtos/lotes já cadastrados no Inventário Químico.</small></div>
+            <div><label>Produtos da Plataforma *</label><small>Selecione apenas o nome do produto químico e informe a quantidade carregada.</small></div>
             <div class="row-actions"><button type="button" class="btn small secondary" data-action="open-chemical-inventory">Abrir inventário</button><button type="button" class="btn small primary" data-action="add-truck-item">+ Adicionar produto</button></div>
           </div>
           <div class="truck-platform-summary" data-truck-platform-summary><strong>${items.length}</strong><span>produto(s) adicionado(s)</span></div>
@@ -5022,7 +5037,7 @@
     if (button.dataset.truckItems) {
       const item = state.data.trucks.find(x => x.id === button.dataset.truckItems);
       if (!item) return toast("Carreta não localizada.", "error");
-      return openModal(`Itens da Plataforma — ${item.plate || item.invoice || item.id}`, `<div class="truck-detail-list">${(item.items || []).map((product,index) => `<div class="attachment-item"><div class="attachment-icon">${index+1}</div><div class="attachment-info"><strong>${esc(product.productName)}</strong><small>Lote ${esc(product.lot || "-")} • ${fmt.format(product.quantity)} ${esc(product.unit)}</small></div></div>`).join("") || `<div class="empty">Nenhum produto detalhado.</div>`}</div>`, "PLATAFORMA");
+      return openModal(`Itens da Plataforma — ${item.plate || item.invoice || item.id}`, `<div class="truck-detail-list">${(item.items || []).map((product,index) => `<div class="attachment-item"><div class="attachment-icon">${index+1}</div><div class="attachment-info"><strong>${esc(product.productName)}</strong><small>${fmt.format(product.quantity)} ${esc(product.unit)}</small></div></div>`).join("") || `<div class="empty">Nenhum produto detalhado.</div>`}</div>`, "PLATAFORMA");
     }
 
     if (button.dataset.editQhse) {

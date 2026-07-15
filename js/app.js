@@ -12,7 +12,7 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const APP_VERSION = "20260715-integrated-closing-suite-1";
+  const APP_VERSION = "20260715-chemical-product-lots-1";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -263,7 +263,7 @@
       quickActions.push(mobileQuickButton("new-maintenance-order", "Abrir ordem de serviço", "Preventiva, corretiva ou inspeção", "🔧"));
     }
     if (moduleAllowed("chemicals") && canManageChemicals()) {
-      quickActions.push(mobileQuickButton("new-chemical", "Cadastrar químico", "Produto, lote, validade e saldo", "◈"));
+      quickActions.push(mobileQuickButton("new-chemical", "Adicionar lote", "Quantidade, validade e localização", "◈"));
     }
     if (moduleAllowed("alerts") && hasRole(["supervisor", "lider", "qhse", "logistica"])) {
       quickActions.push(mobileQuickButton("new-alert", "Criar comunicado", "Aviso para a equipe", "🔔"));
@@ -411,14 +411,34 @@
   }
 
   function draftIdentity(form) {
-    if (!form || form.dataset.id || form.dataset.userId || form.dataset.operationId || form.dataset.recordId) return "";
+    if (!form) return "";
+    if (form.id === "tankForm") return "";
+    const hiddenRecordId = form.querySelector?.('input[type="hidden"][name="id"]')?.value
+      || form.querySelector?.('input[type="hidden"][name="tank_id"]')?.value
+      || "";
+    if (form.dataset.id || form.dataset.userId || form.dataset.operationId || form.dataset.recordId || hiddenRecordId) return "";
     const kind = form.dataset.kind || form.id;
     return `${state.user?.id || "anon"}:${kind}`;
   }
 
+  function clearLegacyTankDrafts() {
+    try {
+      const drafts = draftStore();
+      let changed = false;
+      Object.keys(drafts).forEach(key => {
+        if (key.endsWith(":tankForm") || key.includes("tankForm")) {
+          delete drafts[key];
+          changed = true;
+        }
+      });
+      if (changed) localStorage.setItem(FORM_DRAFT_KEY, JSON.stringify(drafts));
+    } catch (_) {}
+  }
+
   function serializeFormDraft(form) {
     const fields = [...form.querySelectorAll("input[name],select[name],textarea[name]")]
-      .filter(field => field.type !== "file" && field.type !== "password")
+      .filter(field => !["file", "password", "hidden"].includes(field.type))
+      .filter(field => !["id", "tank_id", "record_id", "operation_id"].includes(field.name))
       .map((field, index) => ({
         name: field.name,
         index,
@@ -483,8 +503,11 @@
       }
     }
 
-    const allFields = [...form.querySelectorAll("input[name],select[name],textarea[name]")].filter(field => field.type !== "file" && field.type !== "password");
+    const allFields = [...form.querySelectorAll("input[name],select[name],textarea[name]")]
+      .filter(field => !["file", "password", "hidden"].includes(field.type))
+      .filter(field => !["id", "tank_id", "record_id", "operation_id"].includes(field.name));
     draft.fields.forEach(saved => {
+      if (["id", "tank_id", "record_id", "operation_id"].includes(saved.name)) return;
       const candidates = allFields.filter(field => field.name === saved.name);
       const field = candidates.shift() || allFields[saved.index];
       if (!field || field.type === "file") return;
@@ -753,7 +776,8 @@
     syncTruckForm($("#truckForm"));
     updateTransferPreview($("#tankTransferForm"));
     const modalForm = $("#modalBody form");
-    if (modalForm) restoreFormDraft(modalForm);
+    if (modalForm?.id === "tankForm") clearLegacyTankDrafts();
+    else if (modalForm) restoreFormDraft(modalForm);
     setTimeout(() => {
       const firstField = $("#modalBody input:not([type='hidden']):not([disabled]), #modalBody select:not([disabled]), #modalBody textarea:not([disabled])");
       firstField?.focus({ preventScroll: true });
@@ -987,8 +1011,9 @@
       return downloadCsv(`tancagem-${date}.csv`, ["Fase", "Tanque/Silo", "Tipo", "Produto", "Lote", "Volume", "Capacidade", "Unidade", "Status", "Atualização"], rows);
     }
     if (kind === "chemicals") {
-      const rows = state.data.chemicals.map(c => [c.name, c.category, c.lot, c.quantity, c.unit, c.minimum, c.expiry_date, c.location, c.supplier, chemicalDisplayStatus(c)]);
-      return downloadCsv(`inventario-quimico-${date}.csv`, ["Produto", "Categoria", "Lote", "Saldo", "Unidade", "Mínimo", "Validade", "Localização", "Fornecedor", "Status"], rows);
+      const totals = new Map(groupedChemicalInventory().map(item => [item.id, item.total]));
+      const rows = state.data.chemicals.map(c => [c.name, c.category, totals.get(c.productId) || 0, c.lot || "Sem lote", c.quantity, c.unit, c.minimum, c.expiry_date, c.location, c.supplier, chemicalDisplayStatus(c)]);
+      return downloadCsv(`inventario-quimico-${date}.csv`, ["Produto", "Categoria", "Total do produto", "Lote", "Quantidade do lote", "Unidade", "Mínimo do lote", "Validade", "Localização", "Fornecedor", "Status"], rows);
     }
     if (kind === "trucks") {
       const rows = filteredTrucks().flatMap(t => t.truckType === "Plataforma" && t.items.length
@@ -2276,7 +2301,7 @@
     });
 
     d.trucks.forEach(truck => {
-      if (["Recebida","Concluída"].includes(truck.status) && !truck.stockApplied) add("Crítica","Logística",`${truck.plate || truck.invoice || "Carreta"}: estoque não aplicado`,"Abra a carreta e confirme produto, quantidade e equipamento.","trucks","truck",truck.id);
+      if (truck.truckType !== "Plataforma" && ["Recebida","Concluída"].includes(truck.status) && !truck.stockApplied) add("Crítica","Logística",`${truck.plate || truck.invoice || "Carreta"}: estoque não aplicado`,"Abra a carreta e confirme produto, quantidade e equipamento.","trucks","truck",truck.id);
       if (!["Bulk","Tank","Plataforma"].includes(truck.truckType)) add("Alta", "Logística", `${truck.plate || truck.product}: tipo não definido`, "Classifique a carreta como Bulk, Tank ou Plataforma.", "trucks", "truck", truck.id);
       if (!truck.invoice) add("Média", "Logística", `${truck.plate || truck.product}: carreta sem NF`, `${truck.movement} • ${truck.truckType} • ${truck.product}.`, "trucks", "truck", truck.id);
       if (truck.truckType !== "Plataforma" && !truck.fluidTypeId) add("Alta", "Logística", `${truck.plate || truck.product}: produto não vinculado`, "Selecione o produto cadastrado em Fluidos e Granéis.", "trucks", "truck", truck.id);
@@ -2846,6 +2871,7 @@
 
   function tankForm(tank, editStructure = false) {
     const admin = isAdmin() && editStructure;
+    const editToken = crypto.randomUUID();
     const silo = isSiloAsset(tank);
     const linkedFluid = (state.data.fluids || []).find(item => item.id === tank.fluidTypeId);
     const unlinkedCurrent = Boolean(tank.product && !linkedFluid);
@@ -2855,10 +2881,20 @@
     const calculatedCapacity = siloOperationalCapacity(physicalCapacity, currentDensity) ?? tank.capacity;
 
     return `<form id="tankForm"
+      data-id="${tank.id}"
+      data-tank-id="${tank.id}"
+      data-tank-name="${esc(tank.name)}"
+      data-tank-updated-at="${esc(tank.updated_at || "")}"
+      data-edit-token="${editToken}"
       data-admin-full="${admin ? "true" : "false"}"
       data-tank-kind="${esc(tank.kind)}"
       novalidate>
-      <input type="hidden" name="id" value="${tank.id}">
+      <input type="hidden" name="id" value="${tank.id}" data-immutable-id>
+      <div class="tank-target-lock">
+        <span>Equipamento selecionado</span>
+        <strong>${esc(tank.name)}</strong>
+        <small>${esc(tank.phase)} • ${esc(tank.kind)} • ID ${esc(tank.id.slice(0, 8))}</small>
+      </div>
       <div class="form-grid">
         ${admin ? `
           <div><label>Nome do equipamento *</label><input name="name" required autocomplete="off" autocapitalize="characters" spellcheck="false" value="${esc(tank.name)}"><small class="field-help">O nome precisa ser exclusivo, por exemplo TK-12 ou SILO A.</small></div>
@@ -2951,7 +2987,10 @@
       <div id="tankSaveMessage" class="message hidden"></div>
       <div class="form-actions">
         <button type="button" class="btn secondary" data-close-modal>Cancelar</button>
-        <button type="button" class="btn primary" data-action="save-tank-volume">${admin ? "Salvar estrutura e conteúdo" : "Salvar atualização operacional"}</button>
+        <button type="button" class="btn primary" data-action="save-tank-volume"
+          data-tank-id="${tank.id}"
+          data-tank-name="${esc(tank.name)}"
+          data-edit-token="${editToken}">${admin ? "Salvar estrutura e conteúdo" : `Salvar somente em ${esc(tank.name)}`}</button>
       </div>
     </form>`;
   }
@@ -3060,20 +3099,77 @@
   }
 
   function renderChemicalCatalog() {
-    const products = state.data.chemicalProducts || [];
+    const products = groupedChemicalInventory();
     const active = products.filter(item => item.active).length;
     const rows = products.map(item => `<article class="card chemical-catalog-card ${item.active ? "" : "inactive"}">
       <div class="mobile-record-head"><div><strong>${esc(item.name)}</strong><small>${esc(item.category || "Produto químico")}</small></div>${badge(item.active ? "Ativo" : "Inativo")}</div>
-      <div class="mobile-record-grid"><span>Unidade padrão<strong>${esc(item.unit)}</strong></span><span>Lotes no estoque<strong>${state.data.chemicals.filter(lot => lot.productId === item.id).length}</strong></span></div>
+      <div class="mobile-record-grid"><span>Saldo total<strong>${fmt.format(item.total)} ${esc(item.unit)}</strong></span><span>Lotes<strong>${item.lots.length}</strong></span><span>Unidade padrão<strong>${esc(item.unit)}</strong></span></div>
       ${item.notes ? `<p>${esc(item.notes)}</p>` : ""}
-      <div class="row-actions">${canManageChemicals() ? `<button class="btn small primary" data-edit-chemical-product="${item.id}">Editar</button>` : ""}<button class="btn small secondary" data-page-link="chemicals">Ver inventário</button></div>
+      <div class="row-actions">${canManageChemicals() ? `<button class="btn small primary" data-new-chemical-lot="${item.id}">+ Adicionar lote</button><button class="btn small secondary" data-edit-chemical-product="${item.id}">Editar produto</button>` : ""}<button class="btn small secondary" data-chemical-lots="${item.id}">Ver lotes</button></div>
     </article>`).join("");
     $("#page-chemical-catalog").innerHTML =
-      header("Catálogo Químico", "Cadastre cada nome uma vez. Lote, validade e saldo ficam separados no Inventário Químico.",
+      header("Catálogo Químico", "Um único cadastro por produto. As quantidades ficam separadas por lote no inventário.",
         canManageChemicals() ? `<button class="btn primary" data-action="new-chemical-product">+ Novo produto químico</button>` : "") +
-      `<div class="grid three"><div class="card stat-card"><div><small>Produtos cadastrados</small><h2>${products.length}</h2><span class="muted">nomes oficiais</span></div></div><div class="card stat-card"><div><small>Produtos ativos</small><h2>${active}</h2><span class="muted">disponíveis para carretas</span></div></div><div class="card stat-card"><div><small>Lotes no inventário</small><h2>${state.data.chemicals.length}</h2><span class="muted">saldos separados</span></div></div></div>
-      <div class="catalog-link-flow card"><span class="catalog-flow-step"><b>1</b><strong>Cadastre o nome</strong><small>Ex.: Duo Vis.</small></span><span class="catalog-flow-arrow">→</span><span class="catalog-flow-step"><b>2</b><strong>Cadastre o lote</strong><small>Validade, localização e saldo.</small></span><span class="catalog-flow-arrow">→</span><span class="catalog-flow-step"><b>3</b><strong>Use na Plataforma</strong><small>Aparece somente o nome.</small></span></div>
+      `<div class="grid three"><div class="card stat-card"><div><small>Produtos cadastrados</small><h2>${products.length}</h2><span class="muted">um cadastro por nome</span></div></div><div class="card stat-card"><div><small>Produtos ativos</small><h2>${active}</h2><span class="muted">disponíveis para carretas</span></div></div><div class="card stat-card"><div><small>Lotes no inventário</small><h2>${state.data.chemicals.length}</h2><span class="muted">quantidades separadas</span></div></div></div>
+      <div class="catalog-link-flow card"><span class="catalog-flow-step"><b>1</b><strong>Cadastre o produto</strong><small>Uma única vez.</small></span><span class="catalog-flow-arrow">→</span><span class="catalog-flow-step"><b>2</b><strong>Adicione os lotes</strong><small>Quantidade, validade e localização.</small></span><span class="catalog-flow-arrow">→</span><span class="catalog-flow-step"><b>3</b><strong>Veja o total</strong><small>Soma automática dos lotes.</small></span></div>
       <div class="chemical-catalog-grid">${rows || `<div class="card empty">Nenhum produto químico cadastrado.</div>`}</div>`;
+  }
+
+
+  function groupedChemicalInventory() {
+    const products = state.data.chemicalProducts || [];
+    const lots = state.data.chemicals || [];
+    return products.map(product => {
+      const productLots = lots
+        .filter(lot => lot.productId === product.id)
+        .sort((a, b) => (a.expiry_date || "9999-12-31").localeCompare(b.expiry_date || "9999-12-31") || String(a.lot || "").localeCompare(String(b.lot || "")));
+      const total = productLots.reduce((sum, lot) => sum + Number(lot.quantity || 0), 0);
+      const minimum = productLots.reduce((sum, lot) => sum + Number(lot.minimum || 0), 0);
+      const availableLots = productLots.filter(lot => Number(lot.quantity || 0) > 0);
+      const expiredLots = availableLots.filter(lot => { const days = daysUntil(lot.expiry_date); return days !== null && days < 0; });
+      const expiringLots = availableLots.filter(lot => { const days = daysUntil(lot.expiry_date); return days !== null && days >= 0 && days <= 60; });
+      const nextLot = availableLots[0] || null;
+      let status = product.active === false ? "Inativo" : "Disponível";
+      if (expiredLots.length) status = "Vencido";
+      else if (minimum > 0 && total <= minimum) status = "Baixo estoque";
+      else if (expiringLots.length) status = "Próximo vencimento";
+      else if (!productLots.length || total <= 0) status = "Sem estoque";
+      return { ...product, lots: productLots, total, minimum, expiredLots, expiringLots, nextLot, inventoryStatus: status };
+    });
+  }
+
+  function chemicalLotsModal(productId) {
+    const group = groupedChemicalInventory().find(item => item.id === productId);
+    if (!group) return `<div class="empty">Produto químico não localizado.</div>`;
+    const rows = group.lots.map((lot, index) => {
+      const days = daysUntil(lot.expiry_date);
+      return `<article class="chemical-lot-row">
+        <div class="chemical-lot-rank">${index + 1}</div>
+        <div class="chemical-lot-main">
+          <strong>${esc(lot.lot || "Sem lote")}</strong>
+          <small>${fmt.format(lot.quantity)} ${esc(lot.unit)} • ${esc(lot.location || "Sem localização")}</small>
+          <span>Validade: ${dateOnly(lot.expiry_date)}${days !== null ? ` • ${days < 0 ? `${Math.abs(days)} dias vencido` : `${days} dias restantes`}` : ""}</span>
+        </div>
+        <div class="chemical-lot-status">${badge(chemicalDisplayStatus(lot))}</div>
+        <div class="row-actions">
+          ${canManageChemicals() ? `<button class="btn small primary" data-chemical-move="${lot.id}">Movimentar</button><button class="btn small secondary" data-edit-chemical="${lot.id}">Editar lote</button>` : ""}
+          <button class="btn small secondary" data-chemical-history="${lot.id}">Histórico</button>
+          <button class="btn small secondary" data-attachments="chemical:${lot.id}" data-attachment-title="${esc(group.name)} — ${esc(lot.lot || "Sem lote")}">Anexos (${attachmentCount("chemical", lot.id)})</button>
+        </div>
+      </article>`;
+    }).join("");
+    return `<div class="chemical-product-total-card"><span>Saldo total de ${esc(group.name)}</span><strong>${fmt.format(group.total)} ${esc(group.unit)}</strong><small>${group.lots.length} lote(s) cadastrado(s)</small></div>
+      <div class="row-actions chemical-lot-modal-actions">${canManageChemicals() ? `<button class="btn primary" data-new-chemical-lot="${group.id}">+ Adicionar lote</button>` : ""}<button class="btn secondary" data-edit-chemical-product="${group.id}">Editar produto</button></div>
+      <div class="chemical-lot-list">${rows || `<div class="empty">Nenhum lote cadastrado para este produto.</div>`}</div>`;
+  }
+
+  function truckInventoryLabel(item) {
+    if (item.truckType === "Plataforma") return "Sem vínculo com inventário";
+    if (item.stockApplied) {
+      const tankName = item.tankId ? state.data.tanks.find(tank => tank.id === item.tankId)?.name : "";
+      return `✓ estoque aplicado${tankName ? ` • ${tankName}` : ""}`;
+    }
+    return "estoque pendente";
   }
 
   function chemicalDisplayStatus(item) {
@@ -3085,26 +3181,33 @@
   }
 
   function renderChemicalInventory() {
-    const items = state.data.chemicals || [];
-    const totalLots = items.length;
-    const lowStock = items.filter(item => item.quantity <= item.minimum).length;
-    const expired = items.filter(item => { const days = daysUntil(item.expiry_date); return days !== null && days < 0; }).length;
-    const expiring = items.filter(item => { const days = daysUntil(item.expiry_date); return days !== null && days >= 0 && days <= 60; }).length;
-    const fefoOrder = [...items].filter(x => x.quantity > 0).sort((a, b) => (a.expiry_date || "9999-12-31").localeCompare(b.expiry_date || "9999-12-31"));
-    const fefoRank = new Map(fefoOrder.map((item, index) => [item.id, index + 1]));
+    const groups = groupedChemicalInventory();
+    const lots = state.data.chemicals || [];
+    const totalProducts = groups.length;
+    const totalLots = lots.length;
+    const lowStock = groups.filter(item => item.inventoryStatus === "Baixo estoque" || item.inventoryStatus === "Sem estoque").length;
+    const expired = groups.filter(item => item.expiredLots.length > 0).length;
+    const expiring = groups.filter(item => item.expiringLots.length > 0).length;
 
-    const rows = items.map(item => {
-      const status = chemicalDisplayStatus(item);
-      const days = daysUntil(item.expiry_date);
-      const canMove = canManageChemicals();
-      return `<tr><td><strong>${esc(item.name)}</strong><br><small>${esc(item.category || "Produto químico")}</small></td><td>${esc(item.lot || "-")}<br><small>FEFO #${fefoRank.get(item.id) || "-"}</small></td><td><strong>${fmt.format(item.quantity)} ${esc(item.unit)}</strong><br><small>Mínimo: ${fmt.format(item.minimum)} ${esc(item.unit)}</small></td><td>${dateOnly(item.expiry_date)}${days !== null ? `<br><small>${days < 0 ? `${Math.abs(days)} dias vencido` : `${days} dias restantes`}</small>` : ""}</td><td>${esc(item.location || "-")}</td><td>${badge(status)}</td><td><div class="row-actions">${canMove ? `<button class="btn small primary" data-chemical-move="${item.id}">Movimentar</button><button class="btn small secondary" data-edit-chemical="${item.id}">Editar</button>` : ""}<button class="btn small secondary" data-chemical-history="${item.id}">Histórico</button><button class="btn small secondary" data-attachments="chemical:${item.id}" data-attachment-title="${esc(item.name)}">📎 ${attachmentCount("chemical", item.id)}</button></div></td></tr>`;
+    const cards = groups.map(item => {
+      const nextLot = item.nextLot;
+      return `<article class="card chemical-product-stock-card ${item.active ? "" : "inactive"}">
+        <div class="chemical-product-stock-head"><div><span>${esc(item.category || "Produto químico")}</span><h3>${esc(item.name)}</h3></div>${badge(item.inventoryStatus)}</div>
+        <div class="chemical-total-value"><small>Saldo total</small><strong>${fmt.format(item.total)} ${esc(item.unit)}</strong><span>Soma de ${item.lots.length} lote(s)</span></div>
+        <div class="chemical-product-stock-grid">
+          <span>Lotes<strong>${item.lots.length}</strong></span>
+          <span>Mínimo total<strong>${fmt.format(item.minimum)} ${esc(item.unit)}</strong></span>
+          <span>Próximo FEFO<strong>${nextLot ? esc(nextLot.lot || "Sem lote") : "-"}</strong></span>
+          <span>Próxima validade<strong>${nextLot ? dateOnly(nextLot.expiry_date) : "-"}</strong></span>
+        </div>
+        <div class="row-actions">${canManageChemicals() ? `<button class="btn small primary" data-new-chemical-lot="${item.id}">+ Adicionar lote</button>` : ""}<button class="btn small secondary" data-chemical-lots="${item.id}">Ver e movimentar lotes</button>${canManageChemicals() ? `<button class="btn small secondary" data-edit-chemical-product="${item.id}">Editar produto</button>` : ""}</div>
+      </article>`;
     }).join("");
 
-    const mobile = items.map(item => `<div class="card mobile-record-card"><div class="mobile-record-head"><div><strong>${esc(item.name)}</strong><small>Lote ${esc(item.lot || "-")} • FEFO #${fefoRank.get(item.id) || "-"}</small></div>${badge(chemicalDisplayStatus(item))}</div><div class="mobile-record-grid"><span>Saldo<strong>${fmt.format(item.quantity)} ${esc(item.unit)}</strong></span><span>Mínimo<strong>${fmt.format(item.minimum)} ${esc(item.unit)}</strong></span><span>Validade<strong>${dateOnly(item.expiry_date)}</strong></span><span>Local<strong>${esc(item.location || "-")}</strong></span></div><div class="row-actions">${canManageChemicals() ? `<button class="btn small primary" data-chemical-move="${item.id}">Movimentar</button><button class="btn small secondary" data-edit-chemical="${item.id}">Editar</button>` : ""}<button class="btn small secondary" data-chemical-history="${item.id}">Histórico</button></div></div>`).join("");
-
-    $("#page-chemicals").innerHTML = header("Inventário de produtos químicos", "Saldo por produto e lote, FEFO, validade, estoque mínimo e rastreabilidade.", `${canManageChemicals() ? `<button class="btn primary" data-action="new-chemical">+ Novo produto/lote</button>` : ""}<button class="btn secondary" data-action="show-fefo">Ordem FEFO</button><button class="btn secondary" data-export="chemicals">Exportar CSV</button>`) +
-      `<div class="grid four">${statCard("Produtos e lotes", fmt.format(totalLots), "itens cadastrados", "▧")}${statCard("Baixo estoque", fmt.format(lowStock), "abaixo do mínimo", "⚠")}${statCard("Próximos do vencimento", fmt.format(expiring), "até 60 dias", "⏳")}${statCard("Vencidos", fmt.format(expired), "exigem tratamento", "✕")}</div>
-      <div class="card table-wrap desktop-record-table" style="margin-top:14px"><table class="data-table"><thead><tr><th>Produto</th><th>Lote / FEFO</th><th>Saldo</th><th>Validade</th><th>Localização</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows || `<tr><td colspan="7" class="empty">Nenhum produto químico cadastrado.</td></tr>`}</tbody></table></div><div class="mobile-record-list">${mobile}</div>`;
+    $("#page-chemicals").innerHTML = header("Inventário de produtos químicos", "Um cartão por produto. O saldo total é a soma das quantidades cadastradas em cada lote.", `${canManageChemicals() ? `<button class="btn primary" data-action="new-chemical-product">+ Novo produto</button>` : ""}<button class="btn secondary" data-action="show-fefo">Ordem FEFO</button><button class="btn secondary" data-export="chemicals">Exportar lotes</button>`) +
+      `<div class="grid four">${statCard("Produtos", fmt.format(totalProducts), "cadastros únicos", "▦")}${statCard("Lotes", fmt.format(totalLots), "quantidades separadas", "▧")}${statCard("Baixo ou sem estoque", fmt.format(lowStock), "produtos", "⚠")}${statCard("Com vencimento crítico", fmt.format(expired + expiring), "vencidos ou até 60 dias", "⏳")}</div>
+      <div class="info-box chemical-inventory-rule"><strong>Carretas Plataforma desvinculadas:</strong> cadastrar um produto na carreta não cria lote e não altera este inventário. Os lotes são controlados somente aqui.</div>
+      <div class="chemical-product-stock-grid-list">${cards || `<div class="card empty">Nenhum produto químico cadastrado.</div>`}</div>`;
   }
 
   function renderTrucks() {
@@ -3117,7 +3220,7 @@
       <td>${truckItemsSummary(item)}</td>
       <td>${esc(item.plate || "-")}<br><small>${esc(item.driver || "-")}</small></td>
       <td>${esc(item.invoice || "-")}</td>
-      <td>${badge(item.status)}<br><small>${item.stockApplied ? `✓ estoque aplicado${item.tankId ? ` • ${esc(state.data.tanks.find(t=>t.id===item.tankId)?.name || "-")}` : ""}` : "estoque pendente"}</small></td>
+      <td>${badge(item.status)}<br><small>${esc(truckInventoryLabel(item))}</small></td>
       <td><div class="row-actions">
         ${item.truckType === "Plataforma" ? `<button class="btn small secondary" data-truck-items="${item.id}">Ver ${item.items.length} itens</button>` : ""}
         <button class="btn small secondary" data-attachments="truck:${item.id}" data-attachment-title="${esc(item.plate || item.product)}">Anexos (${attachmentCount("truck", item.id)})</button>
@@ -3128,7 +3231,7 @@
     const mobile = trucks.map(item => `<article class="card mobile-record-card truck-mobile-card truck-type-${String(item.truckType).toLowerCase()}">
       <div class="mobile-record-head"><div><strong>${esc(item.plate || item.product)}</strong><small>${dateOnly(item.date)} • ${esc(item.movement)}</small></div>${badge(item.truckType)}</div>
       <div class="truck-mobile-products">${truckItemsSummary(item)}</div>
-      <div class="mobile-record-grid"><span>Origem/Destino<strong>${esc(item.supplier)}</strong></span><span>NF<strong>${esc(item.invoice || "-")}</strong></span><span>Motorista<strong>${esc(item.driver || "-")}</strong></span><span>Status<strong>${esc(item.status)}</strong></span><span>Estoque<strong>${item.stockApplied ? "Aplicado" : "Pendente"}</strong></span></div>
+      <div class="mobile-record-grid"><span>Origem/Destino<strong>${esc(item.supplier)}</strong></span><span>NF<strong>${esc(item.invoice || "-")}</strong></span><span>Motorista<strong>${esc(item.driver || "-")}</strong></span><span>Status<strong>${esc(item.status)}</strong></span><span>Integração<strong>${item.truckType === "Plataforma" ? "Sem inventário" : (item.stockApplied ? "Aplicado" : "Pendente")}</strong></span></div>
       <div class="row-actions">${item.truckType === "Plataforma" ? `<button class="btn small secondary" data-truck-items="${item.id}">Ver itens</button>` : ""}<button class="btn small secondary" data-attachments="truck:${item.id}" data-attachment-title="${esc(item.plate || item.product)}">Anexos</button>${canManageTrucks() ? `<button class="btn small primary" data-edit-truck="${item.id}">Editar</button>` : ""}</div>
     </article>`).join("");
 
@@ -3608,6 +3711,7 @@
 
   function chemicalForm(item = {}) {
     const editing = Boolean(item.id);
+    const lockProduct = item.lockProduct === true;
     const currentProduct = state.data.chemicalProducts.find(product => product.id === item.productId);
     const products = (state.data.chemicalProducts || []).filter(product => product.active || product.id === item.productId);
     const status = item.status || "Disponível";
@@ -3615,8 +3719,9 @@
       <div class="form-grid">
         <div class="wide catalog-linked-field">
           <div class="catalog-linked-heading"><div><label>Produto do Catálogo Químico *</label><small>O nome e a unidade vêm do cadastro oficial.</small></div><button type="button" class="btn small secondary" data-action="open-chemical-catalog">Abrir catálogo</button></div>
-          <select name="product_id" required><option value="">Selecione o produto</option>${products.map(product => `<option value="${product.id}" ${product.id === item.productId ? "selected" : ""}>${esc(product.name)}</option>`).join("")}</select>
-          <small class="field-help">${currentProduct ? `${esc(currentProduct.category || "Produto químico")} • ${esc(currentProduct.unit)}` : "Selecione um produto cadastrado."}</small>
+          <select name="product_id" required ${lockProduct ? "disabled" : ""}><option value="">Selecione o produto</option>${products.map(product => `<option value="${product.id}" ${product.id === item.productId ? "selected" : ""}>${esc(product.name)}</option>`).join("")}</select>
+          ${lockProduct ? `<input type="hidden" name="product_id" value="${esc(item.productId || "")}">` : ""}
+          <small class="field-help">${currentProduct ? `${esc(currentProduct.category || "Produto químico")} • ${esc(currentProduct.unit)} • o total será somado automaticamente` : "Selecione um produto cadastrado."}</small>
         </div>
         <div><label>Lote</label><input name="lot" value="${esc(item.lot || "")}"></div>
         ${editing ? `<div><label>Saldo atual</label><input value="${fmt.format(item.quantity)} ${esc(item.unit)}" disabled><small class="field-help">Para alterar o saldo, use Movimentar.</small></div>` : `<div><label>Quantidade inicial</label><input name="quantity" type="text" inputmode="decimal" value="0"></div>`}
@@ -3813,7 +3918,7 @@
     const type = inferredTruckType(item);
     const items = item.items || [];
     const linked = state.data.fluids.find(product => product.id === item.fluidTypeId);
-    const stockApplied = item.stockApplied === true;
+    const stockApplied = type !== "Plataforma" && item.stockApplied === true;
     const tank = state.data.tanks.find(entry => entry.id === item.tankId);
     return `<form id="truckForm" data-id="${item.id || ""}" data-tank-id="${item.tankId || ""}" data-stock-applied="${stockApplied}">
       ${stockApplied ? `<div class="info-box truck-stock-lock"><strong>Estoque já aplicado</strong><span>${dateTime(item.stockAppliedAt)} • ${tank?.name || "Inventário químico"}. Produto, quantidade e equipamento ficam protegidos; correções devem ser feitas por ajuste de estoque.</span></div>` : ""}
@@ -3833,14 +3938,15 @@
           </div>
         </section>
         <section class="wide truck-platform-section ${type==="Plataforma"?"":"hidden"}" data-truck-platform-section>
-          <div class="truck-platform-heading"><div><label>Produtos da Plataforma *</label><small>Selecione o nome do Catálogo Químico e informe a quantidade.</small></div><div class="row-actions"><button type="button" class="btn small secondary" data-action="open-chemical-catalog">Abrir catálogo</button>${stockApplied?"":`<button type="button" class="btn small primary" data-action="add-truck-item">+ Adicionar produto</button>`}</div></div>
+          <div class="info-box platform-detached-notice"><strong>Sem vínculo com o Inventário Químico</strong><span>Esta carreta registra somente os produtos e as quantidades transportadas. Nenhum lote ou saldo será criado ou alterado.</span></div>
+          <div class="truck-platform-heading"><div><label>Produtos da Plataforma *</label><small>Selecione o nome do Catálogo Químico e informe a quantidade transportada.</small></div><div class="row-actions"><button type="button" class="btn small secondary" data-action="open-chemical-catalog">Abrir catálogo</button>${stockApplied?"":`<button type="button" class="btn small primary" data-action="add-truck-item">+ Adicionar produto</button>`}</div></div>
           <div class="truck-platform-summary" data-truck-platform-summary><strong>${items.length}</strong><span>produto(s) adicionado(s)</span></div>
           <div class="truck-platform-list" data-truck-items-list>${(items.length?items:[{}]).map(truckPlatformItemRow).join("")}</div>
         </section>
         <div><label>Placa</label><input name="plate" value="${esc(item.plate || "")}"></div>
         <div><label>Motorista</label><input name="driver" value="${esc(item.driver || "")}"></div>
         <div><label>Nota fiscal</label><input name="invoice" value="${esc(item.invoice || "")}"></div>
-        <div><label>Status</label><select name="status">${["Programada","Recebida","Concluída"].map(value => `<option ${item.status===value?"selected":""}>${value}</option>`).join("")}</select><small class="field-help">Recebida ou Concluída aplica o estoque automaticamente.</small></div>
+        <div><label>Status</label><select name="status">${["Programada","Recebida","Concluída"].map(value => `<option ${item.status===value?"selected":""}>${value}</option>`).join("")}</select><small class="field-help">${type === "Plataforma" ? "O status não altera o Inventário Químico." : "Recebida ou Concluída aplica o saldo no tanque ou silo vinculado."}</small></div>
         <div class="wide"><label>Observações</label><textarea name="notes">${esc(item.notes || "")}</textarea></div>
         <div class="wide"><label>NF, documento ou foto</label><input name="attachment" type="file" accept=".pdf,image/jpeg,image/png,image/webp,image/heic,image/heif" multiple capture="environment"></div>
       </div>${formActions(item.id?"Salvar alterações":"Salvar movimentação")}
@@ -4064,14 +4170,23 @@
     if (raw.toLowerCase().includes("não é compatível com tanque")) {
       return "Este produto é um granel e não pode ser usado em tanque de fluido.";
     }
+    if (raw.toLowerCase().includes("equipamento selecionado não confere")
+        || raw.toLowerCase().includes("outro equipamento")
+        || raw.toLowerCase().includes("id oculto")) {
+      return "O formulário estava vinculado a outro equipamento e foi bloqueado. Feche a janela, abra novamente o tanque correto e salve.";
+    }
+    if (raw.toLowerCase().includes("alterado depois que o formulário foi aberto")) {
+      return "Este tanque foi atualizado por outra pessoa. Feche a janela, atualize a página e abra novamente.";
+    }
     return raw;
   }
 
 
   async function refreshTankProductList(form) {
     if (!form) return;
-    const tankId = form.elements.id?.value;
+    const tankId = form.dataset.tankId;
     const editStructure = form.dataset.adminFull === "true";
+    if (!tankId) throw new Error("O formulário perdeu o vínculo com o equipamento.");
     const currentSelection = form.elements.fluid_type_id?.value || "";
     const currentVolume = form.elements.volume?.value || "";
     const currentLot = form.elements.lot?.value || "";
@@ -4099,8 +4214,32 @@
     if (!state.client || !state.user) throw new Error("Sessão inválida. Entre novamente.");
 
     const payload = Object.fromEntries(new FormData(form));
-    const tank = state.data.tanks.find(item => item.id === payload.id);
+    const targetTankId = form.dataset.tankId || "";
+    const targetTankName = form.dataset.tankName || "";
+    const expectedUpdatedAt = form.dataset.tankUpdatedAt || null;
+    const editToken = form.dataset.editToken || "";
+    const payloadId = payload.id || "";
+
+    if (!targetTankId || !targetTankName || !editToken) {
+      throw new Error("O formulário perdeu a identificação segura do tanque. Feche e abra novamente.");
+    }
+    if (payloadId && payloadId !== targetTankId) {
+      throw new Error("O ID oculto não corresponde ao equipamento aberto. A alteração foi bloqueada.");
+    }
+    if (button) {
+      if (button.dataset.tankId !== targetTankId || button.dataset.editToken !== editToken) {
+        throw new Error("O botão de salvar pertence a outro equipamento. A alteração foi bloqueada.");
+      }
+    }
+    if ($("#tankForm") !== form || !form.closest("#modalBody")) {
+      throw new Error("Este formulário não é mais o formulário ativo. Feche e abra o tanque novamente.");
+    }
+
+    const tank = state.data.tanks.find(item => item.id === targetTankId);
     if (!tank) throw new Error("Tanque ou silo não localizado.");
+    if (normalizeSearch(tank.name) !== normalizeSearch(targetTankName)) {
+      throw new Error(`O equipamento aberto era ${targetTankName}, mas os dados atuais pertencem a ${tank.name}. Atualize a página.`);
+    }
 
     const adminFull = form.dataset.adminFull === "true" && isAdmin();
     const newKind = adminFull ? payload.kind : tank.kind;
@@ -4170,9 +4309,9 @@
       // O modo operacional usa uma função que não recebe nome, fase, tipo,
       // capacidade ou densidade. Isso elimina conflitos de nome e garante
       // que o produto seja derivado exclusivamente pelo ID do catálogo.
-      const rpcName = adminFull ? "admin_update_tank_product_capacity_v2" : "update_tank_content_v3";
+      const rpcName = adminFull ? "admin_update_tank_product_capacity_v2" : "update_tank_content_v4";
       const rpcPayload = adminFull ? {
-        p_tank_id: tank.id,
+        p_tank_id: targetTankId,
         p_name: payload.name?.trim(),
         p_phase: payload.phase,
         p_kind: payload.kind,
@@ -4188,7 +4327,9 @@
         p_density: newDensity,
         p_density_unit: newDensityUnit
       } : {
-        p_tank_id: tank.id,
+        p_tank_id: targetTankId,
+        p_expected_name: targetTankName,
+        p_expected_updated_at: expectedUpdatedAt,
         p_volume: newVolume,
         p_status: payload.status,
         p_fluid_type_id: selectedFluidId,
@@ -4200,15 +4341,21 @@
 
       const rpcRow = Array.isArray(data) ? data[0] : data;
       if (!rpcRow?.id) throw new Error("O Supabase não confirmou a atualização.");
+      if (rpcRow.id !== targetTankId || normalizeSearch(rpcRow.name) !== normalizeSearch(targetTankName)) {
+        throw new Error("O Supabase retornou outro equipamento. A confirmação foi rejeitada.");
+      }
 
       const { data: serverRow, error: confirmError } = await state.client
         .from("tanks")
         .select("*")
-        .eq("id", tank.id)
+        .eq("id", targetTankId)
         .single();
 
       if (confirmError) throw confirmError;
       if (!serverRow) throw new Error("Não foi possível reler o tanque atualizado.");
+      if (serverRow.id !== targetTankId || normalizeSearch(serverRow.name) !== normalizeSearch(targetTankName)) {
+        throw new Error("A releitura retornou outro equipamento. A atualização não foi confirmada.");
+      }
 
       const confirmedVolume = Number(serverRow.current_volume || 0);
       if (Math.abs(confirmedVolume - newVolume) > 0.001) {
@@ -4239,7 +4386,7 @@
         updated_at: serverRow.updated_at
       };
 
-      const index = state.data.tanks.findIndex(item => item.id === tank.id);
+      const index = state.data.tanks.findIndex(item => item.id === targetTankId);
       if (index >= 0) state.data.tanks[index] = mapped;
 
       renderTanks();
@@ -4263,7 +4410,7 @@
       try {
         await state.client.from("system_errors").insert({
           user_id: state.user.id,
-          context: `tank_volume_update:${tank.name}`,
+          context: `tank_volume_update:${targetTankName}:${targetTankId.slice(0,8)}`,
           message: friendlyMessage,
           stack: error.stack || null,
           user_agent: navigator.userAgent
@@ -4725,7 +4872,7 @@
         if (minimumQuantity < 0) throw new Error("O estoque mínimo não pode ser negativo.");
 
         if (!payload.product_id) throw new Error("Selecione um produto do Catálogo Químico.");
-        const { data, error } = await state.client.rpc("save_chemical_inventory_v2", {
+        const { data, error } = await state.client.rpc("save_chemical_inventory_v3", {
           p_inventory_id: form.dataset.id || null,
           p_product_id: payload.product_id,
           p_lot: payload.lot?.trim() || null,
@@ -5214,7 +5361,7 @@
       closeModal();
       return showPage("fluids");
     }
-    if (action === "new-chemical") { if (!canManageChemicals()) return toast("Seu perfil não pode alterar o inventário químico.", "error"); return openModal("Novo produto químico/lote", chemicalForm(), "INVENTÁRIO"); }
+    if (action === "new-chemical") { if (!canManageChemicals()) return toast("Seu perfil não pode alterar o inventário químico.", "error"); return openModal("Adicionar lote ao inventário", chemicalForm(), "INVENTÁRIO"); }
     if (action === "new-truck") return openModal("Nova movimentação de carreta", truckForm(), "CARRETA");
     if (action === "new-qhse") return openModal("Novo registro QHSE", genericForm("qhse"), "QHSE");
     if (action === "new-equipment") return openModal("Novo equipamento", genericForm("equipment"), "EQUIPAMENTO");
@@ -5282,6 +5429,19 @@
       return toast("Pendência excluída.");
     }
 
+
+
+    if (button.dataset.chemicalLots) {
+      const product = state.data.chemicalProducts.find(item => item.id === button.dataset.chemicalLots);
+      if (!product) return toast("Produto químico não localizado.", "error");
+      return openModal(`Lotes — ${product.name}`, chemicalLotsModal(product.id), "INVENTÁRIO POR LOTE");
+    }
+    if (button.dataset.newChemicalLot) {
+      if (!canManageChemicals()) return toast("Seu perfil não pode alterar o inventário químico.", "error");
+      const product = state.data.chemicalProducts.find(item => item.id === button.dataset.newChemicalLot);
+      if (!product) return toast("Produto químico não localizado.", "error");
+      return openModal(`Adicionar lote — ${product.name}`, chemicalForm({ productId: product.id, lockProduct: true }), "NOVO LOTE");
+    }
 
     if (button.dataset.editChemicalProduct) {
       const item=state.data.chemicalProducts.find(entry=>entry.id===button.dataset.editChemicalProduct);
@@ -5423,12 +5583,14 @@
 
     if (button.dataset.editTank) {
       const tank = state.data.tanks.find(x => x.id === button.dataset.editTank);
+      if (!tank) return toast("O tanque selecionado não foi encontrado. Atualize a página.", "error");
       return openModal(`Atualizar conteúdo — ${tank.name}`, tankForm(tank, false), "TANCAGEM");
     }
 
     if (button.dataset.editTankStructure) {
       if (!isAdmin()) return toast("Somente o administrador pode editar a estrutura.", "error");
       const tank = state.data.tanks.find(x => x.id === button.dataset.editTankStructure);
+      if (!tank) return toast("O equipamento selecionado não foi encontrado. Atualize a página.", "error");
       return openModal(`Editar estrutura — ${tank.name}`, tankForm(tank, true), "ADMINISTRAÇÃO");
     }
 

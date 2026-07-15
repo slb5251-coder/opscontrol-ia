@@ -769,3 +769,26 @@ body.kiosk-mode .pull-refresh-indicator{display:none!important}
 .sanitation-intro{background:#f2f7ff}.sanitation-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}.sanitation-card{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}.sanitation-card h3{margin:8px 0 4px}.sanitation-card p{color:var(--muted)}.truck-stock-lock{margin-bottom:12px}.truck-stock-lock strong,.truck-stock-lock span{display:block}.truck-stock-lock span{margin-top:4px;color:var(--muted)}.environment-card p{color:var(--muted)}
 @media(max-width:820px){.operation-stepper-head small{display:none}.operation-stepper-head span{justify-content:center}.operation-review-card{grid-template-columns:1fr}.closing-layout{grid-template-columns:1fr}.closing-summary-grid{grid-template-columns:repeat(2,1fr)}.closing-count-row{grid-template-columns:1fr 110px}.sanitation-grid{grid-template-columns:1fr}.closing-action-card{display:grid}.chemical-catalog-grid{grid-template-columns:1fr}}
 @media(max-width:390px){.closing-count-row{grid-template-columns:1fr}.operation-step-actions{display:grid;grid-template-columns:1fr}.operation-step-actions .btn{width:100%}}
+
+
+/* Bloqueio do tanque-alvo */
+.tank-target-lock{display:grid;gap:3px;margin-bottom:13px;padding:11px 13px;border:1px solid #9fc2f2;border-radius:14px;background:linear-gradient(135deg,#edf5ff,#f9fcff)}
+.tank-target-lock span{font-size:9px;font-weight:900;text-transform:uppercase;letter-spacing:.08em;color:#38659d}
+.tank-target-lock strong{font-size:19px;color:#123f78}
+.tank-target-lock small{font-size:9px;color:var(--muted)}
+:root[data-theme="dark"] .tank-target-lock{background:#10213a;border-color:#315b8d}
+:root[data-theme="dark"] .tank-target-lock strong{color:#dceaff}
+
+
+/* Inventário químico agrupado por produto e lotes */
+.chemical-product-stock-grid-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(275px,1fr));gap:12px;margin-top:14px}
+.chemical-product-stock-card{display:grid;gap:13px;border-left:5px solid #3978c8}.chemical-product-stock-card.inactive{opacity:.72;border-style:dashed}
+.chemical-product-stock-head{display:flex;justify-content:space-between;align-items:flex-start;gap:10px}.chemical-product-stock-head span{font-size:9px;color:var(--muted);font-weight:800;text-transform:uppercase}.chemical-product-stock-head h3{margin:4px 0 0}
+.chemical-total-value{padding:13px;border-radius:14px;background:linear-gradient(135deg,#eaf3ff,#f9fcff)}.chemical-total-value small,.chemical-total-value strong,.chemical-total-value span{display:block}.chemical-total-value strong{font-size:27px;margin:3px 0;color:#164f96}.chemical-total-value span{font-size:9px;color:var(--muted)}
+.chemical-product-stock-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:7px}.chemical-product-stock-grid span{padding:8px;border-radius:10px;background:var(--bg);font-size:9px;color:var(--muted)}.chemical-product-stock-grid strong{display:block;color:var(--text);margin-top:3px;font-size:11px}
+.chemical-inventory-rule{margin-top:13px}.chemical-inventory-rule strong{margin-right:4px}
+.chemical-product-total-card{padding:14px;border-radius:15px;background:linear-gradient(135deg,#eaf3ff,#fff);border:1px solid #bfd5f2}.chemical-product-total-card span,.chemical-product-total-card strong,.chemical-product-total-card small{display:block}.chemical-product-total-card strong{font-size:30px;margin:4px 0;color:#164f96}.chemical-product-total-card small{color:var(--muted)}
+.chemical-lot-modal-actions{margin:12px 0}.chemical-lot-list{display:grid;gap:9px}.chemical-lot-row{display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:10px;align-items:center;padding:11px;border:1px solid var(--line);border-radius:13px;background:var(--card)}.chemical-lot-rank{width:32px;height:32px;border-radius:10px;display:grid;place-items:center;background:#e9f2ff;color:#1d5ca9;font-weight:900}.chemical-lot-main strong,.chemical-lot-main small,.chemical-lot-main span{display:block}.chemical-lot-main small{margin-top:3px}.chemical-lot-main span{margin-top:3px;font-size:9px;color:var(--muted)}.chemical-lot-row .row-actions{grid-column:2/-1}
+.platform-detached-notice{margin-bottom:12px;background:#f3f7fc}.platform-detached-notice strong,.platform-detached-notice span{display:block}.platform-detached-notice span{margin-top:4px;color:var(--muted)}
+:root[data-theme="dark"] .chemical-total-value,:root[data-theme="dark"] .chemical-product-total-card{background:#10213a}
+@media(max-width:820px){.chemical-product-stock-grid-list{grid-template-columns:1fr}.chemical-lot-row{grid-template-columns:auto 1fr}.chemical-lot-status{grid-column:2}.chemical-lot-row .row-actions{grid-column:1/-1}}

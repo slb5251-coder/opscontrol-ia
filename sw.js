@@ -1,10 +1,10 @@
-const CACHE="opscontrol-20260715-fluid-activation-fix-1";
+const CACHE="opscontrol-20260715-operations-linked-catalog-1";
 const FILES=[
   "./",
   "./index.html",
-  "./app.css?v=20260715-fluid-activation-fix-1",
-  "./js/config.js?v=20260715-fluid-activation-fix-1",
-  "./js/app.js?v=20260715-fluid-activation-fix-1",
+  "./app.css?v=20260715-operations-linked-catalog-1",
+  "./js/config.js?v=20260715-operations-linked-catalog-1",
+  "./js/app.js?v=20260715-operations-linked-catalog-1",
   "./manifest.json",
   "./assets/icon.svg","./vendor/qrcode.js"
 ];

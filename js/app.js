@@ -303,7 +303,7 @@
     });
 
     (d.tanks || []).forEach(x => add("tank", x.id, "tanks", x.name, `${x.product || "Sem produto"} • lote ${x.lot || "-"}`, `${x.phase} ${x.kind} ${x.status}`));
-    (d.operations || []).forEach(x => add("operation", x.id, "operations", `${x.client} • ${x.vessel}`, `${x.activity} de ${x.product}`, `${x.service_order} ${x.lot} ${x.status}`));
+    (d.operations || []).forEach(x => add("operation", x.id, "operations", `${x.client} • ${x.vessel}`, `${x.activity} de ${x.product}`, `${x.service_order} ${x.ticketNumber} ${x.rig} ${x.well} ${x.lot} ${x.status}`));
     (d.trucks || []).forEach(x => add("truck", x.id, "trucks", x.plate || x.product, `${x.product} • NF ${x.invoice || "-"}`, `${x.driver} ${x.supplier} ${x.client} ${x.lot}`));
     (d.chemicals || []).forEach(x => add("chemical", x.id, "chemicals", x.name, `Lote ${x.lot || "-"} • ${fmt.format(x.quantity)} ${x.unit}`, `${x.location} ${x.supplier} ${x.category}`));
     (d.equipment || []).forEach(x => add("equipment", x.id, "maintenance", x.name, `${x.category} • ${x.status}`, `${x.location} ${x.notes}`));
@@ -461,7 +461,7 @@
     banner.className = "draft-restored-banner";
     banner.innerHTML = `<div><strong>Rascunho restaurado</strong><span id="draftStatus">Salvo em ${dateTime(draft.saved_at)}</span></div><button type="button" class="btn small secondary" data-action="discard-draft">Descartar</button>`;
     form.prepend(banner);
-    syncOperationTankFields(form);
+    syncOperationCatalogFields(form);
     updateOperationAllocationSummary(form);
     return true;
   }
@@ -705,7 +705,7 @@
     $("#modalBody").innerHTML = body;
     $("#modal").classList.remove("hidden");
     document.body.classList.add("modal-open");
-    syncOperationTankFields($("#operationForm"));
+    syncOperationCatalogFields($("#operationForm"));
     updateTransferPreview($("#tankTransferForm"));
     const modalForm = $("#modalBody form");
     if (modalForm) restoreFormDraft(modalForm);
@@ -923,8 +923,8 @@
   function exportData(kind) {
     const date = new Date().toISOString().slice(0, 10);
     if (kind === "operations") {
-      const rows = filteredOperations().map(op => [op.client, op.vessel, op.service_order, op.activity, op.product, op.lot, op.planned, op.executed, op.unit, operationAllocationText(op), op.status, op.start_at, op.end_at, op.paused_minutes, op.tank_movement_applied ? "Aplicada" : "Não aplicada"]);
-      return downloadCsv(`operacoes-${date}.csv`, ["Cliente", "Embarcação", "OS", "Atividade", "Produto", "Lote", "Planejado", "Executado", "Unidade", "Distribuição tanques/silos", "Status", "Início", "Término", "Parado (min)", "Tancagem"], rows);
+      const rows = filteredOperations().map(op => [op.client, op.vessel, op.rig, op.well, op.ticketNumber, op.service_order, op.activity, op.product, op.fluidTypeId, op.lot, op.planned, op.executed, op.unit, operationAllocationText(op), op.status, op.start_at, op.end_at, op.paused_minutes, op.tank_movement_applied ? "Aplicada" : "Não aplicada"]);
+      return downloadCsv(`operacoes-${date}.csv`, ["Cliente", "Embarcação", "Sonda", "Poço", "Ticket", "OS", "Atividade", "Produto", "ID do produto", "Lote", "Planejado", "Executado", "Unidade", "Distribuição tanques/silos", "Status", "Início", "Término", "Parado (min)", "Tancagem"], rows);
     }
     if (kind === "tanks") {
       const rows = state.data.tanks.map(t => [t.phase, t.name, t.kind, t.product, t.lot, t.volume, t.capacity, t.unit, t.physicalCapacityM3 || "", t.status, t.updated_at]);
@@ -956,6 +956,58 @@
     return form?.querySelector(`[name="${name}"]:not([disabled])`)?.value
       ?? form?.querySelector(`[name="${name}"]`)?.value
       ?? "";
+  }
+
+
+  function operationCatalogProducts(op = {}) {
+    const currentId = op.fluidTypeId || "";
+    return (state.data?.fluids || [])
+      .filter(item => item.active !== false || item.id === currentId)
+      .sort((a, b) => {
+        const bulkA = ["granel", "insumo"].includes(String(a.type || "").toLowerCase()) ? 1 : 0;
+        const bulkB = ["granel", "insumo"].includes(String(b.type || "").toLowerCase()) ? 1 : 0;
+        return bulkA - bulkB || a.name.localeCompare(b.name);
+      });
+  }
+
+  function operationCatalogOptions(op = {}) {
+    const currentId = op.fluidTypeId || "";
+    const products = operationCatalogProducts(op);
+    const fluids = products.filter(item => !["granel", "insumo"].includes(String(item.type || "").toLowerCase()));
+    const bulks = products.filter(item => ["granel", "insumo"].includes(String(item.type || "").toLowerCase()));
+    const render = item => `<option value="${item.id}" data-product="${esc(item.name)}" data-unit="${esc(item.unit || "bbl")}" data-category="${esc(item.type || "")}" ${item.id === currentId ? "selected" : ""}>${esc(item.name)}${item.active === false ? " — inativo (histórico)" : ""}</option>`;
+    return `${fluids.length ? `<optgroup label="Fluidos">${fluids.map(render).join("")}</optgroup>` : ""}${bulks.length ? `<optgroup label="Granéis">${bulks.map(render).join("")}</optgroup>` : ""}`;
+  }
+
+  function selectedOperationCatalogItem(form) {
+    const id = form?.elements?.fluid_type_id?.value || "";
+    return (state.data?.fluids || []).find(item => item.id === id) || null;
+  }
+
+  function syncOperationCatalogFields(form, resetAllocations = false) {
+    if (!form) return;
+    const select = form.elements.fluid_type_id;
+    const unitInput = form.elements.unit;
+    const selected = selectedOperationCatalogItem(form);
+
+    if (unitInput) unitInput.value = selected?.unit || "";
+    const category = form.querySelector("[data-operation-product-category]");
+    if (category) {
+      category.textContent = selected
+        ? `${selected.type} • unidade ${selected.unit}${selected.density ? ` • densidade ${fmt.format(selected.density)} ${selected.densityUnit || ""}` : ""}`
+        : "Selecione um produto cadastrado.";
+    }
+
+    if (resetAllocations && form.dataset.allocationLocked !== "true") {
+      const list = form.querySelector("[data-operation-allocation-list]");
+      const mode = tankMovementMode(operationFieldValue(form, "activity"));
+      if (list) {
+        list.innerHTML = mode === "none"
+          ? ""
+          : operationAllocationRow({}, mode === "out" ? "source" : "destination", selected?.unit || "bbl", false, selected?.id || "");
+      }
+    }
+    syncOperationTankFields(form);
   }
 
   function allocationsForOperation(operationId) {
@@ -996,12 +1048,17 @@
     }).join("")}</div>`;
   }
 
-  function operationTankOptions(unit = "bbl", selectedId = "", direction = "source") {
+  function operationTankOptions(unit = "bbl", selectedId = "", direction = "source", fluidTypeId = "") {
     const phaseOrder = ["Phase #1", "Phase #2"];
     return phaseOrder.map(phase => {
       const options = state.data.tanks
         .filter(tank => tank.phase === phase)
         .filter(tank => tank.unit === unit || tank.id === selectedId)
+        .filter(tank => {
+          if (!fluidTypeId || tank.id === selectedId) return true;
+          if (direction === "source") return tank.fluidTypeId === fluidTypeId;
+          return Number(tank.volume || 0) <= 0 || tank.fluidTypeId === fluidTypeId;
+        })
         .sort((a, b) => a.order - b.order)
         .map(tank => {
           const free = Math.max(0, Number(tank.capacity || 0) - Number(tank.volume || 0));
@@ -1014,7 +1071,7 @@
     }).join("");
   }
 
-  function operationAllocationRow(allocation = {}, direction = "source", unit = "bbl", locked = false) {
+  function operationAllocationRow(allocation = {}, direction = "source", unit = "bbl", locked = false, fluidTypeId = "") {
     const rowId = uid("allocation");
     return `<div class="operation-allocation-row" data-operation-allocation-row data-direction="${direction}" data-row-id="${rowId}">
       <span class="allocation-number">#</span>
@@ -1022,7 +1079,7 @@
         <label>Tanque ou silo</label>
         <select data-allocation-tank ${locked ? "disabled" : ""}>
           <option value="">Selecione o equipamento</option>
-          ${operationTankOptions(unit, allocation.tank_id || "", direction)}
+          ${operationTankOptions(unit, allocation.tank_id || "", direction, fluidTypeId)}
         </select>
       </div>
       <div class="allocation-quantity-field">
@@ -1038,12 +1095,13 @@
     const mode = tankMovementMode(operationFieldValue(form, "activity"));
     const direction = mode === "out" ? "source" : "destination";
     const unit = operationFieldValue(form, "unit") || "bbl";
+    const fluidTypeId = form.elements.fluid_type_id?.value || "";
     form.querySelectorAll("[data-operation-allocation-row]").forEach((row, index) => {
       row.dataset.direction = direction;
       row.querySelector(".allocation-number").textContent = `${index + 1}.`;
       const select = row.querySelector("[data-allocation-tank]");
       const selected = select?.value || "";
-      if (select) select.innerHTML = `<option value="">Selecione o equipamento</option>${operationTankOptions(unit, selected, direction)}`;
+      if (select) select.innerHTML = `<option value="">Selecione o equipamento</option>${operationTankOptions(unit, selected, direction, fluidTypeId)}`;
       const unitLabel = row.querySelector("[data-allocation-unit]");
       if (unitLabel) unitLabel.textContent = unit;
     });
@@ -1056,7 +1114,7 @@
     if (mode === "none") return;
     const direction = mode === "out" ? "source" : "destination";
     const unit = operationFieldValue(form, "unit") || "bbl";
-    list.insertAdjacentHTML("beforeend", operationAllocationRow(allocation, direction, unit, false));
+    list.insertAdjacentHTML("beforeend", operationAllocationRow(allocation, direction, unit, false, form.elements.fluid_type_id?.value || ""));
     refreshOperationAllocationOptions(form);
     updateOperationAllocationSummary(form);
   }
@@ -1081,6 +1139,13 @@
       const tank = state.data.tanks.find(item => item.id === tankId);
       if (!tank) throw new Error("Um dos equipamentos selecionados não foi localizado.");
       if (tank.unit !== unit) throw new Error(`${tank.name} utiliza ${tank.unit}, diferente da unidade da operação (${unit}).`);
+      const fluidTypeId = form.elements.fluid_type_id?.value || "";
+      if (direction === "source" && fluidTypeId && tank.fluidTypeId !== fluidTypeId) {
+        throw new Error(`${tank.name} não possui o produto selecionado na operação.`);
+      }
+      if (direction === "destination" && fluidTypeId && Number(tank.volume || 0) > 0 && tank.fluidTypeId !== fluidTypeId) {
+        throw new Error(`${tank.name} contém outro produto.`);
+      }
       used.add(tankId);
       allocations.push({ direction, tank_id: tankId, quantity, unit, display_order: allocations.length });
     });
@@ -1125,7 +1190,7 @@
 
     if (previousMode !== mode && !locked && list) {
       list.innerHTML = "";
-      if (mode !== "none") list.innerHTML = operationAllocationRow({}, mode === "out" ? "source" : "destination", operationFieldValue(form, "unit") || "bbl", false);
+      if (mode !== "none") list.innerHTML = operationAllocationRow({}, mode === "out" ? "source" : "destination", operationFieldValue(form, "unit") || "bbl", false, form.elements.fluid_type_id?.value || "");
     }
     form.dataset.allocationMode = mode;
 
@@ -1311,9 +1376,13 @@
         updated_by: x.updated_by, updated_at: x.updated_at
       })),
       tankHistory: results[4].data || [],
-      operations: (results[5].data || []).map(x => ({
+      operations: (results[5].data || []).map(x => {
+        const linkedProduct = (results[2].data || []).find(item => item.id === x.fluid_type_id);
+        return {
         id: x.id, client: x.client, vessel: x.vessel, service_order: x.service_order || "",
-        activity: x.activity, product: x.product, lot: x.lot || "",
+        rig: x.rig || "", well: x.well || "", ticketNumber: x.ticket_number || "",
+        fluidTypeId: x.fluid_type_id || null,
+        activity: x.activity, product: linkedProduct?.name || x.product, lot: x.lot || "",
         planned: Number(x.planned_quantity || 0), executed: Number(x.executed_quantity || 0),
         unit: x.unit, status: x.status, start_at: x.start_at, end_at: x.end_at,
         notes: x.notes || "", occurrence: x.occurrence || "", responsible_id: x.responsible_id,
@@ -1324,7 +1393,8 @@
         tank_movement_applied: x.tank_movement_applied === true,
         tank_movement_applied_at: x.tank_movement_applied_at,
         created_by: x.created_by, created_at: x.created_at, updated_at: x.updated_at
-      })),
+      };
+      }),
       operationEvents: results[6].data || [],
       trucks: (results[7].data || []).map(x => ({
         id: x.id, date: x.movement_date, movement: x.movement_type,
@@ -1692,6 +1762,7 @@
     return `<div class="tv-operation-tile">
       <div class="tv-operation-top"><div><small>${esc(operation.client)}</small><h3>${esc(operation.vessel)}</h3></div>${badge(operation.status)}</div>
       <div class="tv-operation-title">${esc(operation.activity)} de ${esc(operation.product)}</div>
+      ${(operation.rig || operation.well || operation.ticketNumber) ? `<div class="tv-operation-meta">${operation.rig ? `Sonda ${esc(operation.rig)}` : ""}${operation.well ? ` • Poço ${esc(operation.well)}` : ""}${operation.ticketNumber ? ` • Ticket ${esc(operation.ticketNumber)}` : ""}</div>` : ""}
       <div class="tv-operation-progress"><span style="width:${pct}%"></span></div>
       <div class="tv-operation-values"><strong>${fmt.format(operation.executed)} / ${fmt.format(operation.planned)} ${esc(operation.unit)}</strong><span>${fmt.format(operationFlow(operation))} ${esc(operation.unit)}/h</span></div>
       ${allocations.length ? `<div class="tv-operation-allocations">${allocations.map(item => `<span>${esc(item)}</span>`).join("")}</div>` : ""}
@@ -2073,6 +2144,8 @@
       const mode = tankMovementMode(op.activity);
       const allocations = normalizedOperationAllocations(op);
       const total = allocations.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+      if (!op.fluidTypeId) add("Alta", "Operações", `${op.vessel}: produto não vinculado`, `${op.product || "Produto não informado"} precisa ser selecionado no catálogo Fluidos e Granéis.`, "operations", "operation", op.id);
+      if (op.status === "Concluída" && !op.ticketNumber) add("Média", "Operações", `${op.vessel}: concluída sem ticket`, `${op.client} • ${op.activity} de ${op.product}.`, "operations", "operation", op.id);
       if (op.status === "Concluída" && !op.end_at) add("Alta", "Operações", `${op.vessel}: concluída sem término`, `${op.client} • ${op.activity} de ${op.product}.`, "operations", "operation", op.id);
       if (["Em andamento", "Paralisada", "Concluída"].includes(op.status) && !op.start_at) add("Alta", "Operações", `${op.vessel}: sem horário inicial`, `${op.client} • ${op.activity} de ${op.product}.`, "operations", "operation", op.id);
       if (mode !== "none" && op.executed > 0 && !allocations.length) add("Crítica", "Operações", `${op.vessel}: sem rateio de tancagem`, `${fmt.format(op.executed)} ${op.unit} executados sem origem/destino distribuído.`, "operations", "operation", op.id);
@@ -2187,6 +2260,7 @@
     return `<div class="planning-card ${check.issues.length?"risk":"ready"}">
       <div class="planning-card-head"><div><small>${esc(operation.client)}</small><h3>${esc(operation.vessel)}</h3></div>${badge(check.issues.length?"Atenção":"Pronta")}</div>
       <p>${esc(operation.activity)} de <strong>${esc(operation.product)}</strong></p>
+      <div class="planning-operation-meta">${operation.rig ? `<span>Sonda: ${esc(operation.rig)}</span>` : ""}${operation.well ? `<span>Poço: ${esc(operation.well)}</span>` : ""}${operation.ticketNumber ? `<span>Ticket: ${esc(operation.ticketNumber)}</span>` : ""}</div>
       <div class="planning-kpis"><span>Previsto<strong>${fmt.format(operation.planned)} ${esc(operation.unit)}</strong></span><span>Reservado<strong>${fmt.format(check.allocated)} ${esc(operation.unit)}</strong></span><span>Início<strong>${esc(start)}</strong></span></div>
       <div class="planning-assets">${check.allocations.map(item=>{const t=state.data.tanks.find(x=>x.id===item.tank_id);return `<span>${esc(t?.name||"-")}: ${fmt.format(item.quantity)} ${esc(item.unit)}</span>`}).join("")||"<span>Sem equipamentos reservados</span>"}</div>
       ${check.issues.length?`<div class="planning-issues">${check.issues.map(x=>`<span>⚠ ${esc(x)}</span>`).join("")}</div>`:`<div class="planning-ok">✓ Saldo e capacidade conferidos</div>`}
@@ -2203,7 +2277,7 @@
       const canEdit = isAdmin() || !op.locked || hasRole(["supervisor"]);
       const tankStatus = op.tank_movement_applied ? "Aplicada" : op.apply_tank_movement ? "Preparada" : "Manual";
       return `<tr>
-        <td><strong>${esc(op.client)}</strong><br><small>${esc(op.vessel)}</small><br><small>OS: ${esc(op.service_order || "-")}</small></td>
+        <td><strong>${esc(op.client)}</strong><br><small>${esc(op.vessel)}</small><br><small>Sonda: ${esc(op.rig || "-")} • Poço: ${esc(op.well || "-")}</small><br><small>Ticket: ${esc(op.ticketNumber || "-")} • OS: ${esc(op.service_order || "-")}</small></td>
         <td>${esc(op.activity)}<br><small>${esc(op.product)} • ${esc(op.lot || "-")}</small></td>
         <td>${fmt.format(op.executed)} / ${fmt.format(op.planned)} ${esc(op.unit)}<div class="progress"><span style="width:${pct}%"></span></div></td>
         <td><strong>${fmt.format(flow)} ${esc(op.unit)}/h</strong><br><small>${fmt.format(operationHours(op))} h líquidas</small></td>
@@ -2221,6 +2295,7 @@
 
     const mobile = operations.map(op => `<div class="card mobile-record-card">
       <div class="mobile-record-head"><div><strong>${esc(op.client)}</strong><small>${esc(op.vessel)} • ${esc(op.activity)}</small></div>${badge(op.status)}</div>
+      <div class="operation-mobile-meta">${op.rig ? `<span>Sonda <strong>${esc(op.rig)}</strong></span>` : ""}${op.well ? `<span>Poço <strong>${esc(op.well)}</strong></span>` : ""}${op.ticketNumber ? `<span>Ticket <strong>${esc(op.ticketNumber)}</strong></span>` : ""}</div>
       <div class="mobile-record-grid"><span>Produto<strong>${esc(op.product)}</strong></span><span>Executado<strong>${fmt.format(op.executed)} ${esc(op.unit)}</strong></span><span>Vazão<strong>${fmt.format(operationFlow(op))} ${esc(op.unit)}/h</strong></span><span>Tancagem<strong>${normalizedOperationAllocations(op).length} equipamento(s)</strong></span></div>
       <div class="mobile-allocation-summary">${operationAllocationHtml(op)}</div>
       <div class="row-actions"><button class="btn small secondary" data-operation-timeline="${op.id}">Timeline</button>${isAdmin() || !op.locked || hasRole(["supervisor"]) ? `<button class="btn small primary" data-edit-operation="${op.id}">Editar</button>` : ""}</div>
@@ -2240,21 +2315,35 @@
     const activity = op.activity || "Bombeio";
     const mode = tankMovementMode(activity);
     const direction = mode === "out" ? "source" : "destination";
-    const unit = op.unit || "bbl";
+    const linkedProduct = state.data.fluids.find(item => item.id === op.fluidTypeId);
+    const legacyUnlinked = Boolean(op.product && !linkedProduct);
+    const unit = linkedProduct?.unit || op.unit || "bbl";
     const allocations = normalizedOperationAllocations(op);
     const initialRows = allocations.length
-      ? allocations.map(item => operationAllocationRow(item, item.direction || direction, unit, applied)).join("")
-      : mode !== "none" ? operationAllocationRow({}, direction, unit, applied) : "";
+      ? allocations.map(item => operationAllocationRow(item, item.direction || direction, unit, applied, op.fluidTypeId || "")).join("")
+      : mode !== "none" ? operationAllocationRow({}, direction, unit, applied, op.fluidTypeId || "") : "";
 
     return `<form id="operationForm" data-id="${op.id || ""}" data-allocation-mode="${mode}" data-allocation-locked="${applied}" novalidate><div class="form-grid">
       <div><label>Cliente *</label><input name="client" required value="${esc(op.client || "")}"></div>
       <div><label>Embarcação *</label><input name="vessel" required value="${esc(op.vessel || "")}"></div>
+      <div><label>Sonda</label><input name="rig" value="${esc(op.rig || "")}" placeholder="Ex.: NS-58"></div>
+      <div><label>Poço</label><input name="well" value="${esc(op.well || "")}" placeholder="Ex.: 7-WAH-12D-RJS"></div>
+      <div><label>Número do ticket</label><input name="ticket_number" value="${esc(op.ticketNumber || "")}" placeholder="Ex.: TKT-2026-001"></div>
       <div><label>Ordem de serviço</label><input name="service_order" value="${esc(op.service_order || "")}"></div>
       <div><label>Responsável</label><select name="responsible_id"><option value="">Não definido</option>${responsibleOptions}</select></div>
       <div><label>Atividade *</label><select name="activity" ${applied ? "disabled" : ""}>${["Bombeio", "Backload", "Fabricação", "Tratamento", "Carregamento", "Descarga"].map(x => `<option ${activity === x ? "selected" : ""}>${x}</option>`).join("")}</select>${applied ? `<input type="hidden" name="activity" value="${esc(activity)}">` : ""}</div>
-      <div><label>Produto *</label><input name="product" required value="${esc(op.product || "")}" ${applied ? "readonly" : ""}></div>
+      <div class="wide operation-catalog-field">
+        <div class="catalog-linked-heading"><div><label>Fluido ou granel *</label><small>Produto vinculado ao cadastro oficial de Fluidos e Granéis.</small></div>${applied ? "" : `<button type="button" class="btn small secondary" data-action="open-fluid-catalog">Abrir catálogo</button>`}</div>
+        <select name="fluid_type_id" data-operation-product-select required ${applied ? "disabled" : ""}>
+          <option value="">Selecione o produto cadastrado</option>
+          ${operationCatalogOptions(op)}
+        </select>
+        ${applied ? `<input type="hidden" name="fluid_type_id" value="${esc(op.fluidTypeId || "")}">` : ""}
+        <small class="field-help" data-operation-product-category>${linkedProduct ? `${esc(linkedProduct.type)} • unidade ${esc(linkedProduct.unit)}` : "Selecione um produto cadastrado."}</small>
+        ${legacyUnlinked ? `<div class="message warning"><strong>Produto antigo não vinculado:</strong> ${esc(op.product)}. Selecione o cadastro correto antes de salvar.</div>` : ""}
+      </div>
       <div><label>Lote</label><input name="lot" value="${esc(op.lot || "")}" ${applied ? "readonly" : ""}></div>
-      <div><label>Unidade</label><select name="unit" ${applied ? "disabled" : ""}>${["bbl", "ton", "m³"].map(x => `<option ${unit === x ? "selected" : ""}>${x}</option>`).join("")}</select>${applied ? `<input type="hidden" name="unit" value="${esc(unit)}">` : ""}</div>
+      <div><label>Unidade do produto</label><input name="unit" value="${esc(unit)}" readonly placeholder="Definida pelo produto"></div>
       <div><label>Quantidade planejada *</label><input name="planned" type="text" inputmode="decimal" required value="${op.planned ?? 0}"></div>
       <div><label>Quantidade executada</label><input name="executed" type="text" inputmode="decimal" value="${op.executed ?? 0}" ${applied ? "readonly" : ""}></div>
       <div><label>Início</label><input name="start_at" type="datetime-local" value="${toLocalInput(op.start_at)}"></div>
@@ -3019,7 +3108,7 @@
     const generated = new Date();
     const operationItems = s.completedOperations.map(op => ({
       title: `${op.activity} de ${op.product}`,
-      detail: `${op.client} • ${op.vessel} • ${fmt.format(op.executed)} ${op.unit}${op.service_order ? ` • OS ${op.service_order}` : ""}`
+      detail: `${op.client} • ${op.vessel}${op.rig ? ` • Sonda ${op.rig}` : ""}${op.well ? ` • Poço ${op.well}` : ""}${op.ticketNumber ? ` • Ticket ${op.ticketNumber}` : ""} • ${fmt.format(op.executed)} ${op.unit}${op.service_order ? ` • OS ${op.service_order}` : ""}`
     }));
     const eventItems = s.events.map(item => ({
       title: item.title,
@@ -3042,7 +3131,7 @@
       ...s.pendingCompleted.map(item => ({ title: `Pendência concluída: ${item.title}`, detail: `${item.responsible || "Sem responsável"} • ${item.category}` }))
     ];
     const pendingItems = [
-      ...s.activeOperations.map(op => ({ title: `Operação em andamento: ${op.activity} de ${op.product}`, detail: `${op.client} • ${op.vessel} • ${fmt.format(op.executed)}/${fmt.format(op.planned)} ${op.unit}` })),
+      ...s.activeOperations.map(op => ({ title: `Operação em andamento: ${op.activity} de ${op.product}`, detail: `${op.client} • ${op.vessel}${op.rig ? ` • Sonda ${op.rig}` : ""}${op.well ? ` • Poço ${op.well}` : ""}${op.ticketNumber ? ` • Ticket ${op.ticketNumber}` : ""} • ${fmt.format(op.executed)}/${fmt.format(op.planned)} ${op.unit}` })),
       ...s.openPendings.map(item => ({ title: item.title, detail: `${item.category} • ${item.responsible || "Sem responsável"} • ${item.priority}` })),
       ...s.openMaintenance.map(item => ({ title: `Manutenção: ${item.title}`, detail: `${item.responsible || "Sem responsável"} • ${item.status}` })),
       ...s.openQhseActions.map(item => ({ title: `QHSE: ${item.title}`, detail: `${item.responsible || "Sem responsável"} • prazo ${dateOnly(item.due_date)}` }))
@@ -3647,6 +3736,12 @@
   async function saveOperation(payload, id = null, allocations = []) {
     const planned = parseTankVolume(payload.planned || "0");
     const executed = parseTankVolume(payload.executed || "0");
+    const catalogItem = state.data.fluids.find(item => item.id === payload.fluid_type_id);
+    if (!catalogItem) throw new Error("Selecione um produto cadastrado em Fluidos e Granéis.");
+    const existing = id ? state.data.operations.find(item => item.id === id) : null;
+    if (catalogItem.active === false && existing?.fluidTypeId !== catalogItem.id) {
+      throw new Error("O produto selecionado está inativo. Ative-o em Fluidos e Granéis.");
+    }
     if (!Number.isFinite(planned) || planned < 0) throw new Error("Informe uma quantidade planejada válida.");
     if (!Number.isFinite(executed) || executed < 0) throw new Error("Informe uma quantidade executada válida.");
 
@@ -3670,20 +3765,24 @@
     const operationPayload = {
       client: payload.client,
       vessel: payload.vessel,
+      rig: payload.rig || null,
+      well: payload.well || null,
+      ticket_number: payload.ticket_number || null,
       service_order: payload.service_order || null,
       responsible_id: payload.responsible_id || null,
+      fluid_type_id: catalogItem.id,
       activity: payload.activity,
-      product: payload.product,
+      product: catalogItem.name,
       lot: payload.lot || null,
       planned_quantity: planned,
       executed_quantity: executed,
-      unit: payload.unit,
+      unit: catalogItem.unit,
       status: payload.status,
       start_at: start ? start.toISOString() : null,
       end_at: end ? end.toISOString() : null,
       paused_minutes: paused,
       flow_rate: flow,
-      flow_rate_unit: `${payload.unit}/h`,
+      flow_rate_unit: `${catalogItem.unit}/h`,
       occurrence: payload.occurrence || null,
       notes: payload.notes || null,
       apply_tank_movement: applyTank,
@@ -4729,7 +4828,8 @@
   document.addEventListener("change", async event => {
     const changedForm = event.target.closest("#modalBody form");
     if (changedForm) scheduleDraftSave(changedForm);
-    if (event.target.closest("#operationForm") && ["activity","unit","status","apply_tank_movement"].includes(event.target.name)) syncOperationTankFields(event.target.closest("#operationForm"));
+    if (event.target.closest("#operationForm") && event.target.name === "fluid_type_id") syncOperationCatalogFields(event.target.closest("#operationForm"), true);
+    if (event.target.closest("#operationForm") && ["activity","status","apply_tank_movement"].includes(event.target.name)) syncOperationTankFields(event.target.closest("#operationForm"));
     if (event.target.closest("#operationForm") && event.target.matches("[data-allocation-tank]")) updateOperationAllocationSummary(event.target.closest("#operationForm"));
     if (event.target.closest("#tankTransferForm")) updateTransferPreview(event.target.closest("#tankTransferForm"));
     if (event.target.closest("#tankForm") && event.target.name === "fluid_type_id") syncTankCatalogFields(event.target.closest("#tankForm"));

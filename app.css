@@ -671,3 +671,17 @@ body.kiosk-mode .pull-refresh-indicator{display:none!important}
   .catalog-product-card .row-actions{grid-template-columns:1fr 1fr}
   .catalog-product-card .row-actions .btn:first-child{grid-column:1/-1}
 }
+
+
+/* Operações vinculadas ao catálogo */
+.operation-catalog-field{padding:12px;border:1px solid #bdd4f6;border-radius:14px;background:#f4f8ff}
+.operation-catalog-field select{margin-top:8px}
+.operation-mobile-meta,.planning-operation-meta{display:flex;flex-wrap:wrap;gap:6px;margin:8px 0}
+.operation-mobile-meta span,.planning-operation-meta span{padding:5px 8px;border-radius:8px;background:var(--blue-soft);color:#1856ad;font-size:9px}
+.operation-mobile-meta strong{margin-left:3px}
+.tv-operation-meta{font-size:clamp(10px,1vw,15px);color:#b9ceeb;margin-top:-4px}
+:root[data-theme="dark"] .operation-catalog-field{background:#111e30;border-color:#27476d}
+@media(max-width:820px){
+  .operation-catalog-field .catalog-linked-heading{display:grid}
+  .operation-catalog-field .catalog-linked-heading .btn{width:100%}
+}

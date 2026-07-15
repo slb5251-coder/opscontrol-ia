@@ -12,7 +12,7 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const APP_VERSION = "20260715-tank-client-dashboard-1";
+  const APP_VERSION = "20260715-mobile-complete-splash-slb-1";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -44,10 +44,96 @@
       pullReady: false,
       pullDistance: 0,
       pullStartY: 0,
-      pullRefreshing: false
+      pullRefreshing: false,
+      tankFilters: { client: "Todos", view: "Todos", query: "" },
+      tankSwipe: null
     },
     config: loadConfig()
   };
+
+
+  const SPLASH_MIN_MS = 1100;
+  const splashStartedAt = Date.now();
+  let actionConfirmResolver = null;
+  let saveProgressTimer = null;
+
+  function hideSplash() {
+    const splash = $("#splashView");
+    if (!splash) return;
+    const delay = Math.max(0, SPLASH_MIN_MS - (Date.now() - splashStartedAt));
+    setTimeout(() => {
+      splash.classList.add("leaving");
+      setTimeout(() => splash.remove(), 420);
+    }, delay);
+  }
+
+  async function bootApplication() {
+    try {
+      await restoreSession();
+    } finally {
+      hideSplash();
+    }
+  }
+
+  function showMobileSaveProgress(title, detail, stateName = "loading", autoHide = 0) {
+    const panel = $("#mobileSaveProgress");
+    if (!panel) return;
+    clearTimeout(saveProgressTimer);
+    panel.className = `mobile-save-progress ${stateName}`;
+    $("#mobileSaveProgressTitle").textContent = title;
+    $("#mobileSaveProgressDetail").textContent = detail;
+    if (autoHide > 0) {
+      saveProgressTimer = setTimeout(() => panel.classList.add("hidden"), autoHide);
+    }
+  }
+
+  function hideMobileSaveProgress() {
+    clearTimeout(saveProgressTimer);
+    $("#mobileSaveProgress")?.classList.add("hidden");
+  }
+
+  function openActionConfirmation({ title, message, rows = [], confirmLabel = "Confirmar", eyebrow = "CONFIRMAÇÃO" }) {
+    if (actionConfirmResolver) actionConfirmResolver(false);
+    $("#actionConfirmEyebrow").textContent = eyebrow;
+    $("#actionConfirmTitle").textContent = title;
+    $("#actionConfirmMessage").textContent = message || "";
+    $("#actionConfirmDetails").innerHTML = rows.map(row =>
+      `<div><span>${esc(row.label)}</span><strong>${esc(row.value)}</strong></div>`
+    ).join("");
+    $("#actionConfirmAccept").textContent = confirmLabel;
+    $("#actionConfirm").classList.remove("hidden");
+    document.body.classList.add("confirm-open");
+    return new Promise(resolve => { actionConfirmResolver = resolve; });
+  }
+
+  function resolveActionConfirmation(value) {
+    $("#actionConfirm")?.classList.add("hidden");
+    document.body.classList.remove("confirm-open");
+    const resolver = actionConfirmResolver;
+    actionConfirmResolver = null;
+    if (resolver) resolver(Boolean(value));
+  }
+
+  function confirmTankUpdate(form) {
+    const product = state.data.fluids.find(item => item.id === form.elements.fluid_type_id?.value);
+    const tankName = form.dataset.tankName || "Equipamento";
+    const volume = form.elements.volume?.value || "0";
+    const unit = state.data.tanks.find(item => item.id === form.dataset.tankId)?.unit || "";
+    return openActionConfirmation({
+      eyebrow: "TANCAGEM",
+      title: `Confirmar atualização de ${tankName}`,
+      message: "Confira os dados antes de enviar ao Supabase.",
+      confirmLabel: `Confirmar em ${tankName}`,
+      rows: [
+        { label: "Equipamento", value: tankName },
+        { label: "Cliente", value: form.elements.client?.value || "A definir" },
+        { label: "Produto", value: product?.name || "Sem produto" },
+        { label: "Volume", value: `${volume} ${unit}` },
+        { label: "Lote", value: form.elements.lot?.value || "-" },
+        { label: "Status", value: form.elements.status?.value || "-" }
+      ]
+    });
+  }
 
   function loadConfig() {
     const saved = JSON.parse(localStorage.getItem(CONFIG_KEY) || "{}");
@@ -2186,6 +2272,44 @@
     }).join("");
   }
 
+
+  function mobileDashboardPriority(d, activeOps) {
+    const alerts = [];
+    const undefinedClients = d.tanks.filter(item => Number(item.volume || 0) > 0 && (!item.client || item.client === "A definir")).length;
+    const lowProducts = groupedChemicalInventory().filter(item => ["Baixo estoque", "Sem estoque", "Vencido"].includes(item.inventoryStatus)).length;
+    const trucksWithoutInvoice = d.trucks.filter(item => recordDateKey(item.date) === localDateKey() && !item.invoice).length;
+    const closing = currentClosing(localDateKey(), ensureHandoverSelection().shift);
+    const unreadCritical = d.alerts.filter(item => !item.read && isCriticalAlert(item.level)).length
+      + d.systemAlerts.filter(item => isCriticalAlert(item.level)).length;
+
+    if (unreadCritical) alerts.push({ icon: "⚠", text: `${unreadCritical} alerta(s) crítico(s)`, page: "alerts", tone: "critical" });
+    if (undefinedClients) alerts.push({ icon: "◫", text: `${undefinedClients} tanque(s) com cliente A definir`, page: "tanks", tone: "warning" });
+    if (lowProducts) alerts.push({ icon: "◈", text: `${lowProducts} produto(s) químico(s) exigem atenção`, page: "chemicals", tone: "warning" });
+    if (trucksWithoutInvoice) alerts.push({ icon: "🚛", text: `${trucksWithoutInvoice} carreta(s) de hoje sem NF`, page: "trucks", tone: "warning" });
+    if (!closing || closing.status !== "Fechado") alerts.push({ icon: "✓", text: "Fechamento do turno ainda pendente", page: "reports", tone: "info" });
+
+    return `<section class="mobile-dashboard-priority mobile-only-block">
+      <div class="mobile-priority-title"><div><small>AGORA</small><h2>Central operacional</h2></div><span>${activeOps.length} operação(ões) ativa(s)</span></div>
+      <div class="mobile-alert-strips">${alerts.slice(0, 5).map(item =>
+        `<button class="mobile-alert-strip ${item.tone}" data-page-link="${item.page}"><span>${item.icon}</span><strong>${esc(item.text)}</strong><b>›</b></button>`
+      ).join("") || `<div class="mobile-all-clear"><span>✓</span><strong>Nenhum alerta prioritário neste momento.</strong></div>`}</div>
+    </section>`;
+  }
+
+  function mobileOperationQuickMode() {
+    return `<section class="mobile-operation-mode mobile-only-block">
+      <div class="mobile-priority-title"><div><small>ACESSO RÁPIDO</small><h2>Modo operação</h2></div></div>
+      <div class="mobile-operation-grid">
+        <button data-action="new-operation"><span>⚓</span><strong>Nova operação</strong><small>Bombeio, fabricação ou backload</small></button>
+        <button data-page-link="tanks"><span>◫</span><strong>Atualizar tanque</strong><small>Cliente, produto e volume</small></button>
+        <button data-action="new-truck"><span>🚛</span><strong>Registrar carreta</strong><small>Entrada, saída e NF</small></button>
+        <button data-action="new-chemical"><span>◈</span><strong>Adicionar lote</strong><small>Inventário químico</small></button>
+        <button data-page-link="reports"><span>✓</span><strong>Fechar turno</strong><small>Conciliação e passagem</small></button>
+        <button data-action="mobile-quick"><span>＋</span><strong>Mais ações</strong><small>Abrir todos os atalhos</small></button>
+      </div>
+    </section>`;
+  }
+
   function renderDashboard() {
     const d = state.data;
     const operations = filteredOperations();
@@ -2259,6 +2383,8 @@
          <button class="btn secondary" data-action="refresh">↻ Atualizar agora</button>
          <button class="btn primary" data-action="new-operation">+ Nova operação</button>`) +
 
+      mobileDashboardPriority(d, activeOps) +
+      mobileOperationQuickMode() +
       dashboardRoleHome(d, activeOps) +
       `<div class="dashboard-sync-strip">
         <div><span class="live-dot"></span><strong>Atualização automática ativa</strong><small>Verificação em tempo real e a cada 60 segundos</small></div>
@@ -2630,15 +2756,83 @@
     </form>`;
   }
 
+
+  function tankMobileFilterBar() {
+    const filters = state.mobile.tankFilters;
+    const clientButtons = ["Todos", ...TANK_CLIENTS].map(value =>
+      `<button class="${filters.client === value ? "active" : ""}" data-tank-client-filter="${value}">${esc(value)}</button>`
+    ).join("");
+    const viewButtons = ["Todos", "Phase #1", "Phase #2", "Tanques", "Silos", "Vazios"].map(value =>
+      `<button class="${filters.view === value ? "active" : ""}" data-tank-view-filter="${value}">${esc(value)}</button>`
+    ).join("");
+    return `<div class="mobile-tank-filter-shell mobile-only-block">
+      <div class="mobile-tank-search"><span>⌕</span><input id="mobileTankSearch" type="search" value="${esc(filters.query)}" placeholder="Buscar tanque, produto, lote ou cliente"></div>
+      <div class="mobile-filter-scroll">${clientButtons}</div>
+      <div class="mobile-filter-scroll secondary">${viewButtons}</div>
+    </div>`;
+  }
+
+  function tankCardMatchesMobileFilters(card) {
+    if (window.innerWidth > 820) return true;
+    const filters = state.mobile.tankFilters;
+    const clientOk = filters.client === "Todos" || card.dataset.client === filters.client;
+    let viewOk = true;
+    if (filters.view === "Phase #1" || filters.view === "Phase #2") viewOk = card.dataset.phase === filters.view;
+    if (filters.view === "Tanques") viewOk = card.dataset.kind !== "silo";
+    if (filters.view === "Silos") viewOk = card.dataset.kind === "silo";
+    if (filters.view === "Vazios") viewOk = card.dataset.occupied === "false";
+    const query = normalizeSearch(filters.query || "");
+    const searchOk = !query || normalizeSearch(card.dataset.search || "").includes(query);
+    return clientOk && viewOk && searchOk;
+  }
+
+  function applyTankMobileFilters() {
+    const cards = $$("[data-tank-card]");
+    cards.forEach(card => { card.hidden = !tankCardMatchesMobileFilters(card); });
+    $$("[data-tank-phase]").forEach(section => {
+      const visible = $$("[data-tank-card]", section).some(card => !card.hidden);
+      section.hidden = window.innerWidth <= 820 && !visible;
+    });
+    const visibleCount = cards.filter(card => !card.hidden).length;
+    const empty = $("#tankFilterEmpty");
+    if (empty) {
+      empty.classList.toggle("hidden", visibleCount > 0);
+      empty.querySelector("strong").textContent = visibleCount ? "" : "Nenhum equipamento encontrado";
+    }
+    const count = $("#tankFilterCount");
+    if (count) count.textContent = `${visibleCount} equipamento(s)`;
+  }
+
+  function filterLinkedSelectOptions(input) {
+    const form = input.closest("form");
+    const targetName = input.dataset.targetSelect;
+    const select = form?.elements?.[targetName];
+    if (!select) return;
+    const query = normalizeSearch(input.value || "");
+    [...select.options].forEach((option, index) => {
+      if (index === 0 || option.selected) {
+        option.hidden = false;
+        option.disabled = false;
+        return;
+      }
+      const match = !query || normalizeSearch(option.textContent).includes(query);
+      option.hidden = !match;
+      option.disabled = !match;
+    });
+  }
+
   function renderTanks() {
     $("#page-tanks").innerHTML =
       header("Tanques e silos", "Volumetria, cliente, produto, lote, status, transferências e histórico.",
         `<button class="btn secondary" data-page-link="fluids">Fluidos e Granéis</button><button class="btn secondary" data-export="tanks">Exportar CSV</button>${hasRole(["supervisor", "lider", "operador", "logistica"]) ? `<button class="btn primary" data-action="new-tank-transfer">Transferir entre tanques</button>` : ""}`) +
-      `<div class="info-box tank-catalog-info"><strong>Produtos vinculados:</strong> cadastre primeiro em Fluidos e Granéis e depois selecione no tanque ou silo.</div>
+      `${tankMobileFilterBar()}
+      <div class="info-box tank-catalog-info"><strong>Produtos vinculados:</strong> cadastre primeiro em Fluidos e Granéis e depois selecione no tanque ou silo.</div>
       <div class="tank-client-summary-strip">${TANK_CLIENTS.map(client => {
         const summary = tankClientSummary(client);
         return `<span class="tank-client-summary client-${tankClientClass(client)}"><strong>${esc(client)}</strong><small>${summary.occupied.length} com saldo • ${summary.items.length} total</small></span>`;
-      }).join("")}</div>` +
+      }).join("")}</div>
+      <div class="mobile-tank-result-count mobile-only-block"><strong id="tankFilterCount">${state.data.tanks.length} equipamento(s)</strong><button data-action="clear-mobile-tank-filters">Limpar filtros</button></div>
+      <div id="tankFilterEmpty" class="card empty hidden"><strong></strong><span>Altere os filtros ou a busca.</span></div>` +
       ["Phase #1", "Phase #2"].map(phase => {
         const phaseItems = state.data.tanks
           .filter(item => item.phase === phase)
@@ -2646,7 +2840,7 @@
         const tanks = phaseItems.filter(item => String(item.kind).toLowerCase() !== "silo");
         const silos = phaseItems.filter(item => String(item.kind).toLowerCase() === "silo");
 
-        return `<section class="tancagem-phase-block">
+        return `<section class="tancagem-phase-block" data-tank-phase="${esc(phase)}">
           <div class="phase-heading"><div><span>ÁREA OPERACIONAL</span><h2>${phase}</h2></div><small>${tanks.length} tanque(s) • ${silos.length} silo(s)</small></div>
           <div class="asset-group tank-asset-group">
             <div class="asset-group-heading"><div class="asset-group-icon tank-group-icon">TK</div><div><h3>Tanques e Mix Tanks</h3><p>Fluidos, salmouras e produtos líquidos.</p></div></div>
@@ -2658,6 +2852,7 @@
           </div>
         </section>`;
       }).join("");
+    setTimeout(applyTankMobileFilters, 0);
   }
 
   function tankCard(tank) {
@@ -2666,13 +2861,16 @@
     const silo = isSiloAsset(tank);
     const physicalCapacity = silo ? defaultSiloPhysicalCapacity(tank) : null;
     const pct = capacity > 0 ? Math.max(0, Math.min(100, (volume / capacity) * 100)) : 0;
-    // Um saldo positivo muito pequeno ainda precisa ficar visível na faixa.
     const visualPct = volume > 0 ? Math.max(1.5, pct) : 0;
     const updater = state.data.users.find(user => user.id === tank.updated_by)?.name || "Não informado";
     const productType = productClass(tank.product, tank.kind, volume);
     const volumeState = volume > 0 ? "has-volume" : "no-volume";
+    const search = [tank.name, tank.client, tank.product, tank.lot, tank.status, tank.phase, tank.kind].filter(Boolean).join(" ");
 
-    return `<div class="card tank-card compact-tank-card ${silo ? "silo-card" : "fluid-tank-card"} tank-bg-${productType} ${volumeState}">
+    return `<article class="card tank-card compact-tank-card ${silo ? "silo-card" : "fluid-tank-card"} tank-bg-${productType} ${volumeState}"
+      data-tank-card data-tank-id="${tank.id}" data-client="${esc(tank.client || "A definir")}"
+      data-phase="${esc(tank.phase)}" data-kind="${silo ? "silo" : "tanque"}"
+      data-occupied="${volume > 0 ? "true" : "false"}" data-search="${esc(search)}">
       <div class="tank-top">
         <div>
           <h3>${esc(tank.name)}</h3>
@@ -2681,47 +2879,47 @@
         ${badge(tank.status)}
       </div>
 
-      <div class="compact-tank-product">
-        <span class="tank-client-line">Cliente: <strong>${esc(tank.client || "A definir")}</strong></span>
+      <div class="tank-mobile-core">
         <strong>${esc(tank.product || (volume > 0 ? "Produto não informado" : "Sem produto"))}</strong>
-        <span>Lote: ${esc(tank.lot || "-")}${volume > 0 && !tank.product ? ` • volume registrado` : ""}</span>
-        <span>Densidade: ${tank.density !== null && tank.density !== undefined ? `${fmt.format(tank.density)} ${esc(tank.densityUnit || (silo ? "t/m³" : "ppg"))}` : "não informada"}</span>
-        ${silo ? `<span>Volume físico: ${fmt.format(physicalCapacity)} m³</span>` : ""}
-      </div>
-
-      <div class="tank-volume-line">
-        <strong>${fmt.format(volume)} ${esc(tank.unit)}</strong>
-        <span>${silo ? "capacidade operacional" : "de"} ${fmt.format(capacity)} ${esc(tank.unit)}</span>
+        <span>${fmt.format(volume)} / ${fmt.format(capacity)} ${esc(tank.unit)}</span>
       </div>
 
       <div class="tank-progress ${productType} ${volumeState}" data-volume="${volume}" data-kind="${esc(tank.kind)}" role="progressbar"
-        aria-label="Ocupação de ${esc(tank.name)}"
-        aria-valuemin="0"
-        aria-valuemax="100"
-        aria-valuenow="${pct.toFixed(1)}">
+        aria-label="Ocupação de ${esc(tank.name)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct.toFixed(1)}">
         <span style="width:${visualPct.toFixed(2)}%" title="${fmt.format(pct)}% ocupado"></span>
       </div>
+      <div class="tank-progress-caption"><strong>${fmt.format(pct)}%</strong><span>${fmt.format(Math.max(0, capacity - volume))} ${esc(tank.unit)} livres</span></div>
 
-      <div class="tank-progress-caption">
-        <strong>${fmt.format(pct)}%</strong>
-        <span>${fmt.format(Math.max(0, capacity - volume))} ${esc(tank.unit)} livres</span>
+      <div class="tank-mobile-actions mobile-only-block">
+        ${hasRole(["supervisor", "lider", "operador", "logistica"]) ? `<button class="btn primary" data-edit-tank="${tank.id}">Atualizar</button>` : ""}
+        <button class="btn secondary" data-toggle-tank-card="${tank.id}">Ver detalhes</button>
       </div>
 
-      <div class="tank-update-meta">
-        <span>Atualizado por: ${esc(updater)}</span>
-        <span>${dateTime(tank.updated_at)}</span>
-      </div>
+      <div class="tank-card-details">
+        <div class="compact-tank-product">
+          <span class="tank-client-line">Cliente: <strong>${esc(tank.client || "A definir")}</strong></span>
+          <strong>${esc(tank.product || (volume > 0 ? "Produto não informado" : "Sem produto"))}</strong>
+          <span>Lote: ${esc(tank.lot || "-")}${volume > 0 && !tank.product ? ` • volume registrado` : ""}</span>
+          <span>Densidade: ${tank.density !== null && tank.density !== undefined ? `${fmt.format(tank.density)} ${esc(tank.densityUnit || (silo ? "t/m³" : "ppg"))}` : "não informada"}</span>
+          ${silo ? `<span>Volume físico: ${fmt.format(physicalCapacity)} m³</span>` : ""}
+        </div>
 
-      <div class="row-actions">
-        ${hasRole(["supervisor", "lider", "operador", "logistica"]) ? `<button class="btn small primary" data-edit-tank="${tank.id}">Atualizar conteúdo</button>` : ""}
-        ${isAdmin() ? `<button class="btn small secondary admin-structure-btn" data-edit-tank-structure="${tank.id}">Editar estrutura</button>` : ""}
-        <button class="btn small secondary" data-tank-history="${tank.id}">Histórico</button>
-        <button class="btn small secondary" data-tank-movements="${tank.id}">Movimentações</button>
-        <button class="btn small secondary" data-asset-qr="tank:${tank.id}">QR Code</button>
+        <div class="tank-update-meta">
+          <span>Atualizado por: ${esc(updater)}</span>
+          <span>${dateTime(tank.updated_at)}</span>
+        </div>
+
+        <div class="row-actions">
+          ${hasRole(["supervisor", "lider", "operador", "logistica"]) ? `<button class="btn small primary desktop-tank-update" data-edit-tank="${tank.id}">Atualizar conteúdo</button>` : ""}
+          ${isAdmin() ? `<button class="btn small secondary admin-structure-btn" data-edit-tank-structure="${tank.id}">Editar estrutura</button>` : ""}
+          <button class="btn small secondary" data-tank-history="${tank.id}">Histórico</button>
+          <button class="btn small secondary" data-tank-movements="${tank.id}">Movimentações</button>
+          <button class="btn small secondary" data-asset-qr="tank:${tank.id}">QR Code</button>
+        </div>
       </div>
-    </div>`;
+      <small class="tank-swipe-hint mobile-only-block">Deslize → atualizar • deslize ← histórico</small>
+    </article>`;
   }
-
 
   function tankHistoryVisual(tank, history) {
     const ordered=[...history].sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)).slice(-30);
@@ -3019,6 +3217,7 @@
               <button type="button" class="btn small secondary" data-action="open-fluid-catalog">Abrir catálogo</button>
             </div>
           </div>
+          <div class="linked-select-search"><span>⌕</span><input type="search" data-target-select="fluid_type_id" placeholder="Buscar produto no catálogo"></div>
           <select name="fluid_type_id" data-tank-product-select>
             <option value="" ${!tank.fluidTypeId ? "selected" : ""}>${tank.volume > 0 ? "Selecione o produto cadastrado" : "Sem produto — equipamento vazio"}</option>
             ${catalogProductOptions(tank)}
@@ -4456,6 +4655,7 @@
 
     const originalLabel = button?.textContent || "Salvar";
     const message = form.querySelector("#tankSaveMessage");
+    showMobileSaveProgress("Validando atualização", `${targetTankName} • conferindo campos`, "loading");
 
     if (button) {
       button.disabled = true;
@@ -4499,6 +4699,7 @@
         p_lot: payload.lot?.trim() || null
       };
 
+      showMobileSaveProgress("Salvando no Supabase", `${targetTankName} • enviando dados`, "loading");
       const { data, error } = await state.client.rpc(rpcName, rpcPayload);
       if (error) throw error;
 
@@ -4508,6 +4709,7 @@
         throw new Error("O Supabase retornou outro equipamento. A confirmação foi rejeitada.");
       }
 
+      showMobileSaveProgress("Confirmando no banco", `${targetTankName} • validando equipamento e volume`, "loading");
       const { data: serverRow, error: confirmError } = await state.client
         .from("tanks")
         .select("*")
@@ -4559,6 +4761,7 @@
       renderTanks();
       renderDashboard();
       closeModal();
+      showMobileSaveProgress("Atualização confirmada", `${mapped.name} • ${mapped.client} • ${fmt.format(mapped.volume)} ${mapped.unit}`, "success", 1500);
       toast(`${mapped.name} confirmado para ${mapped.client} em ${fmt.format(mapped.volume)} ${mapped.unit}.`, "success");
 
       // Sincronização completa em segundo plano. Uma falha em outro módulo
@@ -4570,6 +4773,7 @@
       return mapped;
     } catch (error) {
       const friendlyMessage = friendlyTankSaveError(error);
+      showMobileSaveProgress("Não foi possível salvar", friendlyMessage, "error", 2600);
       if (message) {
         message.textContent = friendlyMessage;
         message.classList.remove("hidden");
@@ -4925,6 +5129,8 @@
       }
 
       if (form.id === "tankForm") {
+        const confirmed = await confirmTankUpdate(form);
+        if (!confirmed) return;
         await saveTankVolume(form, form.querySelector('[data-action="save-tank-volume"]'));
         return;
       }
@@ -5209,6 +5415,8 @@
     const button = event.target.closest("button");
     if (!button) return;
 
+    if (button.id === "actionConfirmCancel") return resolveActionConfirmation(false);
+    if (button.id === "actionConfirmAccept") return resolveActionConfirmation(true);
     if (button.id === "loginBtn") return login();
     if (button.id === "logoutBtn") return logout();
     if (button.id === "menuBtn") {
@@ -5493,6 +5701,29 @@
       return;
     }
 
+
+    if (button.dataset.tankClientFilter) {
+      state.mobile.tankFilters.client = button.dataset.tankClientFilter;
+      renderTanks();
+      return;
+    }
+    if (button.dataset.tankViewFilter) {
+      state.mobile.tankFilters.view = button.dataset.tankViewFilter;
+      renderTanks();
+      return;
+    }
+    if (action === "clear-mobile-tank-filters") {
+      state.mobile.tankFilters = { client: "Todos", view: "Todos", query: "" };
+      renderTanks();
+      return;
+    }
+    if (button.dataset.toggleTankCard) {
+      const card = button.closest("[data-tank-card]");
+      const expanded = card?.classList.toggle("expanded");
+      button.textContent = expanded ? "Ocultar detalhes" : "Ver detalhes";
+      return;
+    }
+
     if (action === "refresh-tank-products") {
       try {
         button.disabled = true;
@@ -5508,8 +5739,11 @@
     }
 
     if (action === "save-tank-volume") {
+      const form = button.closest("form");
+      const confirmed = await confirmTankUpdate(form);
+      if (!confirmed) return;
       try {
-        await saveTankVolume(button.closest("form"), button);
+        await saveTankVolume(form, button);
       } catch (error) {
         toast(`Erro ao atualizar volume: ${error.message}`, "error");
       }
@@ -5867,6 +6101,11 @@
   });
 
   document.addEventListener("input", event => {
+    if (event.target.matches("[data-target-select]")) filterLinkedSelectOptions(event.target);
+    if (event.target.id === "mobileTankSearch") {
+      state.mobile.tankFilters.query = event.target.value;
+      applyTankMobileFilters();
+    }
     if (event.target.closest("#operationForm")) updateOperationReview(event.target.closest("#operationForm"));
     if (event.target.id === "globalSearchInput") {
       state.searchQuery = event.target.value;
@@ -5885,9 +6124,13 @@
   $("#modal").addEventListener("click", event => {
     if (event.target === $("#modal")) closeModal();
   });
+  $("#actionConfirm").addEventListener("click", event => {
+    if (event.target === $("#actionConfirm")) resolveActionConfirmation(false);
+  });
 
   document.addEventListener("keydown", event => {
     if (event.key !== "Escape") return;
+    if (!$("#actionConfirm")?.classList.contains("hidden")) return resolveActionConfirmation(false);
     if (!$("#modal")?.classList.contains("hidden")) return closeModal();
     if (state.mobile.moreOpen || state.mobile.quickOpen) return closeMobileSheets();
     $("#sidebar")?.classList.remove("open");
@@ -5898,6 +6141,28 @@
     if (event.key === "Enter") login();
   });
 
+
+
+  document.addEventListener("touchstart", event => {
+    if (window.innerWidth > 820 || state.page !== "tanks") return;
+    if (event.target.closest("button,input,select,textarea")) return;
+    const card = event.target.closest("[data-tank-card]");
+    if (!card) return;
+    const touch = event.changedTouches[0];
+    state.mobile.tankSwipe = { card, x: touch.clientX, y: touch.clientY, time: Date.now() };
+  }, { passive: true });
+
+  document.addEventListener("touchend", event => {
+    const swipe = state.mobile.tankSwipe;
+    state.mobile.tankSwipe = null;
+    if (!swipe || window.innerWidth > 820) return;
+    const touch = event.changedTouches[0];
+    const dx = touch.clientX - swipe.x;
+    const dy = touch.clientY - swipe.y;
+    if (Date.now() - swipe.time > 700 || Math.abs(dx) < 85 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    if (dx > 0) swipe.card.querySelector("[data-edit-tank]")?.click();
+    else swipe.card.querySelector("[data-tank-history]")?.click();
+  }, { passive: true });
 
   document.addEventListener("focusout", async event => {
     if (!event.target.matches("[data-shift-checklist-note]")) return;
@@ -5955,5 +6220,5 @@
   }
 
   $("#connectionHint").textContent = "Acesse com seu e-mail e senha cadastrados.";
-  restoreSession();
+  bootApplication();
 })();

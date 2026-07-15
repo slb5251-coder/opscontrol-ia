@@ -304,7 +304,10 @@
 
     (d.tanks || []).forEach(x => add("tank", x.id, "tanks", x.name, `${x.product || "Sem produto"} • lote ${x.lot || "-"}`, `${x.phase} ${x.kind} ${x.status}`));
     (d.operations || []).forEach(x => add("operation", x.id, "operations", `${x.client} • ${x.vessel}`, `${x.activity} de ${x.product}`, `${x.service_order} ${x.ticketNumber} ${x.rig} ${x.well} ${x.lot} ${x.status}`));
-    (d.trucks || []).forEach(x => add("truck", x.id, "trucks", x.plate || x.product, `${x.product} • NF ${x.invoice || "-"}`, `${x.driver} ${x.supplier} ${x.client} ${x.lot}`));
+    (d.trucks || []).forEach(x => {
+      const itemTerms = (x.items || []).map(item => `${item.productName} ${item.lot} ${item.quantity} ${item.unit}`).join(" ");
+      add("truck", x.id, "trucks", x.plate || x.product, `${x.truckType} • ${x.product} • NF ${x.invoice || "-"}`, `${x.driver} ${x.supplier} ${x.client} ${x.lot} ${itemTerms}`);
+    });
     (d.chemicals || []).forEach(x => add("chemical", x.id, "chemicals", x.name, `Lote ${x.lot || "-"} • ${fmt.format(x.quantity)} ${x.unit}`, `${x.location} ${x.supplier} ${x.category}`));
     (d.equipment || []).forEach(x => add("equipment", x.id, "maintenance", x.name, `${x.category} • ${x.status}`, `${x.location} ${x.notes}`));
     (d.maintenanceOrders || []).forEach(x => add("maintenance", x.id, "maintenance", x.title, `${x.responsible || "Sem responsável"} • ${x.status}`, `${x.priority} ${x.description}`));
@@ -411,7 +414,13 @@
           quantity: row.querySelector("[data-allocation-quantity]")?.value || ""
         }))
       : [];
-    return { fields, allocationRows, saved_at: new Date().toISOString() };
+    const truckItems = form.id === "truckForm"
+      ? [...form.querySelectorAll("[data-truck-platform-row]")].map(row => ({
+          chemical_inventory_id: row.querySelector("[data-truck-item-inventory]")?.value || "",
+          quantity: row.querySelector("[data-truck-item-quantity]")?.value || ""
+        }))
+      : [];
+    return { fields, allocationRows, truckItems, saved_at: new Date().toISOString() };
   }
 
   function saveFormDraft(form) {
@@ -438,6 +447,14 @@
     const draft = draftStore()[key];
     if (!draft?.fields?.length) return false;
 
+    if (form.id === "truckForm" && draft.truckItems?.length) {
+      const list = form.querySelector("[data-truck-items-list]");
+      if (list) list.innerHTML = draft.truckItems.map(item => truckPlatformItemRow({
+        chemicalInventoryId:item.chemical_inventory_id,
+        quantity:item.quantity
+      })).join("");
+    }
+
     if (form.id === "operationForm" && draft.allocationRows?.length) {
       const mode = tankMovementMode(form.elements.activity?.value || "");
       const direction = mode === "out" ? "source" : "destination";
@@ -462,6 +479,7 @@
     banner.innerHTML = `<div><strong>Rascunho restaurado</strong><span id="draftStatus">Salvo em ${dateTime(draft.saved_at)}</span></div><button type="button" class="btn small secondary" data-action="discard-draft">Descartar</button>`;
     form.prepend(banner);
     syncOperationCatalogFields(form);
+    if (form.id === "truckForm") syncTruckForm(form);
     updateOperationAllocationSummary(form);
     return true;
   }
@@ -499,6 +517,7 @@
 
   function simulateFormSubmission(form) {
     const payload = Object.fromEntries(new FormData(form));
+    if (form.id === "truckForm") payload.platform_items = collectTruckPlatformItems(form, false);
     Object.keys(payload).forEach(key => {
       if (payload[key] instanceof File) payload[key] = payload[key].name || "arquivo";
     });
@@ -628,6 +647,10 @@
     return hasRole(["supervisor", "lider", "logistica"]);
   }
 
+  function canManageTrucks() {
+    return hasRole(["supervisor", "lider", "logistica"]);
+  }
+
   function canManageChemicals() {
     return hasRole(["supervisor", "lider", "logistica", "qhse"]);
   }
@@ -706,6 +729,7 @@
     $("#modal").classList.remove("hidden");
     document.body.classList.add("modal-open");
     syncOperationCatalogFields($("#operationForm"));
+    syncTruckForm($("#truckForm"));
     updateTransferPreview($("#tankTransferForm"));
     const modalForm = $("#modalBody form");
     if (modalForm) restoreFormDraft(modalForm);
@@ -770,7 +794,7 @@
       if (f.start && date && date < f.start) return false;
       if (f.end && date && date > f.end) return false;
       if (f.client && item.client !== f.client) return false;
-      if (f.product && item.product !== f.product) return false;
+      if (f.product && item.product !== f.product && !(item.items || []).some(product => product.productName === f.product)) return false;
       return true;
     });
   }
@@ -822,7 +846,15 @@
     if (hasFileSelection(form)) return false;
     const payload = Object.fromEntries(new FormData(form));
     let action = null;
-    if (form.id === "genericForm" && ["truck", "qhse", "alert"].includes(form.dataset.kind)) {
+    if (form.id === "truckForm") {
+      delete payload.attachment;
+      action = {
+        type: "truck",
+        id: form.dataset.id || null,
+        payload,
+        items: collectTruckPlatformItems(form, false)
+      };
+    } else if (form.id === "genericForm" && ["qhse", "alert"].includes(form.dataset.kind)) {
       action = { type: "entity", kind: form.dataset.kind, id: form.dataset.id || null, payload };
     } else if (form.id === "eventForm") {
       action = { type: "event", operationId: form.dataset.operationId, payload };
@@ -839,6 +871,7 @@
   }
 
   async function replayOfflineAction(action) {
+    if (action.type === "truck") return saveTruck(action.payload, action.id, action.items || []);
     if (action.type === "entity") return saveEntity(action.kind, action.payload, action.id);
     if (action.type === "event") {
       const p = action.payload;
@@ -896,7 +929,7 @@
     return {
       generated_at: new Date().toISOString(), generated_by: d.profile?.name || "-", version: "20260714-pro-management-suite-1",
       tanks: d.tanks || [], operations: d.operations || [], operationAllocations: d.operationAllocations || [],
-      trucks: d.trucks || [], chemicals: d.chemicals || [], chemicalMovements: d.chemicalMovements || [],
+      trucks: d.trucks || [], truckItems: d.truckItems || [], chemicals: d.chemicals || [], chemicalMovements: d.chemicalMovements || [],
       tankMovements: d.tankMovements || [], qhse: d.qhse || [], actionItems: d.actionItems || [],
       equipment: d.equipment || [], maintenanceOrders: d.maintenanceOrders || [],
       certificates: d.certificates || [], handoverPendings: d.handoverPendings || [],
@@ -935,8 +968,10 @@
       return downloadCsv(`inventario-quimico-${date}.csv`, ["Produto", "Categoria", "Lote", "Saldo", "Unidade", "Mínimo", "Validade", "Localização", "Fornecedor", "Status"], rows);
     }
     if (kind === "trucks") {
-      const rows = filteredTrucks().map(t => [t.date, t.movement, t.supplier, t.client, t.product, t.lot, t.quantity, t.unit, t.plate, t.driver, t.invoice, t.status]);
-      return downloadCsv(`carretas-${date}.csv`, ["Data", "Movimento", "Origem/Destino", "Cliente", "Produto", "Lote", "Quantidade", "Unidade", "Placa", "Motorista", "NF", "Status"], rows);
+      const rows = filteredTrucks().flatMap(t => t.truckType === "Plataforma" && t.items.length
+        ? t.items.map((item,index) => [t.date,t.movement,t.truckType,t.supplier,t.client,item.productName,item.lot,item.quantity,item.unit,index+1,t.items.length,t.plate,t.driver,t.invoice,t.status])
+        : [[t.date,t.movement,t.truckType,t.supplier,t.client,t.product,t.lot,t.quantity,t.unit,1,1,t.plate,t.driver,t.invoice,t.status]]);
+      return downloadCsv(`carretas-${date}.csv`, ["Data","Movimento","Tipo da carreta","Origem/Destino","Cliente","Produto","Lote","Quantidade","Unidade","Item","Total de itens","Placa","Motorista","NF","Status"], rows);
     }
     if (kind === "maintenance") {
       const rows = state.data.equipment.map(e => [e.name, e.category, e.status, e.hourmeter, e.next_maintenance_date, e.maintenance_due_hourmeter, e.location]);
@@ -1322,7 +1357,8 @@
       c.from("shift_handover_approvals").select("*").order("shift_date", { ascending: false }).limit(500),
       c.from("shift_checklist_items").select("*").order("shift_date", { ascending: false }).limit(2000),
       c.from("audit_logs").select("*").order("created_at", { ascending: false }).limit(1500),
-      c.from("app_feedback").select("*").order("created_at", { ascending: false }).limit(500)
+      c.from("app_feedback").select("*").order("created_at", { ascending: false }).limit(500),
+      c.from("truck_movement_items").select("*").order("display_order", { ascending: true }).limit(5000)
     ]);
 
     if (results[0]?.error) throw results[0].error;
@@ -1396,14 +1432,32 @@
       };
       }),
       operationEvents: results[6].data || [],
-      trucks: (results[7].data || []).map(x => ({
-        id: x.id, date: x.movement_date, movement: x.movement_type,
-        supplier: x.supplier, client: x.client || "", product: x.product, lot: x.lot || "",
-        quantity: Number(x.quantity || 0), unit: x.unit, plate: x.plate || "",
-        driver: x.driver_name || "", invoice: x.invoice_number || "", status: x.status,
-        notes: x.notes || "", created_by: x.created_by,
-        created_at: x.created_at, updated_at: x.updated_at
-      })),
+      trucks: (results[7].data || []).map(x => {
+        const linkedProduct = (results[2].data || []).find(item => item.id === x.fluid_type_id);
+        const items = (results[31].data || []).filter(item => item.truck_id === x.id).map(item => ({
+          id: item.id,
+          truckId: item.truck_id,
+          chemicalInventoryId: item.chemical_inventory_id,
+          productName: item.product_name,
+          lot: item.lot || "",
+          quantity: Number(item.quantity || 0),
+          unit: item.unit,
+          displayOrder: Number(item.display_order || 0),
+          created_at: item.created_at,
+          updated_at: item.updated_at
+        }));
+        return {
+          id: x.id, date: x.movement_date, movement: x.movement_type,
+          truckType: x.truck_type || (["bbl","m³","m3"].includes(String(x.unit || "").toLowerCase()) ? "Tank" : "Bulk"),
+          fluidTypeId: x.fluid_type_id || null,
+          supplier: x.supplier, client: x.client || "",
+          product: linkedProduct?.name || x.product, lot: x.lot || "",
+          quantity: Number(x.quantity || 0), unit: x.unit, plate: x.plate || "",
+          driver: x.driver_name || "", invoice: x.invoice_number || "", status: x.status,
+          notes: x.notes || "", items, created_by: x.created_by,
+          created_at: x.created_at, updated_at: x.updated_at
+        };
+      }),
       qhse: (results[8].data || []).map(x => ({
         id: x.id, date: x.record_date, type: x.record_type, title: x.title,
         description: x.description || "", responsible: x.responsible || "",
@@ -1518,6 +1572,12 @@
         id:x.id, category:x.category, page:x.page || "dashboard", rating:x.rating,
         message:x.message, device_info:x.device_info || "", app_version:x.app_version || "",
         status:x.status || "Novo", created_by:x.created_by, created_at:x.created_at, updated_at:x.updated_at
+      })),
+      truckItems: (results[31].data || []).map(item => ({
+        id:item.id, truckId:item.truck_id, chemicalInventoryId:item.chemical_inventory_id,
+        productName:item.product_name, lot:item.lot || "", quantity:Number(item.quantity || 0),
+        unit:item.unit, displayOrder:Number(item.display_order || 0),
+        created_at:item.created_at, updated_at:item.updated_at
       }))
     };
     state.data.systemAlerts = [...state.data.systemAlerts, ...state.data.alertCenter]
@@ -2154,8 +2214,11 @@
     });
 
     d.trucks.forEach(truck => {
-      if (!truck.invoice) add("Média", "Logística", `${truck.plate || truck.product}: carreta sem NF`, `${truck.movement} de ${truck.product} • ${fmt.format(truck.quantity)} ${truck.unit}.`, "trucks", "truck", truck.id);
-      if (!truck.lot) add("Média", "Logística", `${truck.plate || truck.product}: carreta sem lote`, `${truck.product} sem lote informado.`, "trucks", "truck", truck.id);
+      if (!["Bulk","Tank","Plataforma"].includes(truck.truckType)) add("Alta", "Logística", `${truck.plate || truck.product}: tipo não definido`, "Classifique a carreta como Bulk, Tank ou Plataforma.", "trucks", "truck", truck.id);
+      if (!truck.invoice) add("Média", "Logística", `${truck.plate || truck.product}: carreta sem NF`, `${truck.movement} • ${truck.truckType} • ${truck.product}.`, "trucks", "truck", truck.id);
+      if (truck.truckType !== "Plataforma" && !truck.fluidTypeId) add("Alta", "Logística", `${truck.plate || truck.product}: produto não vinculado`, "Selecione o produto cadastrado em Fluidos e Granéis.", "trucks", "truck", truck.id);
+      if (truck.truckType !== "Plataforma" && !truck.lot) add("Média", "Logística", `${truck.plate || truck.product}: carreta sem lote`, `${truck.product} sem lote informado.`, "trucks", "truck", truck.id);
+      if (truck.truckType === "Plataforma" && !(truck.items || []).length) add("Alta", "Logística", `${truck.plate || "Plataforma"}: sem produtos`, "Adicione os insumos e suas quantidades.", "trucks", "truck", truck.id);
       if (!truck.plate) add("Baixa", "Logística", `Movimentação sem placa`, `${truck.product} • NF ${truck.invoice || "-"}.`, "trucks", "truck", truck.id);
     });
 
@@ -2448,7 +2511,8 @@
       </div>
 
       <div class="row-actions">
-        ${hasRole(["supervisor", "lider", "operador", "logistica"]) ? `<button class="btn small primary" data-edit-tank="${tank.id}">${isAdmin() ? "Editar tudo" : "Atualizar volume"}</button>` : ""}
+        ${hasRole(["supervisor", "lider", "operador", "logistica"]) ? `<button class="btn small primary" data-edit-tank="${tank.id}">Atualizar conteúdo</button>` : ""}
+        ${isAdmin() ? `<button class="btn small secondary admin-structure-btn" data-edit-tank-structure="${tank.id}">Editar estrutura</button>` : ""}
         <button class="btn small secondary" data-tank-history="${tank.id}">Histórico</button>
         <button class="btn small secondary" data-tank-movements="${tank.id}">Movimentações</button>
         <button class="btn small secondary" data-asset-qr="tank:${tank.id}">QR Code</button>
@@ -2636,8 +2700,8 @@
     if (densityUnit) densityUnit.value = defaultDensityUnit(category, "");
   }
 
-  function tankForm(tank) {
-    const admin = isAdmin();
+  function tankForm(tank, editStructure = false) {
+    const admin = isAdmin() && editStructure;
     const silo = isSiloAsset(tank);
     const linkedFluid = (state.data.fluids || []).find(item => item.id === tank.fluidTypeId);
     const unlinkedCurrent = Boolean(tank.product && !linkedFluid);
@@ -2653,7 +2717,7 @@
       <input type="hidden" name="id" value="${tank.id}">
       <div class="form-grid">
         ${admin ? `
-          <div><label>Nome *</label><input name="name" required value="${esc(tank.name)}"></div>
+          <div><label>Nome do equipamento *</label><input name="name" required autocomplete="off" autocapitalize="characters" spellcheck="false" value="${esc(tank.name)}"><small class="field-help">O nome precisa ser exclusivo, por exemplo TK-12 ou SILO A.</small></div>
           <div><label>Fase *</label><select name="phase">${["Phase #1", "Phase #2"].map(x => `<option ${tank.phase === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
           <div><label>Tipo *</label><select name="kind" data-tank-kind-select>${["Tanque", "Mix Tank", "Silo"].map(x => `<option ${tank.kind === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
           <div><label>Ordem de exibição</label><input name="display_order" type="number" min="0" step="1" value="${tank.order ?? 0}"></div>
@@ -2723,13 +2787,15 @@
         </div>
 
         <div class="wide"><label>Lote</label><input name="lot" value="${esc(tank.lot)}"></div>
-        ${admin ? `<div class="wide admin-edit-notice"><strong>Modo administrador</strong><span>Nos silos, edite o volume físico em m³. A capacidade operacional em toneladas será calculada pela densidade do granel.</span></div>` : ""}
+        ${admin
+          ? `<div class="wide admin-edit-notice structure-edit-notice"><strong>Edição estrutural</strong><span>Este modo altera nome, fase, tipo, capacidade, ordem e conteúdo. Use apenas para modificar a estrutura do equipamento.</span></div>`
+          : `<div class="wide info-box content-update-notice"><strong>Atualização operacional</strong><span>Somente produto, lote, volume, densidade e status serão alterados. Nome e capacidade permanecerão intactos.</span></div>`}
       </div>
 
       <div id="tankSaveMessage" class="message hidden"></div>
       <div class="form-actions">
         <button type="button" class="btn secondary" data-close-modal>Cancelar</button>
-        <button type="button" class="btn primary" data-action="save-tank-volume">${admin ? "Salvar todas as alterações" : "Salvar atualização"}</button>
+        <button type="button" class="btn primary" data-action="save-tank-volume">${admin ? "Salvar estrutura e conteúdo" : "Salvar atualização operacional"}</button>
       </div>
     </form>`;
   }
@@ -2857,9 +2923,39 @@
 
   function renderTrucks() {
     const trucks = filteredTrucks();
-    const rows = trucks.map(item => `<tr><td>${dateOnly(item.date)}</td><td>${badge(item.movement)}</td><td>${esc(item.supplier)}<br><small>${esc(item.client || "-")}</small></td><td><strong>${esc(item.product)}</strong><br><small>${fmt.format(item.quantity)} ${esc(item.unit)} • Lote ${esc(item.lot || "-")}</small></td><td>${esc(item.plate || "-")}<br><small>${esc(item.driver || "-")}</small></td><td>${esc(item.invoice || "-")}</td><td>${badge(item.status)}</td><td><div class="row-actions"><button class="btn small secondary" data-attachments="truck:${item.id}" data-attachment-title="${esc(item.plate || item.product)}">📎 ${attachmentCount("truck", item.id)}</button>${isAdmin() ? `<button class="btn small primary" data-edit-truck="${item.id}">Editar</button>` : ""}</div></td></tr>`).join("");
-    const mobile = trucks.map(item => `<div class="card mobile-record-card"><div class="mobile-record-head"><div><strong>${esc(item.product)}</strong><small>${dateOnly(item.date)} • ${esc(item.movement)}</small></div>${badge(item.status)}</div><div class="mobile-record-grid"><span>Quantidade<strong>${fmt.format(item.quantity)} ${esc(item.unit)}</strong></span><span>Origem/Destino<strong>${esc(item.supplier)}</strong></span><span>Placa<strong>${esc(item.plate || "-")}</strong></span><span>NF<strong>${esc(item.invoice || "-")}</strong></span></div>${isAdmin() ? `<div class="row-actions"><button class="btn small primary" data-edit-truck="${item.id}">Editar</button></div>` : ""}</div>`).join("");
-    $("#page-trucks").innerHTML = header("Carretas", "Entradas, saídas, NF, motorista e documentos.", `<button class="btn secondary" data-export="trucks">Exportar CSV</button>${hasRole(["supervisor", "lider", "logistica"]) ? `<button class="btn primary" data-action="new-truck">+ Nova movimentação</button>` : ""}`) + `<div class="card table-wrap desktop-record-table"><table class="data-table"><thead><tr><th>Data</th><th>Movimento</th><th>Origem / Cliente</th><th>Produto</th><th>Placa / Motorista</th><th>NF</th><th>Status</th><th>Anexos</th></tr></thead><tbody>${rows || `<tr><td colspan="8" class="empty">Nenhuma movimentação.</td></tr>`}</tbody></table></div><div class="mobile-record-list">${mobile}</div>`;
+    const typeCount = type => trucks.filter(item => item.truckType === type).length;
+    const rows = trucks.map(item => `<tr>
+      <td>${dateOnly(item.date)}</td>
+      <td>${badge(item.movement)}<br><small>${badge(item.truckType)}</small></td>
+      <td>${esc(item.supplier)}<br><small>${esc(item.client || "-")}</small></td>
+      <td>${truckItemsSummary(item)}</td>
+      <td>${esc(item.plate || "-")}<br><small>${esc(item.driver || "-")}</small></td>
+      <td>${esc(item.invoice || "-")}</td>
+      <td>${badge(item.status)}</td>
+      <td><div class="row-actions">
+        ${item.truckType === "Plataforma" ? `<button class="btn small secondary" data-truck-items="${item.id}">Ver ${item.items.length} itens</button>` : ""}
+        <button class="btn small secondary" data-attachments="truck:${item.id}" data-attachment-title="${esc(item.plate || item.product)}">Anexos (${attachmentCount("truck", item.id)})</button>
+        ${canManageTrucks() ? `<button class="btn small primary" data-edit-truck="${item.id}">Editar</button>` : ""}
+      </div></td>
+    </tr>`).join("");
+
+    const mobile = trucks.map(item => `<article class="card mobile-record-card truck-mobile-card truck-type-${String(item.truckType).toLowerCase()}">
+      <div class="mobile-record-head"><div><strong>${esc(item.plate || item.product)}</strong><small>${dateOnly(item.date)} • ${esc(item.movement)}</small></div>${badge(item.truckType)}</div>
+      <div class="truck-mobile-products">${truckItemsSummary(item)}</div>
+      <div class="mobile-record-grid"><span>Origem/Destino<strong>${esc(item.supplier)}</strong></span><span>NF<strong>${esc(item.invoice || "-")}</strong></span><span>Motorista<strong>${esc(item.driver || "-")}</strong></span><span>Status<strong>${esc(item.status)}</strong></span></div>
+      <div class="row-actions">${item.truckType === "Plataforma" ? `<button class="btn small secondary" data-truck-items="${item.id}">Ver itens</button>` : ""}<button class="btn small secondary" data-attachments="truck:${item.id}" data-attachment-title="${esc(item.plate || item.product)}">Anexos</button>${canManageTrucks() ? `<button class="btn small primary" data-edit-truck="${item.id}">Editar</button>` : ""}</div>
+    </article>`).join("");
+
+    $("#page-trucks").innerHTML =
+      header("Carretas", "Controle separado de Bulk, Tank e Plataforma com vários insumos.",
+        `<button class="btn secondary" data-export="trucks">Exportar CSV</button>${canManageTrucks() ? `<button class="btn primary" data-action="new-truck">+ Nova movimentação</button>` : ""}`) +
+      `<div class="grid three truck-type-kpis">
+        <div class="card"><span>Bulk</span><strong>${typeCount("Bulk")}</strong><small>Carretas de granel</small></div>
+        <div class="card"><span>Tank</span><strong>${typeCount("Tank")}</strong><small>Carretas tanque</small></div>
+        <div class="card"><span>Plataforma</span><strong>${typeCount("Plataforma")}</strong><small>Vários insumos</small></div>
+      </div>
+      <div class="card table-wrap desktop-record-table"><table class="data-table"><thead><tr><th>Data</th><th>Movimento / Tipo</th><th>Origem / Cliente</th><th>Produtos</th><th>Placa / Motorista</th><th>NF</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows || `<tr><td colspan="8" class="empty">Nenhuma movimentação.</td></tr>`}</tbody></table></div>
+      <div class="mobile-record-list">${mobile || `<div class="card empty">Nenhuma movimentação.</div>`}</div>`;
   }
 
   function renderQhse() {
@@ -3368,6 +3464,228 @@
     </form>`;
   }
 
+
+  function inferredTruckType(item = {}) {
+    if (["Bulk","Tank","Plataforma"].includes(item.truckType)) return item.truckType;
+    return ["bbl","m³","m3"].includes(String(item.unit || "").toLowerCase()) ? "Tank" : "Bulk";
+  }
+
+  function truckCatalogProducts(type = "Bulk", currentId = "") {
+    return (state.data?.fluids || [])
+      .filter(item => item.active !== false || item.id === currentId)
+      .filter(item => {
+        const category = String(item.type || "").toLowerCase();
+        return type === "Bulk" ? category === "granel" : !["granel","insumo"].includes(category);
+      })
+      .sort((a,b) => a.name.localeCompare(b.name));
+  }
+
+  function truckCatalogOptions(type = "Bulk", selectedId = "") {
+    return truckCatalogProducts(type, selectedId).map(item =>
+      `<option value="${item.id}" data-unit="${esc(item.unit)}" ${item.id === selectedId ? "selected" : ""}>${esc(item.name)}${item.active === false ? " — inativo (histórico)" : ""}</option>`
+    ).join("");
+  }
+
+  function platformInventoryOptions(selectedId = "") {
+    return [...(state.data?.chemicals || [])]
+      .sort((a,b) => `${a.name} ${a.lot}`.localeCompare(`${b.name} ${b.lot}`))
+      .map(item => `<option value="${item.id}" data-unit="${esc(item.unit)}" data-product="${esc(item.name)}" data-lot="${esc(item.lot || "")}" ${item.id === selectedId ? "selected" : ""}>${esc(item.name)} — lote ${esc(item.lot || "-")} — saldo ${fmt.format(item.quantity)} ${esc(item.unit)}</option>`)
+      .join("");
+  }
+
+  function truckPlatformItemRow(item = {}) {
+    const selectedId = item.chemicalInventoryId || item.chemical_inventory_id || "";
+    const inventory = (state.data?.chemicals || []).find(product => product.id === selectedId);
+    return `<div class="truck-platform-row" data-truck-platform-row>
+      <div class="truck-platform-product">
+        <label>Produto / lote *</label>
+        <select data-truck-item-inventory>
+          <option value="">Selecione no Inventário Químico</option>
+          ${platformInventoryOptions(selectedId)}
+        </select>
+        <small data-truck-item-detail>${inventory ? `${esc(inventory.name)} • lote ${esc(inventory.lot || "-")}` : "Produto vinculado ao Inventário Químico."}</small>
+      </div>
+      <div><label>Quantidade *</label><input data-truck-item-quantity type="text" inputmode="decimal" value="${esc(item.quantity ?? "")}" placeholder="Ex.: 20"></div>
+      <div><label>Unidade</label><input data-truck-item-unit value="${esc(item.unit || inventory?.unit || "")}" readonly></div>
+      <button type="button" class="icon-btn truck-remove-item" data-action="remove-truck-item" aria-label="Remover produto">×</button>
+    </div>`;
+  }
+
+  function syncTruckPlatformRow(row) {
+    if (!row) return;
+    const select = row.querySelector("[data-truck-item-inventory]");
+    const inventory = (state.data?.chemicals || []).find(item => item.id === select?.value);
+    const unit = row.querySelector("[data-truck-item-unit]");
+    const detail = row.querySelector("[data-truck-item-detail]");
+    if (unit) unit.value = inventory?.unit || "";
+    if (detail) detail.textContent = inventory
+      ? `${inventory.name} • lote ${inventory.lot || "-"} • saldo atual ${fmt.format(inventory.quantity)} ${inventory.unit}`
+      : "Produto vinculado ao Inventário Químico.";
+  }
+
+  function syncTruckSingleProduct(form) {
+    if (!form) return;
+    const type = form.elements.truck_type?.value || "Bulk";
+    const select = form.elements.fluid_type_id;
+    const selected = select?.value || "";
+    if (select) {
+      const valid = truckCatalogProducts(type, selected).some(item => item.id === selected);
+      select.innerHTML = `<option value="">Selecione o produto cadastrado</option>${truckCatalogOptions(type, valid ? selected : "")}`;
+    }
+    const product = (state.data?.fluids || []).find(item => item.id === select?.value);
+    const unit = form.elements.unit;
+    const detail = form.querySelector("[data-truck-product-detail]");
+    if (unit) unit.value = product?.unit || "";
+    if (detail) detail.textContent = product
+      ? `${product.type} • unidade ${product.unit}${product.density ? ` • densidade ${fmt.format(product.density)} ${product.densityUnit || ""}` : ""}`
+      : type === "Bulk" ? "Aparecem somente produtos classificados como Granel." : "Aparecem somente produtos fluidos.";
+  }
+
+  function updateTruckPlatformSummary(form) {
+    const summary = form?.querySelector("[data-truck-platform-summary]");
+    if (!summary) return;
+    const rows = [...form.querySelectorAll("[data-truck-platform-row]")];
+    const valid = rows.filter(row => row.querySelector("[data-truck-item-inventory]")?.value);
+    summary.innerHTML = `<strong>${valid.length}</strong><span>produto(s) adicionado(s)</span>`;
+  }
+
+  function syncTruckForm(form, resetProduct = false) {
+    if (!form) return;
+    const type = form.elements.truck_type?.value || "Bulk";
+    const single = form.querySelector("[data-truck-single-section]");
+    const platform = form.querySelector("[data-truck-platform-section]");
+    const isPlatform = type === "Plataforma";
+
+    single?.classList.toggle("hidden", isPlatform);
+    platform?.classList.toggle("hidden", !isPlatform);
+
+    single?.querySelectorAll("input,select").forEach(field => field.disabled = isPlatform);
+    platform?.querySelectorAll("input,select").forEach(field => field.disabled = !isPlatform);
+
+    if (!isPlatform) {
+      if (resetProduct && form.elements.fluid_type_id) form.elements.fluid_type_id.value = "";
+      syncTruckSingleProduct(form);
+    } else {
+      const list = form.querySelector("[data-truck-items-list]");
+      if (list && !list.children.length) list.innerHTML = truckPlatformItemRow();
+      list?.querySelectorAll("[data-truck-platform-row]").forEach(syncTruckPlatformRow);
+      updateTruckPlatformSummary(form);
+    }
+  }
+
+  function collectTruckPlatformItems(form, validate = true) {
+    if (!form || form.elements.truck_type?.value !== "Plataforma") return [];
+    const rows = [...form.querySelectorAll("[data-truck-platform-row]")];
+    if (validate && !rows.length) throw new Error("Adicione pelo menos um produto na Plataforma.");
+    const used = new Set();
+    return rows.map((row, index) => {
+      const inventoryId = row.querySelector("[data-truck-item-inventory]")?.value || "";
+      const quantity = parseTankVolume(row.querySelector("[data-truck-item-quantity]")?.value || "");
+      const inventory = state.data.chemicals.find(item => item.id === inventoryId);
+      if (validate && !inventory) throw new Error(`Selecione o produto da linha ${index + 1}.`);
+      if (validate && (!Number.isFinite(quantity) || quantity <= 0)) throw new Error(`Informe uma quantidade maior que zero na linha ${index + 1}.`);
+      if (validate && used.has(inventoryId)) throw new Error(`${inventory.name} — lote ${inventory.lot || "-"} foi adicionado mais de uma vez.`);
+      if (inventoryId) used.add(inventoryId);
+      return {
+        chemical_inventory_id: inventoryId,
+        quantity: Number.isFinite(quantity) ? quantity : 0,
+        display_order: index
+      };
+    }).filter(item => item.chemical_inventory_id);
+  }
+
+  function truckItemsSummary(item, detailed = false) {
+    const items = item.items || [];
+    if (item.truckType !== "Plataforma") {
+      return `<strong>${esc(item.product)}</strong><small>${fmt.format(item.quantity)} ${esc(item.unit)} • Lote ${esc(item.lot || "-")}</small>`;
+    }
+    if (!items.length) return `<strong>Plataforma</strong><small>Nenhum item detalhado.</small>`;
+    const visible = detailed ? items : items.slice(0, 3);
+    return `<div class="truck-item-summary">${visible.map(product => `<span><strong>${esc(product.productName)}</strong><small>${fmt.format(product.quantity)} ${esc(product.unit)} • lote ${esc(product.lot || "-")}</small></span>`).join("")}${!detailed && items.length > 3 ? `<em>+ ${items.length - 3} produto(s)</em>` : ""}</div>`;
+  }
+
+  function truckForm(item = {}) {
+    const type = inferredTruckType(item);
+    const items = item.items || [];
+    const linked = state.data.fluids.find(product => product.id === item.fluidTypeId);
+    return `<form id="truckForm" data-id="${item.id || ""}">
+      <div class="form-grid">
+        <div><label>Data *</label><input name="date" type="date" required value="${String(item.date || new Date().toISOString()).slice(0,10)}"></div>
+        <div><label>Movimento *</label><select name="movement">${["Entrada","Saída","Backload"].map(value => `<option ${item.movement === value ? "selected" : ""}>${value}</option>`).join("")}</select></div>
+        <div class="wide truck-type-field"><label>Tipo da carreta *</label><div class="truck-type-selector">${["Bulk","Tank","Plataforma"].map(value => `<label><input type="radio" name="truck_type" value="${value}" ${type === value ? "checked" : ""}><span><b>${value === "Bulk" ? "◆" : value === "Tank" ? "●" : "▦"}</b><strong>${value}</strong><small>${value === "Bulk" ? "Granel" : value === "Tank" ? "Fluido" : "Vários insumos"}</small></span></label>`).join("")}</div></div>
+        <div><label>Origem / Destino *</label><input name="supplier" required value="${esc(item.supplier || "")}"></div>
+        <div><label>Cliente</label><input name="client" value="${esc(item.client || "")}"></div>
+
+        <section class="wide truck-single-section ${type === "Plataforma" ? "hidden" : ""}" data-truck-single-section>
+          <div class="form-grid">
+            <div class="wide">
+              <div class="catalog-linked-heading"><div><label>Produto vinculado *</label><small>Bulk usa granéis; Tank usa fluidos.</small></div><button type="button" class="btn small secondary" data-action="open-fluid-catalog">Abrir Fluidos e Granéis</button></div>
+              <select name="fluid_type_id" data-truck-single-product>
+                <option value="">Selecione o produto cadastrado</option>
+                ${truckCatalogOptions(type, item.fluidTypeId || "")}
+              </select>
+              <small class="field-help" data-truck-product-detail>${linked ? `${esc(linked.type)} • unidade ${esc(linked.unit)}` : ""}</small>
+            </div>
+            <div><label>Lote</label><input name="lot" value="${esc(item.lot || "")}"></div>
+            <div><label>Quantidade *</label><input name="quantity" type="text" inputmode="decimal" value="${item.quantity || ""}" placeholder="Ex.: 30"></div>
+            <div><label>Unidade</label><input name="unit" value="${esc(linked?.unit || item.unit || "")}" readonly></div>
+          </div>
+        </section>
+
+        <section class="wide truck-platform-section ${type === "Plataforma" ? "" : "hidden"}" data-truck-platform-section>
+          <div class="truck-platform-heading">
+            <div><label>Produtos da Plataforma *</label><small>Selecione os produtos/lotes já cadastrados no Inventário Químico.</small></div>
+            <div class="row-actions"><button type="button" class="btn small secondary" data-action="open-chemical-inventory">Abrir inventário</button><button type="button" class="btn small primary" data-action="add-truck-item">+ Adicionar produto</button></div>
+          </div>
+          <div class="truck-platform-summary" data-truck-platform-summary><strong>${items.length}</strong><span>produto(s) adicionado(s)</span></div>
+          <div class="truck-platform-list" data-truck-items-list>${(items.length ? items : [{}]).map(truckPlatformItemRow).join("")}</div>
+        </section>
+
+        <div><label>Placa</label><input name="plate" value="${esc(item.plate || "")}"></div>
+        <div><label>Motorista</label><input name="driver" value="${esc(item.driver || "")}"></div>
+        <div><label>Nota fiscal</label><input name="invoice" value="${esc(item.invoice || "")}"></div>
+        <div><label>Status</label><select name="status">${["Programada","Recebida","Concluída"].map(value => `<option ${item.status === value ? "selected" : ""}>${value}</option>`).join("")}</select></div>
+        <div class="wide"><label>Observações</label><textarea name="notes">${esc(item.notes || "")}</textarea></div>
+        <div class="wide"><label>NF, documento ou foto</label><input name="attachment" type="file" accept=".pdf,image/jpeg,image/png,image/webp,image/heic,image/heif" multiple capture="environment"></div>
+      </div>${formActions(item.id ? "Salvar alterações" : "Salvar movimentação")}
+    </form>`;
+  }
+
+  async function saveTruck(payload, id = null, items = []) {
+    const type = payload.truck_type;
+    if (!["Bulk","Tank","Plataforma"].includes(type)) throw new Error("Selecione o tipo da carreta.");
+    const quantity = type === "Plataforma" ? 0 : parseTankVolume(payload.quantity || "");
+    if (type !== "Plataforma" && (!Number.isFinite(quantity) || quantity <= 0)) throw new Error("Informe uma quantidade maior que zero.");
+    if (type !== "Plataforma" && !payload.fluid_type_id) throw new Error("Selecione o produto em Fluidos e Granéis.");
+    if (type === "Plataforma" && !items.length) throw new Error("Adicione pelo menos um produto na Plataforma.");
+
+    const truckPayload = {
+      movement_date: payload.date,
+      movement_type: payload.movement,
+      truck_type: type,
+      supplier: payload.supplier,
+      client: payload.client || null,
+      fluid_type_id: type === "Plataforma" ? null : payload.fluid_type_id,
+      lot: type === "Plataforma" ? null : (payload.lot || null),
+      quantity,
+      plate: payload.plate || null,
+      driver_name: payload.driver || null,
+      invoice_number: payload.invoice || null,
+      status: payload.status,
+      notes: payload.notes || null
+    };
+
+    const { data, error } = await state.client.rpc("save_truck_movement", {
+      p_truck_id: id || null,
+      p_truck: truckPayload,
+      p_items: items
+    });
+    if (error) throw error;
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row?.id) throw new Error("O Supabase não confirmou a movimentação da carreta.");
+    return row.id;
+  }
+
   function genericForm(kind, item = {}) {
     const sel = (value, option) => String(value ?? "") === String(option) ? "selected" : "";
     const id = item.id || "";
@@ -3381,23 +3699,6 @@
         <div class="catalog-status-field"><label>Status do produto *</label><select name="active" required><option value="true" ${item.active !== false ? "selected" : ""}>Ativo — aparece nos tanques/silos</option><option value="false" ${item.active === false ? "selected" : ""}>Inativo — fica oculto na seleção</option></select><small class="field-help">Ao ativar, o produto volta imediatamente para o menu suspenso dos equipamentos compatíveis.</small></div>
         <div class="wide"><label>Documentos ou fotos</label><input name="attachment" type="file" accept=".pdf,image/jpeg,image/png,image/webp,image/heic,image/heif" multiple></div>
       </div>${formActions(id ? "Salvar alterações" : "Salvar produto")}</form>`,
-
-      truck: `<form id="genericForm" data-kind="truck" data-id="${id}"><div class="form-grid">
-        <div><label>Data *</label><input name="date" type="date" required value="${String(item.date || new Date().toISOString()).slice(0,10)}"></div>
-        <div><label>Movimento</label><select name="movement">${["Entrada","Saída","Backload"].map(x => `<option ${sel(item.movement,x)}>${x}</option>`).join("")}</select></div>
-        <div><label>Origem / Destino *</label><input name="supplier" required value="${esc(item.supplier || "")}"></div>
-        <div><label>Cliente</label><input name="client" value="${esc(item.client || "")}"></div>
-        <div><label>Produto *</label><input name="product" required value="${esc(item.product || "")}"></div>
-        <div><label>Lote</label><input name="lot" value="${esc(item.lot || "")}"></div>
-        <div><label>Quantidade *</label><input name="quantity" type="number" min="0" step="0.01" required value="${item.quantity ?? 0}"></div>
-        <div><label>Unidade</label><select name="unit">${["ton","bbl","m³"].map(x => `<option ${sel(item.unit,x)}>${x}</option>`).join("")}</select></div>
-        <div><label>Placa</label><input name="plate" value="${esc(item.plate || "")}"></div>
-        <div><label>Motorista</label><input name="driver" value="${esc(item.driver || "")}"></div>
-        <div><label>Nota fiscal</label><input name="invoice" value="${esc(item.invoice || "")}"></div>
-        <div><label>Status</label><select name="status">${["Programada","Recebida","Concluída"].map(x => `<option ${sel(item.status,x)}>${x}</option>`).join("")}</select></div>
-        <div class="wide"><label>Observações</label><textarea name="notes">${esc(item.notes || "")}</textarea></div>
-        <div class="wide"><label>NF, documento ou foto</label><input name="attachment" type="file" accept=".pdf,image/jpeg,image/png,image/webp,image/heic,image/heif" multiple capture="environment"></div>
-      </div>${formActions(id ? "Salvar alterações" : "Salvar movimentação")}</form>`,
 
       qhse: `<form id="genericForm" data-kind="qhse" data-id="${id}"><div class="form-grid">
         <div><label>Data</label><input name="date" type="date" value="${String(item.date || new Date().toISOString()).slice(0,10)}"></div>
@@ -3569,6 +3870,18 @@
     return Number.isFinite(parsed) ? parsed : NaN;
   }
 
+
+  function friendlyTankSaveError(error) {
+    const raw = String(error?.message || error || "Não foi possível salvar o tanque ou silo.");
+    if (raw.includes("tanks_name_key") || raw.toLowerCase().includes("duplicate key")) {
+      return "Já existe outro tanque ou silo com esse nome. A atualização operacional não precisa alterar o nome do equipamento.";
+    }
+    if (raw.includes("fluid_types_name_key")) {
+      return "Este produto já está cadastrado em Fluidos e Granéis. Selecione o cadastro existente.";
+    }
+    return raw;
+  }
+
   async function saveTankVolume(form, button = null) {
     if (!form) throw new Error("Formulário de tancagem não localizado.");
     if (!state.client || !state.user) throw new Error("Sessão inválida. Entre novamente.");
@@ -3593,6 +3906,17 @@
       : null;
     const calculatedSiloCapacity = silo ? siloOperationalCapacity(physicalCapacityM3, newDensity) : null;
     const newCapacity = silo ? (calculatedSiloCapacity ?? Number(tank.capacity || 0)) : fixedCapacity;
+
+    if (adminFull) {
+      const requestedName = String(payload.name || "").trim();
+      if (!requestedName) throw new Error("Informe o nome do tanque ou silo.");
+      const duplicateTank = state.data.tanks.find(item =>
+        item.id !== tank.id && normalizeSearch(item.name) === normalizeSearch(requestedName)
+      );
+      if (duplicateTank) {
+        throw new Error(`O nome ${requestedName} já pertence a ${duplicateTank.name}. Escolha outro nome para o equipamento.`);
+      }
+    }
 
     if (!Number.isFinite(newVolume)) throw new Error("Informe um volume válido.");
     if (newVolume > 0 && !selectedFluidId) throw new Error("Selecione um produto cadastrado na aba Fluidos e Granéis.");
@@ -3627,6 +3951,8 @@
     }
 
     try {
+      // Atualizações de conteúdo nunca enviam nome, fase ou capacidade estrutural.
+      // Isso impede que uma simples troca de produto provoque conflito em tanks_name_key.
       const rpcName = adminFull ? "admin_update_tank_product_capacity_v2" : "update_tank_product_capacity_v2";
       const sharedProductPayload = {
         p_fluid_type_id: selectedFluidId,
@@ -3711,20 +4037,21 @@
 
       return mapped;
     } catch (error) {
+      const friendlyMessage = friendlyTankSaveError(error);
       if (message) {
-        message.textContent = error.message;
+        message.textContent = friendlyMessage;
         message.classList.remove("hidden");
       }
       try {
         await state.client.from("system_errors").insert({
           user_id: state.user.id,
           context: `tank_volume_update:${tank.name}`,
-          message: error.message,
+          message: friendlyMessage,
           stack: error.stack || null,
           user_agent: navigator.userAgent
         });
       } catch (_) {}
-      throw error;
+      throw new Error(friendlyMessage);
     } finally {
       if (button) {
         button.disabled = false;
@@ -3821,13 +4148,6 @@
     }
 
     const maps = {
-      truck: ["trucks", {
-        movement_date: payload.date, movement_type: payload.movement, supplier: payload.supplier,
-        client: payload.client || null, product: payload.product, lot: payload.lot || null,
-        quantity: Number(payload.quantity || 0), unit: payload.unit, plate: payload.plate || null,
-        driver_name: payload.driver || null, invoice_number: payload.invoice || null,
-        status: payload.status, notes: payload.notes || null, created_by: state.user.id
-      }],
       qhse: ["qhse_records", {
         record_date: payload.date, record_type: payload.type, title: payload.title,
         description: payload.description || null, responsible: payload.responsible || null,
@@ -4115,6 +4435,17 @@
         if (!profileUpdated) throw new Error("A conta foi criada, mas o perfil ainda não ficou disponível para configuração.");
       }
 
+
+      if (form.id === "truckForm") {
+        if (!canManageTrucks()) throw new Error("Seu perfil não pode cadastrar ou editar carretas.");
+        const files = [...(form.querySelector('[name="attachment"]')?.files || [])];
+        const payload = Object.fromEntries(new FormData(form));
+        delete payload.attachment;
+        const items = collectTruckPlatformItems(form);
+        const recordId = await saveTruck(payload, form.dataset.id || null, items);
+        if (files.length) await uploadAttachments("truck", recordId, files);
+      }
+
       if (form.id === "genericForm") {
         const kind = form.dataset.kind;
         if (kind === "certificate" && !canManageCertificates()) {
@@ -4384,6 +4715,27 @@
     const action = button.dataset.action;
     if (button.closest(".mobile-sheet") && !["mobile-more", "mobile-quick"].includes(action)) closeMobileSheets();
 
+    if (action === "add-truck-item") {
+      const form = button.closest("#truckForm");
+      form?.querySelector("[data-truck-items-list]")?.insertAdjacentHTML("beforeend", truckPlatformItemRow());
+      updateTruckPlatformSummary(form);
+      scheduleDraftSave(form);
+      return;
+    }
+    if (action === "remove-truck-item") {
+      const form = button.closest("#truckForm");
+      const rows = form?.querySelectorAll("[data-truck-platform-row]") || [];
+      if (rows.length <= 1) return toast("A Plataforma precisa manter pelo menos uma linha.", "error");
+      button.closest("[data-truck-platform-row]")?.remove();
+      updateTruckPlatformSummary(form);
+      scheduleDraftSave(form);
+      return;
+    }
+    if (action === "open-chemical-inventory") {
+      closeModal();
+      return showPage("chemicals");
+    }
+
     if (action === "open-feedback") {
       return openModal("Feedback da versão beta", feedbackForm(), "MELHORIA CONTÍNUA");
     }
@@ -4574,7 +4926,7 @@
       return showPage("fluids");
     }
     if (action === "new-chemical") { if (!canManageChemicals()) return toast("Seu perfil não pode alterar o inventário químico.", "error"); return openModal("Novo produto químico/lote", chemicalForm(), "INVENTÁRIO"); }
-    if (action === "new-truck") return openModal("Nova movimentação", genericForm("truck"), "CARRETA");
+    if (action === "new-truck") return openModal("Nova movimentação de carreta", truckForm(), "CARRETA");
     if (action === "new-qhse") return openModal("Novo registro QHSE", genericForm("qhse"), "QHSE");
     if (action === "new-equipment") return openModal("Novo equipamento", genericForm("equipment"), "EQUIPAMENTO");
     if (action === "new-certificate") { if (!canManageCertificates()) return toast("Somente Logística, Supervisor ou Administrador podem adicionar certificados.", "error"); return openModal("Adicionar certificado", genericForm("certificate"), "CERTIFICADO"); }
@@ -4662,8 +5014,15 @@
     }
 
     if (button.dataset.editTruck) {
+      if (!canManageTrucks()) return toast("Seu perfil não pode editar carretas.", "error");
       const item = state.data.trucks.find(x => x.id === button.dataset.editTruck);
-      return openModal(`Editar carreta — ${item.plate || item.product}`, genericForm("truck", item), "ADMIN");
+      return openModal(`Editar carreta — ${item.plate || item.product}`, truckForm(item), "CARRETA");
+    }
+
+    if (button.dataset.truckItems) {
+      const item = state.data.trucks.find(x => x.id === button.dataset.truckItems);
+      if (!item) return toast("Carreta não localizada.", "error");
+      return openModal(`Itens da Plataforma — ${item.plate || item.invoice || item.id}`, `<div class="truck-detail-list">${(item.items || []).map((product,index) => `<div class="attachment-item"><div class="attachment-icon">${index+1}</div><div class="attachment-info"><strong>${esc(product.productName)}</strong><small>Lote ${esc(product.lot || "-")} • ${fmt.format(product.quantity)} ${esc(product.unit)}</small></div></div>`).join("") || `<div class="empty">Nenhum produto detalhado.</div>`}</div>`, "PLATAFORMA");
     }
 
     if (button.dataset.editQhse) {
@@ -4749,7 +5108,13 @@
 
     if (button.dataset.editTank) {
       const tank = state.data.tanks.find(x => x.id === button.dataset.editTank);
-      return openModal(`Atualizar ${tank.name}`, tankForm(tank), "TANCAGEM");
+      return openModal(`Atualizar conteúdo — ${tank.name}`, tankForm(tank, false), "TANCAGEM");
+    }
+
+    if (button.dataset.editTankStructure) {
+      if (!isAdmin()) return toast("Somente o administrador pode editar a estrutura.", "error");
+      const tank = state.data.tanks.find(x => x.id === button.dataset.editTankStructure);
+      return openModal(`Editar estrutura — ${tank.name}`, tankForm(tank, true), "ADMINISTRAÇÃO");
     }
 
     if (button.dataset.tankHistory) {
@@ -4828,6 +5193,12 @@
   document.addEventListener("change", async event => {
     const changedForm = event.target.closest("#modalBody form");
     if (changedForm) scheduleDraftSave(changedForm);
+    if (event.target.closest("#truckForm") && event.target.name === "truck_type") syncTruckForm(event.target.closest("#truckForm"), true);
+    if (event.target.closest("#truckForm") && event.target.name === "fluid_type_id") syncTruckSingleProduct(event.target.closest("#truckForm"));
+    if (event.target.closest("#truckForm") && event.target.matches("[data-truck-item-inventory]")) {
+      syncTruckPlatformRow(event.target.closest("[data-truck-platform-row]"));
+      updateTruckPlatformSummary(event.target.closest("#truckForm"));
+    }
     if (event.target.closest("#operationForm") && event.target.name === "fluid_type_id") syncOperationCatalogFields(event.target.closest("#operationForm"), true);
     if (event.target.closest("#operationForm") && ["activity","status","apply_tank_movement"].includes(event.target.name)) syncOperationTankFields(event.target.closest("#operationForm"));
     if (event.target.closest("#operationForm") && event.target.matches("[data-allocation-tank]")) updateOperationAllocationSummary(event.target.closest("#operationForm"));
@@ -4862,6 +5233,7 @@
     }
     const draftForm = event.target.closest("#modalBody form");
     if (draftForm) scheduleDraftSave(draftForm);
+    if (event.target.closest("#truckForm") && event.target.matches("[data-truck-item-quantity]")) updateTruckPlatformSummary(event.target.closest("#truckForm"));
     if (event.target.closest("#tankTransferForm") && event.target.name === "quantity") updateTransferPreview(event.target.closest("#tankTransferForm"));
     if (event.target.closest("#operationForm") && (event.target.name === "executed" || event.target.matches("[data-allocation-quantity]"))) updateOperationAllocationSummary(event.target.closest("#operationForm"));
     if (event.target.closest("#tankForm") && ["density","physical_capacity_m3","volume"].includes(event.target.name)) {

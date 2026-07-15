@@ -12,7 +12,7 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const APP_VERSION = "20260715-chemical-product-lots-1";
+  const APP_VERSION = "20260715-chemical-packaging-bombonas-1";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -772,6 +772,7 @@
     $("#modal").classList.remove("hidden");
     document.body.classList.add("modal-open");
     syncOperationCatalogFields($("#operationForm"));
+    syncChemicalPackagingFields($("#chemicalProductForm"));
     setOperationStep($("#operationForm"), 1);
     syncTruckForm($("#truckForm"));
     updateTransferPreview($("#tankTransferForm"));
@@ -1012,8 +1013,12 @@
     }
     if (kind === "chemicals") {
       const totals = new Map(groupedChemicalInventory().map(item => [item.id, item.total]));
-      const rows = state.data.chemicals.map(c => [c.name, c.category, totals.get(c.productId) || 0, c.lot || "Sem lote", c.quantity, c.unit, c.minimum, c.expiry_date, c.location, c.supplier, chemicalDisplayStatus(c)]);
-      return downloadCsv(`inventario-quimico-${date}.csv`, ["Produto", "Categoria", "Total do produto", "Lote", "Quantidade do lote", "Unidade", "Mínimo do lote", "Validade", "Localização", "Fornecedor", "Status"], rows);
+      const products = new Map(groupedChemicalInventory().map(item => [item.id, item]));
+      const rows = state.data.chemicals.map(c => {
+        const product = products.get(c.productId);
+        return [c.name, c.category, product?.packagingType || "Outros", totals.get(c.productId) || 0, c.lot || "Sem lote", c.quantity, c.unit, c.minimum, c.expiry_date, c.location, c.supplier, chemicalDisplayStatus(c)];
+      });
+      return downloadCsv(`inventario-quimico-${date}.csv`, ["Produto", "Categoria", "Tipo de embalagem", "Total do produto", "Lote", "Quantidade do lote", "Unidade", "Mínimo do lote", "Validade", "Localização", "Fornecedor", "Status"], rows);
     }
     if (kind === "trucks") {
       const rows = filteredTrucks().flatMap(t => t.truckType === "Plataforma" && t.items.length
@@ -1561,7 +1566,9 @@
         uploaded_by: x.uploaded_by, created_at: x.created_at
       })),
       chemicalProducts: (results[32].data || []).map(x => ({
-        id:x.id, name:x.name, category:x.category || "", unit:x.default_unit || "unidade",
+        id:x.id, name:x.name, category:x.category || "",
+        packagingType:x.packaging_type || "Outros",
+        unit:x.default_unit || "unidade",
         active:x.active !== false, notes:x.notes || "", created_by:x.created_by,
         created_at:x.created_at, updated_at:x.updated_at
       })),
@@ -3086,13 +3093,101 @@
   }
 
 
+
+  const CHEMICAL_PACKAGING_ORDER = ["Big Bags", "Sacarias", "Tambores", "Bombonas", "Outros"];
+
+  function chemicalPackagingMeta(type = "Outros") {
+    const map = {
+      "Big Bags": { icon: "◆", defaultUnit: "Big Bag", description: "Produtos acondicionados em Big Bags" },
+      "Sacarias": { icon: "▤", defaultUnit: "sacos", description: "Produtos acondicionados em sacos" },
+      "Tambores": { icon: "●", defaultUnit: "tambores", description: "Produtos acondicionados em tambores" },
+      "Bombonas": { icon: "⬟", defaultUnit: "bombonas", description: "Produtos acondicionados em bombonas" },
+      "Outros": { icon: "▦", defaultUnit: "unidade", description: "Outras formas de acondicionamento" }
+    };
+    return map[type] || map.Outros;
+  }
+
+  function inferChemicalPackaging(product = {}) {
+    if (CHEMICAL_PACKAGING_ORDER.includes(product.packagingType)) return product.packagingType;
+    const unit = normalizeSearch(product.unit || "");
+    if (unit.includes("big bag") || unit.includes("bigbag")) return "Big Bags";
+    if (unit.includes("saco") || unit.includes("sacaria")) return "Sacarias";
+    if (unit.includes("tambor")) return "Tambores";
+    if (unit.includes("bombona")) return "Bombonas";
+    return "Outros";
+  }
+
+  function chemicalPackagingOptions(selected = "Outros") {
+    return CHEMICAL_PACKAGING_ORDER.map(type =>
+      `<option value="${type}" ${type === selected ? "selected" : ""}>${type}</option>`
+    ).join("");
+  }
+
+  function chemicalUnitOptions(selected = "unidade") {
+    const values = ["Big Bag", "big bag", "saco", "sacos", "tambor", "tambores", "bombona", "bombonas", "kg", "L", "unidade"];
+    const unique = [...new Set([selected, ...values].filter(Boolean))];
+    return unique.map(value => `<option value="${esc(value)}" ${value === selected ? "selected" : ""}>${esc(value)}</option>`).join("");
+  }
+
+  function syncChemicalPackagingFields(form, forceUnit = false) {
+    if (!form) return;
+    const packaging = form.elements.packaging_type?.value || "Outros";
+    const unit = form.elements.unit;
+    const meta = chemicalPackagingMeta(packaging);
+    if (unit && (forceUnit || !unit.value)) unit.value = meta.defaultUnit;
+    const hint = form.querySelector("[data-packaging-hint]");
+    if (hint) hint.textContent = `${meta.description}. Unidade sugerida: ${meta.defaultUnit}.`;
+  }
+
+  function packagingSummaryCards(groups) {
+    return CHEMICAL_PACKAGING_ORDER.map(type => {
+      const items = groups.filter(item => item.packagingType === type);
+      const totalLots = items.reduce((sum, item) => sum + item.lots.length, 0);
+      const meta = chemicalPackagingMeta(type);
+      return `<article class="card packaging-summary-card" data-packaging-summary="${esc(type)}">
+        <span class="packaging-summary-icon">${meta.icon}</span>
+        <div><small>${esc(type)}</small><strong>${items.length}</strong><span>${totalLots} lote(s)</span></div>
+      </article>`;
+    }).join("");
+  }
+
+  function chemicalInventorySection(type, items) {
+    if (!items.length) return "";
+    const meta = chemicalPackagingMeta(type);
+    const cards = items.map(item => {
+      const nextLot = item.nextLot;
+      return `<article class="card chemical-product-stock-card packaging-${normalizeSearch(type).replace(/\s+/g, "-")} ${item.active ? "" : "inactive"}">
+        <div class="chemical-product-stock-head"><div><span>${esc(item.category || "Produto químico")}</span><h3>${esc(item.name)}</h3><small class="chemical-packaging-tag">${meta.icon} ${esc(type)}</small></div>${badge(item.inventoryStatus)}</div>
+        <div class="chemical-total-value"><small>Saldo total</small><strong>${fmt.format(item.total)} ${esc(item.unit)}</strong><span>Soma de ${item.lots.length} lote(s)</span></div>
+        <div class="chemical-product-stock-grid">
+          <span>Lotes<strong>${item.lots.length}</strong></span>
+          <span>Mínimo total<strong>${fmt.format(item.minimum)} ${esc(item.unit)}</strong></span>
+          <span>Próximo FEFO<strong>${nextLot ? esc(nextLot.lot || "Sem lote") : "-"}</strong></span>
+          <span>Próxima validade<strong>${nextLot ? dateOnly(nextLot.expiry_date) : "-"}</strong></span>
+        </div>
+        <div class="row-actions">${canManageChemicals() ? `<button class="btn small primary" data-new-chemical-lot="${item.id}">+ Adicionar lote</button>` : ""}<button class="btn small secondary" data-chemical-lots="${item.id}">Ver e movimentar lotes</button>${canManageChemicals() ? `<button class="btn small secondary" data-edit-chemical-product="${item.id}">Editar produto</button>` : ""}</div>
+      </article>`;
+    }).join("");
+    return `<section class="chemical-packaging-section" data-packaging-section="${esc(type)}">
+      <div class="chemical-packaging-section-head">
+        <div class="chemical-packaging-section-icon">${meta.icon}</div>
+        <div><h2>${esc(type)}</h2><p>${esc(meta.description)} • ${items.length} produto(s)</p></div>
+      </div>
+      <div class="chemical-product-stock-grid-list">${cards}</div>
+    </section>`;
+  }
+
   function chemicalProductForm(item = {}) {
+    const packagingType = inferChemicalPackaging(item);
+    const unit = item.unit || chemicalPackagingMeta(packagingType).defaultUnit;
     return `<form id="chemicalProductForm" data-id="${item.id || ""}">
       <div class="form-grid">
         <div class="wide"><label>Nome do produto químico *</label><input name="name" required value="${esc(item.name || "")}" placeholder="Ex.: Duo Vis"></div>
         <div><label>Categoria</label><input name="category" value="${esc(item.category || "")}" placeholder="Ex.: Aditivo, Polímero"></div>
-        <div><label>Unidade padrão *</label><select name="unit">${["kg","L","saco","sacos","tambor","tambores","big bag","Big Bag","unidade"].map(value => `<option ${item.unit === value ? "selected" : ""}>${value}</option>`).join("")}</select></div>
+        <div><label>Tipo de embalagem *</label><select name="packaging_type" required>${chemicalPackagingOptions(packagingType)}</select><small class="field-help" data-packaging-hint>${esc(chemicalPackagingMeta(packagingType).description)}.</small></div>
+        <div><label>Unidade padrão *</label><select name="unit" required>${chemicalUnitOptions(unit)}</select></div>
         <div><label>Status</label><select name="active"><option value="true" ${item.active !== false ? "selected" : ""}>Ativo</option><option value="false" ${item.active === false ? "selected" : ""}>Inativo</option></select></div>
+        <div class="wide packaging-preview-card"><span>${chemicalPackagingMeta(packagingType).icon}</span><div><strong>Organização do inventário</strong><small>O produto aparecerá dentro da seção ${esc(packagingType)}.</small></div></div>
         <div class="wide"><label>Observações</label><textarea name="notes">${esc(item.notes || "")}</textarea></div>
       </div>${formActions(item.id ? "Salvar produto" : "Cadastrar produto")}
     </form>`;
@@ -3103,7 +3198,7 @@
     const active = products.filter(item => item.active).length;
     const rows = products.map(item => `<article class="card chemical-catalog-card ${item.active ? "" : "inactive"}">
       <div class="mobile-record-head"><div><strong>${esc(item.name)}</strong><small>${esc(item.category || "Produto químico")}</small></div>${badge(item.active ? "Ativo" : "Inativo")}</div>
-      <div class="mobile-record-grid"><span>Saldo total<strong>${fmt.format(item.total)} ${esc(item.unit)}</strong></span><span>Lotes<strong>${item.lots.length}</strong></span><span>Unidade padrão<strong>${esc(item.unit)}</strong></span></div>
+      <div class="mobile-record-grid"><span>Saldo total<strong>${fmt.format(item.total)} ${esc(item.unit)}</strong></span><span>Embalagem<strong>${esc(item.packagingType)}</strong></span><span>Lotes<strong>${item.lots.length}</strong></span><span>Unidade padrão<strong>${esc(item.unit)}</strong></span></div>
       ${item.notes ? `<p>${esc(item.notes)}</p>` : ""}
       <div class="row-actions">${canManageChemicals() ? `<button class="btn small primary" data-new-chemical-lot="${item.id}">+ Adicionar lote</button><button class="btn small secondary" data-edit-chemical-product="${item.id}">Editar produto</button>` : ""}<button class="btn small secondary" data-chemical-lots="${item.id}">Ver lotes</button></div>
     </article>`).join("");
@@ -3134,7 +3229,11 @@
       else if (minimum > 0 && total <= minimum) status = "Baixo estoque";
       else if (expiringLots.length) status = "Próximo vencimento";
       else if (!productLots.length || total <= 0) status = "Sem estoque";
-      return { ...product, lots: productLots, total, minimum, expiredLots, expiringLots, nextLot, inventoryStatus: status };
+      const packagingType = inferChemicalPackaging(product);
+      return { ...product, packagingType, lots: productLots, total, minimum, expiredLots, expiringLots, nextLot, inventoryStatus: status };
+    }).sort((a, b) => {
+      const packageOrder = CHEMICAL_PACKAGING_ORDER.indexOf(a.packagingType) - CHEMICAL_PACKAGING_ORDER.indexOf(b.packagingType);
+      return packageOrder || a.name.localeCompare(b.name);
     });
   }
 
@@ -3158,7 +3257,7 @@
         </div>
       </article>`;
     }).join("");
-    return `<div class="chemical-product-total-card"><span>Saldo total de ${esc(group.name)}</span><strong>${fmt.format(group.total)} ${esc(group.unit)}</strong><small>${group.lots.length} lote(s) cadastrado(s)</small></div>
+    return `<div class="chemical-product-total-card"><span>Saldo total de ${esc(group.name)}</span><strong>${fmt.format(group.total)} ${esc(group.unit)}</strong><small>${esc(group.packagingType)} • ${group.lots.length} lote(s) cadastrado(s)</small></div>
       <div class="row-actions chemical-lot-modal-actions">${canManageChemicals() ? `<button class="btn primary" data-new-chemical-lot="${group.id}">+ Adicionar lote</button>` : ""}<button class="btn secondary" data-edit-chemical-product="${group.id}">Editar produto</button></div>
       <div class="chemical-lot-list">${rows || `<div class="empty">Nenhum lote cadastrado para este produto.</div>`}</div>`;
   }
@@ -3188,26 +3287,16 @@
     const lowStock = groups.filter(item => item.inventoryStatus === "Baixo estoque" || item.inventoryStatus === "Sem estoque").length;
     const expired = groups.filter(item => item.expiredLots.length > 0).length;
     const expiring = groups.filter(item => item.expiringLots.length > 0).length;
+    const sections = CHEMICAL_PACKAGING_ORDER.map(type =>
+      chemicalInventorySection(type, groups.filter(item => item.packagingType === type))
+    ).join("");
 
-    const cards = groups.map(item => {
-      const nextLot = item.nextLot;
-      return `<article class="card chemical-product-stock-card ${item.active ? "" : "inactive"}">
-        <div class="chemical-product-stock-head"><div><span>${esc(item.category || "Produto químico")}</span><h3>${esc(item.name)}</h3></div>${badge(item.inventoryStatus)}</div>
-        <div class="chemical-total-value"><small>Saldo total</small><strong>${fmt.format(item.total)} ${esc(item.unit)}</strong><span>Soma de ${item.lots.length} lote(s)</span></div>
-        <div class="chemical-product-stock-grid">
-          <span>Lotes<strong>${item.lots.length}</strong></span>
-          <span>Mínimo total<strong>${fmt.format(item.minimum)} ${esc(item.unit)}</strong></span>
-          <span>Próximo FEFO<strong>${nextLot ? esc(nextLot.lot || "Sem lote") : "-"}</strong></span>
-          <span>Próxima validade<strong>${nextLot ? dateOnly(nextLot.expiry_date) : "-"}</strong></span>
-        </div>
-        <div class="row-actions">${canManageChemicals() ? `<button class="btn small primary" data-new-chemical-lot="${item.id}">+ Adicionar lote</button>` : ""}<button class="btn small secondary" data-chemical-lots="${item.id}">Ver e movimentar lotes</button>${canManageChemicals() ? `<button class="btn small secondary" data-edit-chemical-product="${item.id}">Editar produto</button>` : ""}</div>
-      </article>`;
-    }).join("");
-
-    $("#page-chemicals").innerHTML = header("Inventário de produtos químicos", "Um cartão por produto. O saldo total é a soma das quantidades cadastradas em cada lote.", `${canManageChemicals() ? `<button class="btn primary" data-action="new-chemical-product">+ Novo produto</button>` : ""}<button class="btn secondary" data-action="show-fefo">Ordem FEFO</button><button class="btn secondary" data-export="chemicals">Exportar lotes</button>`) +
+    $("#page-chemicals").innerHTML = header("Inventário de produtos químicos", "Produtos organizados por tipo de embalagem. Cada cartão mostra o total somado de todos os lotes.", `${canManageChemicals() ? `<button class="btn primary" data-action="new-chemical-product">+ Novo produto</button>` : ""}<button class="btn secondary" data-action="show-fefo">Ordem FEFO</button><button class="btn secondary" data-export="chemicals">Exportar lotes</button>`) +
       `<div class="grid four">${statCard("Produtos", fmt.format(totalProducts), "cadastros únicos", "▦")}${statCard("Lotes", fmt.format(totalLots), "quantidades separadas", "▧")}${statCard("Baixo ou sem estoque", fmt.format(lowStock), "produtos", "⚠")}${statCard("Com vencimento crítico", fmt.format(expired + expiring), "vencidos ou até 60 dias", "⏳")}</div>
+      <div class="packaging-summary-grid">${packagingSummaryCards(groups)}</div>
+      <div class="info-box chemical-inventory-rule"><strong>Organização por embalagem:</strong> Big Bags, Sacarias, Tambores, Bombonas e Outros. O total de cada produto continua sendo calculado pela soma dos lotes.</div>
       <div class="info-box chemical-inventory-rule"><strong>Carretas Plataforma desvinculadas:</strong> cadastrar um produto na carreta não cria lote e não altera este inventário. Os lotes são controlados somente aqui.</div>
-      <div class="chemical-product-stock-grid-list">${cards || `<div class="card empty">Nenhum produto químico cadastrado.</div>`}</div>`;
+      <div class="chemical-packaging-sections">${sections || `<div class="card empty">Nenhum produto químico cadastrado.</div>`}</div>`;
   }
 
   function renderTrucks() {
@@ -3721,7 +3810,7 @@
           <div class="catalog-linked-heading"><div><label>Produto do Catálogo Químico *</label><small>O nome e a unidade vêm do cadastro oficial.</small></div><button type="button" class="btn small secondary" data-action="open-chemical-catalog">Abrir catálogo</button></div>
           <select name="product_id" required ${lockProduct ? "disabled" : ""}><option value="">Selecione o produto</option>${products.map(product => `<option value="${product.id}" ${product.id === item.productId ? "selected" : ""}>${esc(product.name)}</option>`).join("")}</select>
           ${lockProduct ? `<input type="hidden" name="product_id" value="${esc(item.productId || "")}">` : ""}
-          <small class="field-help">${currentProduct ? `${esc(currentProduct.category || "Produto químico")} • ${esc(currentProduct.unit)} • o total será somado automaticamente` : "Selecione um produto cadastrado."}</small>
+          <small class="field-help">${currentProduct ? `${esc(currentProduct.category || "Produto químico")} • ${esc(inferChemicalPackaging(currentProduct))} • ${esc(currentProduct.unit)} • o total será somado automaticamente` : "Selecione um produto cadastrado."}</small>
         </div>
         <div><label>Lote</label><input name="lot" value="${esc(item.lot || "")}"></div>
         ${editing ? `<div><label>Saldo atual</label><input value="${fmt.format(item.quantity)} ${esc(item.unit)}" disabled><small class="field-help">Para alterar o saldo, use Movimentar.</small></div>` : `<div><label>Quantidade inicial</label><input name="quantity" type="text" inputmode="decimal" value="0"></div>`}
@@ -4834,7 +4923,7 @@
       if (form.id === "chemicalProductForm") {
         if (!canManageChemicals()) throw new Error("Seu perfil não pode alterar o Catálogo Químico.");
         const payload=Object.fromEntries(new FormData(form));
-        const {data,error}=await state.client.rpc("save_chemical_product",{p_id:form.dataset.id||null,p_name:payload.name?.trim(),p_category:payload.category?.trim()||null,p_default_unit:payload.unit,p_active:payload.active==="true",p_notes:payload.notes?.trim()||null});
+        const {data,error}=await state.client.rpc("save_chemical_product_v2",{p_id:form.dataset.id||null,p_name:payload.name?.trim(),p_category:payload.category?.trim()||null,p_packaging_type:payload.packaging_type,p_default_unit:payload.unit,p_active:payload.active==="true",p_notes:payload.notes?.trim()||null});
         if(error) throw error;
         const row=Array.isArray(data)?data[0]:data;
         if(!row?.id) throw new Error("O Supabase não confirmou o produto químico.");
@@ -5665,6 +5754,7 @@
   document.addEventListener("change", async event => {
     const changedForm = event.target.closest("#modalBody form");
     if (changedForm) scheduleDraftSave(changedForm);
+    if (event.target.closest("#chemicalProductForm") && event.target.name === "packaging_type") syncChemicalPackagingFields(event.target.closest("#chemicalProductForm"), true);
     if (event.target.closest("#truckForm") && event.target.name === "truck_type") syncTruckForm(event.target.closest("#truckForm"), true);
     if (event.target.closest("#truckForm") && ["fluid_type_id","movement"].includes(event.target.name)) syncTruckSingleProduct(event.target.closest("#truckForm"));
     if (event.target.closest("#truckForm") && event.target.matches("[data-truck-item-product]")) {

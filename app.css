@@ -792,3 +792,34 @@ body.kiosk-mode .pull-refresh-indicator{display:none!important}
 .platform-detached-notice{margin-bottom:12px;background:#f3f7fc}.platform-detached-notice strong,.platform-detached-notice span{display:block}.platform-detached-notice span{margin-top:4px;color:var(--muted)}
 :root[data-theme="dark"] .chemical-total-value,:root[data-theme="dark"] .chemical-product-total-card{background:#10213a}
 @media(max-width:820px){.chemical-product-stock-grid-list{grid-template-columns:1fr}.chemical-lot-row{grid-template-columns:auto 1fr}.chemical-lot-status{grid-column:2}.chemical-lot-row .row-actions{grid-column:1/-1}}
+
+
+/* Inventário organizado por tipo de embalagem */
+.packaging-summary-grid{display:grid;grid-template-columns:repeat(5,1fr);gap:9px;margin:13px 0}
+.packaging-summary-card{display:flex;align-items:center;gap:10px;padding:12px}
+.packaging-summary-icon{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:#eaf3ff;color:#185dab;font-size:18px;font-weight:900}
+.packaging-summary-card small,.packaging-summary-card strong,.packaging-summary-card span{display:block}
+.packaging-summary-card small{font-size:9px;color:var(--muted);font-weight:850}
+.packaging-summary-card strong{font-size:22px;margin:2px 0}
+.packaging-summary-card div>span{font-size:8px;color:var(--muted)}
+.chemical-packaging-sections{display:grid;gap:20px;margin-top:16px}
+.chemical-packaging-section{display:grid;gap:10px}
+.chemical-packaging-section-head{display:flex;align-items:center;gap:11px;padding:12px 14px;border-radius:15px;background:linear-gradient(135deg,#edf5ff,#fff);border:1px solid #c8daf2}
+.chemical-packaging-section-icon{width:43px;height:43px;border-radius:13px;display:grid;place-items:center;background:#dcecff;color:#17569f;font-size:21px;font-weight:900}
+.chemical-packaging-section-head h2{margin:0;font-size:18px}
+.chemical-packaging-section-head p{margin:3px 0 0;color:var(--muted);font-size:9px}
+.chemical-packaging-tag{display:inline-flex!important;width:max-content;margin-top:5px;padding:4px 7px;border-radius:8px;background:#eef4fb;color:#315c8f!important;font-size:8px!important;font-weight:850}
+.packaging-preview-card{display:flex;align-items:center;gap:11px;padding:11px;border:1px solid #c4d8f2;border-radius:13px;background:#f5f9ff}
+.packaging-preview-card>span{font-size:25px;color:#19599f}
+.packaging-preview-card strong,.packaging-preview-card small{display:block}
+.packaging-preview-card small{margin-top:3px;color:var(--muted)}
+.chemical-product-stock-card.packaging-bombonas{border-left-color:#6d55b7}
+.chemical-product-stock-card.packaging-tambores{border-left-color:#b6752d}
+.chemical-product-stock-card.packaging-sacarias{border-left-color:#3f8a55}
+.chemical-product-stock-card.packaging-big-bags{border-left-color:#3978c8}
+.chemical-product-stock-card.packaging-outros{border-left-color:#7f8b9d}
+:root[data-theme="dark"] .chemical-packaging-section-head{background:#10213a;border-color:#2b4d78}
+:root[data-theme="dark"] .packaging-preview-card{background:#10213a;border-color:#2b4d78}
+@media(max-width:1000px){.packaging-summary-grid{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:820px){.packaging-summary-grid{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:390px){.packaging-summary-grid{grid-template-columns:1fr}.chemical-packaging-section-head{align-items:flex-start}}

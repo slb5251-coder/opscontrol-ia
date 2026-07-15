@@ -216,13 +216,13 @@
     });
 
     const morePages = [
+      ["fluids", "Fluidos e Granéis", "Cadastrar produtos vinculados à tancagem"],
       ["quality", "Qualidade", "Conciliação e inconsistências"],
       ["reports", "Relatórios", "Passagem e indicadores"],
       ["chemicals", "Químicos", "Estoque e validade"],
       ["trucks", "Carretas", "Entradas e saídas"],
       ["qhse", "QHSE", "Segurança e ocorrências"],
       ["maintenance", "Manutenção", "Equipamentos e OS"],
-      ["fluids", "Fluidos", "Catálogo de produtos"],
       ["certificates", "Certificados", "Documentos"],
       ["alerts", "Alertas", "Avisos e chat"],
       ["audit", "Auditoria", "Alterações do sistema"],
@@ -234,6 +234,10 @@
     if (more) more.innerHTML = morePages.map(([page, label, description]) => mobileModuleButton(page, label, description)).join("");
 
     const quickActions = [];
+    if (moduleAllowed("fluids") && canManageFluidCatalog()) {
+      quickActions.push(mobileQuickButton("new-fluid", "Cadastrar fluido", "Produto líquido para tanques e mix tanks", "💧"));
+      quickActions.push(mobileQuickButton("new-bulk", "Cadastrar granel", "Produto sólido para os silos", "◆"));
+    }
     if (moduleAllowed("operations") && hasRole(["supervisor", "lider", "operador"])) {
       quickActions.push(mobileQuickButton("new-operation", "Nova operação", "Bombeio, fabricação, backload ou descarga", "⚓"));
     }
@@ -620,6 +624,10 @@
     return isAdmin() || roles.includes(role());
   }
 
+  function canManageFluidCatalog() {
+    return hasRole(["supervisor", "lider", "logistica"]);
+  }
+
   function canManageChemicals() {
     return hasRole(["supervisor", "lider", "logistica", "qhse"]);
   }
@@ -646,6 +654,7 @@
 
   function moduleAllowed(module) {
     if (isAdmin() || module === "settings") return true;
+    if (module === "fluids" && ["supervisor", "lider", "operador", "logistica", "qhse"].includes(role())) return true;
     const permissions = state.data?.profile?.permissions || {};
     if (Object.prototype.hasOwnProperty.call(permissions, module)) return permissions[module] !== false;
 
@@ -2275,7 +2284,8 @@
   function renderTanks() {
     $("#page-tanks").innerHTML =
       header("Tanques e silos", "Volumetria, transferências, produto, lote, status e histórico.",
-        `<button class="btn secondary" data-export="tanks">Exportar CSV</button>${hasRole(["supervisor", "lider", "operador", "logistica"]) ? `<button class="btn primary" data-action="new-tank-transfer">Transferir entre tanques</button>` : ""}`) +
+        `<button class="btn secondary" data-page-link="fluids">Fluidos e Granéis</button><button class="btn secondary" data-export="tanks">Exportar CSV</button>${hasRole(["supervisor", "lider", "operador", "logistica"]) ? `<button class="btn primary" data-action="new-tank-transfer">Transferir entre tanques</button>` : ""}`) +
+      `<div class="info-box tank-catalog-info"><strong>Produtos vinculados:</strong> cadastre primeiro em Fluidos e Granéis e depois selecione no tanque ou silo.</div>` +
       ["Phase #1", "Phase #2"].map(phase => {
         const phaseItems = state.data.tanks
           .filter(item => item.phase === phase)
@@ -2309,7 +2319,7 @@
     const productType = productClass(tank.product, tank.kind, volume);
     const volumeState = volume > 0 ? "has-volume" : "no-volume";
 
-    return `<div class="card tank-card compact-tank-card">
+    return `<div class="card tank-card compact-tank-card ${silo ? "silo-card" : "fluid-tank-card"} tank-bg-${productType} ${volumeState}">
       <div class="tank-top">
         <div>
           <h3>${esc(tank.name)}</h3>
@@ -2512,33 +2522,19 @@
     if (!form) return;
     const select = form.elements.fluid_type_id;
     const option = select?.selectedOptions?.[0];
-    const customWrap = form.querySelector("[data-custom-product-wrap]");
-    const productInput = form.elements.product;
     const densityInput = form.elements.density;
     const densityUnit = form.elements.density_unit;
     const tankKind = form.elements.kind?.value || form.dataset.tankKind || "";
 
     if (!select || !option) return;
 
-    if (select.value === "__custom__") {
-      customWrap?.classList.remove("hidden");
-      productInput?.focus();
-      if (!densityUnit.value) densityUnit.value = defaultDensityUnit("", tankKind);
-      syncSiloCapacityPreview(form);
-      return;
-    }
-
-    customWrap?.classList.add("hidden");
-
     if (!select.value) {
-      if (productInput) productInput.value = "";
       if (densityInput) densityInput.value = "";
       if (densityUnit) densityUnit.value = defaultDensityUnit("", tankKind);
       syncSiloCapacityPreview(form);
       return;
     }
 
-    if (productInput) productInput.value = option.dataset.product || option.textContent.trim();
     if (densityInput) densityInput.value = option.dataset.density || "";
     if (densityUnit) densityUnit.value = option.dataset.densityUnit || defaultDensityUnit("", tankKind);
     syncSiloCapacityPreview(form);
@@ -2555,7 +2551,7 @@
     const admin = isAdmin();
     const silo = isSiloAsset(tank);
     const linkedFluid = (state.data.fluids || []).find(item => item.id === tank.fluidTypeId);
-    const customCurrent = Boolean(tank.product && !linkedFluid);
+    const unlinkedCurrent = Boolean(tank.product && !linkedFluid);
     const currentDensity = tank.density ?? linkedFluid?.density ?? "";
     const currentDensityUnit = silo ? "t/m³" : (tank.densityUnit || linkedFluid?.densityUnit || defaultDensityUnit(linkedFluid?.type, tank.kind));
     const physicalCapacity = defaultSiloPhysicalCapacity(tank);
@@ -2605,19 +2601,17 @@
           <small class="field-help">${silo ? "Saldo do granel em toneladas." : "Ex.: 850 ou 850,50."}</small>
         </div>
 
-        <div class="wide">
-          <label>Produto cadastrado em Fluidos e Granéis</label>
+        <div class="wide catalog-linked-field">
+          <div class="catalog-linked-heading">
+            <div><label>Produto vinculado *</label><small>Selecione um produto cadastrado na aba Fluidos e Granéis.</small></div>
+            <button type="button" class="btn small secondary" data-action="open-fluid-catalog">Abrir catálogo</button>
+          </div>
           <select name="fluid_type_id" data-tank-product-select>
-            <option value="" ${!tank.fluidTypeId && !customCurrent ? "selected" : ""}>Sem produto</option>
+            <option value="" ${!tank.fluidTypeId ? "selected" : ""}>${tank.volume > 0 ? "Selecione o produto cadastrado" : "Sem produto — equipamento vazio"}</option>
             ${catalogProductOptions(tank)}
-            <option value="__custom__" ${customCurrent ? "selected" : ""}>Outro produto — preenchimento manual</option>
           </select>
-          <small class="field-help">${silo ? "A densidade do granel redefine automaticamente a capacidade operacional." : "A densidade padrão é carregada do catálogo."}</small>
-        </div>
-
-        <div class="wide ${customCurrent ? "" : "hidden"}" data-custom-product-wrap>
-          <label>Produto manual</label>
-          <input name="product" value="${esc(customCurrent ? tank.product : linkedFluid?.name || "")}" placeholder="Informe o produto">
+          ${unlinkedCurrent ? `<div class="message warning catalog-link-warning"><strong>Produto antigo não vinculado:</strong> ${esc(tank.product)}. Selecione o cadastro correto antes de salvar.</div>` : ""}
+          <small class="field-help">${silo ? "Neste silo aparecem somente produtos classificados como Granel ou Insumo." : "Neste tanque aparecem somente WBM, Brine, SBM, Olefina e outros fluidos."}</small>
         </div>
 
         <div>
@@ -2651,22 +2645,61 @@
     </form>`;
   }
 
-  function renderFluids() {
-    const rows = state.data.fluids.map(item => `<tr>
-      <td><strong>${esc(item.name)}</strong><br><small>${item.density ? `${fmt.format(item.density)} ${esc(item.densityUnit || defaultDensityUnit(item.type))}` : "Densidade não informada"}</small></td>
-      <td>${badge(item.type)}</td>
-      <td>${esc(item.unit || "-")}</td>
-      <td>${esc(item.densityUnit || defaultDensityUnit(item.type))}</td>
-      <td>${badge(item.active ? "Ativo" : "Inativo")}</td>
-      <td><div class="row-actions"><button class="btn small secondary" data-attachments="fluid:${item.id}" data-attachment-title="${esc(item.name)}">📎 ${attachmentCount("fluid", item.id)}</button>${isAdmin() ? `<button class="btn small primary" data-edit-fluid="${item.id}">Editar</button>` : ""}</div></td>
-    </tr>`).join("");
-    $("#page-fluids").innerHTML =
-      header("Fluidos e granéis", "Catálogo vinculado à tancagem, com densidade padrão e documentos.",
-        hasRole(["supervisor", "lider", "logistica"]) ? `<button class="btn primary" data-action="new-fluid">+ Adicionar produto</button>` : "") +
-      `<div class="info-box" style="margin-bottom:14px">Os produtos ativos desta aba aparecem automaticamente na lista de atualização dos tanques e silos.</div>
-       <div class="card table-wrap"><table class="data-table"><thead><tr><th>Produto</th><th>Classificação</th><th>Unidade de estoque</th><th>Unidade da densidade</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows || `<tr><td colspan="6" class="empty">Nenhum produto cadastrado.</td></tr>`}</tbody></table></div>`;
+  function fluidCatalogCard(item) {
+    const category = String(item.type || "Outros");
+    const bulk = ["granel", "insumo"].includes(category.toLowerCase());
+    return `<article class="card catalog-product-card ${bulk ? "catalog-bulk-card" : "catalog-fluid-card"}">
+      <div class="catalog-product-top">
+        <span class="catalog-product-icon">${bulk ? "◆" : "●"}</span>
+        <div><strong>${esc(item.name)}</strong><small>${esc(category)}</small></div>
+        ${badge(item.active ? "Ativo" : "Inativo")}
+      </div>
+      <div class="catalog-product-details">
+        <span>Unidade<strong>${esc(item.unit || (bulk ? "ton" : "bbl"))}</strong></span>
+        <span>Densidade<strong>${item.density ? `${fmt.format(item.density)} ${esc(item.densityUnit || defaultDensityUnit(item.type))}` : "Não informada"}</strong></span>
+      </div>
+      <div class="row-actions">
+        <button class="btn small secondary" data-attachments="fluid:${item.id}" data-attachment-title="${esc(item.name)}">Anexos (${attachmentCount("fluid", item.id)})</button>
+        ${canManageFluidCatalog() ? `<button class="btn small primary" data-edit-fluid="${item.id}">Editar</button>` : ""}
+      </div>
+    </article>`;
   }
 
+  function renderFluids() {
+    const products = state.data.fluids || [];
+    const fluids = products.filter(item => !["granel", "insumo"].includes(String(item.type || "").toLowerCase()));
+    const bulks = products.filter(item => ["granel", "insumo"].includes(String(item.type || "").toLowerCase()));
+    const activeFluids = fluids.filter(item => item.active !== false).length;
+    const activeBulks = bulks.filter(item => item.active !== false).length;
+
+    $("#page-fluids").innerHTML =
+      header("Fluidos e Granéis", "Cadastre os produtos uma vez e selecione-os depois nos tanques e silos.",
+        canManageFluidCatalog()
+          ? `<button class="btn secondary" data-action="new-bulk">+ Cadastrar granel</button><button class="btn primary" data-action="new-fluid">+ Cadastrar fluido</button>`
+          : "") +
+      `<div class="catalog-link-flow card">
+        <span class="catalog-flow-step"><b>1</b><strong>Cadastre aqui</strong><small>Nome, classificação, unidade e densidade.</small></span>
+        <span class="catalog-flow-arrow">→</span>
+        <span class="catalog-flow-step"><b>2</b><strong>Atualize a tancagem</strong><small>Abra o tanque ou silo desejado.</small></span>
+        <span class="catalog-flow-arrow">→</span>
+        <span class="catalog-flow-step"><b>3</b><strong>Selecione no menu</strong><small>O sistema salva o vínculo com o cadastro.</small></span>
+      </div>
+
+      <div class="catalog-summary-grid">
+        <button class="card catalog-summary fluid-summary" data-page-link="tanks"><span>Fluidos ativos</span><strong>${activeFluids}</strong><small>Aparecem somente nos tanques e mix tanks.</small></button>
+        <button class="card catalog-summary bulk-summary" data-page-link="tanks"><span>Granéis ativos</span><strong>${activeBulks}</strong><small>Aparecem somente nos silos.</small></button>
+      </div>
+
+      <section class="catalog-section">
+        <div class="catalog-section-heading"><div><span class="catalog-section-icon fluid">●</span><div><h2>Fluidos</h2><p>WBM, Brine, SBM, Olefina e outros produtos líquidos.</p></div></div>${canManageFluidCatalog() ? `<button class="btn small primary" data-action="new-fluid">Adicionar fluido</button>` : ""}</div>
+        <div class="catalog-product-grid">${fluids.map(fluidCatalogCard).join("") || `<div class="card empty">Nenhum fluido cadastrado.</div>`}</div>
+      </section>
+
+      <section class="catalog-section catalog-bulk-section">
+        <div class="catalog-section-heading"><div><span class="catalog-section-icon bulk">◆</span><div><h2>Granéis</h2><p>Barita, Bentonita, Calcita e outros produtos armazenados em silos.</p></div></div>${canManageFluidCatalog() ? `<button class="btn small primary" data-action="new-bulk">Adicionar granel</button>` : ""}</div>
+        <div class="catalog-product-grid">${bulks.map(fluidCatalogCard).join("") || `<div class="card empty">Nenhum granel cadastrado.</div>`}</div>
+      </section>`;
+  }
 
   function chemicalDisplayStatus(item) {
     const days = daysUntil(item.expiry_date);
@@ -3218,7 +3251,7 @@
     const forms = {
       fluid: `<form id="genericForm" data-kind="fluid" data-id="${id}"><div class="form-grid">
         <div class="wide"><label>Nome do produto *</label><input name="name" required value="${esc(item.name || "")}"></div>
-        <div><label>Classificação</label><select name="type" data-fluid-category>${["WBM","Brine","SBM","Olefina","Granel","Insumo"].map(x => `<option ${sel(item.type,x)}>${x}</option>`).join("")}</select></div>
+        <div><label>Tipo de produto *</label><select name="type" data-fluid-category>${["WBM","Brine","SBM","Olefina","Outro Fluido","Granel","Insumo"].map(x => `<option ${sel(item.type,x)}>${x}</option>`).join("")}</select><small class="field-help">Granel e Insumo aparecem nos silos. As demais opções aparecem nos tanques.</small></div>
         <div><label>Unidade de estoque</label><select name="unit">${["bbl","ton","m³","kg"].map(x => `<option ${sel(item.unit,x)}>${x}</option>`).join("")}</select></div>
         <div><label>Densidade padrão</label><input name="density" type="text" inputmode="decimal" value="${item.density || ""}" placeholder="Ex.: 9,7 ou 4,10"></div>
         <div><label>Unidade da densidade</label><select name="density_unit"><option value="ppg" ${(item.densityUnit || defaultDensityUnit(item.type)) === "ppg" ? "selected" : ""}>ppg</option><option value="t/m³" ${(item.densityUnit || defaultDensityUnit(item.type)) === "t/m³" ? "selected" : ""}>t/m³</option></select></div>
@@ -3428,9 +3461,8 @@
     const physicalCapacityM3 = silo
       ? parseOptionalDecimal(payload.physical_capacity_m3 ?? tank.physicalCapacityM3 ?? defaultSiloPhysicalCapacity(tank))
       : null;
-    const selectedFluidId = payload.fluid_type_id && payload.fluid_type_id !== "__custom__" ? payload.fluid_type_id : null;
+    const selectedFluidId = payload.fluid_type_id || null;
     const selectedFluid = (state.data.fluids || []).find(item => item.id === selectedFluidId);
-    const manualProduct = payload.fluid_type_id === "__custom__" ? payload.product?.trim() || null : null;
     const newDensity = parseOptionalDecimal(payload.density);
     const newDensityUnit = newDensity === null ? null : (silo ? "t/m³" : payload.density_unit);
     const fixedCapacity = !silo
@@ -3440,6 +3472,13 @@
     const newCapacity = silo ? (calculatedSiloCapacity ?? Number(tank.capacity || 0)) : fixedCapacity;
 
     if (!Number.isFinite(newVolume)) throw new Error("Informe um volume válido.");
+    if (newVolume > 0 && !selectedFluidId) throw new Error("Selecione um produto cadastrado na aba Fluidos e Granéis.");
+    if (selectedFluidId && !selectedFluid) throw new Error("O produto selecionado não foi encontrado no catálogo. Atualize a página e tente novamente.");
+    if (selectedFluid) {
+      const category = String(selectedFluid.type || "").toLowerCase();
+      const compatible = silo ? ["granel", "insumo"].includes(category) : !["granel", "insumo"].includes(category);
+      if (!compatible) throw new Error(silo ? "Selecione um produto classificado como Granel ou Insumo." : "Selecione um produto classificado como fluido.");
+    }
     if (silo && (!Number.isFinite(physicalCapacityM3) || physicalCapacityM3 <= 0)) throw new Error("Informe o volume físico do silo em m³.");
     if (!silo && (!Number.isFinite(newCapacity) || newCapacity <= 0)) throw new Error("Informe uma capacidade válida.");
     if (Number.isNaN(newDensity)) throw new Error("Informe uma densidade válida.");
@@ -3468,7 +3507,7 @@
       const rpcName = adminFull ? "admin_update_tank_product_capacity_v2" : "update_tank_product_capacity_v2";
       const sharedProductPayload = {
         p_fluid_type_id: selectedFluidId,
-        p_product: selectedFluid?.name || manualProduct,
+        p_product: selectedFluid?.name || null,
         p_lot: payload.lot?.trim() || null,
         p_density: newDensity,
         p_density_unit: newDensityUnit
@@ -4383,7 +4422,12 @@
       const items = [...state.data.chemicals].filter(x => x.quantity > 0).sort((a,b) => (a.expiry_date || "9999-12-31").localeCompare(b.expiry_date || "9999-12-31"));
       return openModal("Ordem de consumo FEFO", `<div class="info-box">Consumir primeiro os lotes que vencem antes.</div><div class="attachment-list" style="margin-top:12px">${items.map((item,index) => `<div class="attachment-item"><div class="attachment-icon">${index+1}</div><div class="attachment-info"><strong>${esc(item.name)} — lote ${esc(item.lot || "-")}</strong><small>Validade ${dateOnly(item.expiry_date)} • ${fmt.format(item.quantity)} ${esc(item.unit)}</small></div>${badge(chemicalDisplayStatus(item))}</div>`).join("") || `<div class="empty">Nenhum lote disponível.</div>`}</div>`, "FEFO");
     }
-    if (action === "new-fluid") return openModal("Adicionar produto", genericForm("fluid"), "PRODUTO");
+    if (action === "new-fluid") return openModal("Cadastrar fluido", genericForm("fluid", { type:"WBM", unit:"bbl", densityUnit:"ppg", active:true }), "FLUIDOS E GRANÉIS");
+    if (action === "new-bulk") return openModal("Cadastrar granel", genericForm("fluid", { type:"Granel", unit:"ton", densityUnit:"t/m³", active:true }), "FLUIDOS E GRANÉIS");
+    if (action === "open-fluid-catalog") {
+      closeModal();
+      return showPage("fluids");
+    }
     if (action === "new-chemical") { if (!canManageChemicals()) return toast("Seu perfil não pode alterar o inventário químico.", "error"); return openModal("Novo produto químico/lote", chemicalForm(), "INVENTÁRIO"); }
     if (action === "new-truck") return openModal("Nova movimentação", genericForm("truck"), "CARRETA");
     if (action === "new-qhse") return openModal("Novo registro QHSE", genericForm("qhse"), "QHSE");

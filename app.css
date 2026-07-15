@@ -622,3 +622,37 @@ body.kiosk-mode .pull-refresh-indicator{display:none!important}
   body.print-asset-qr #assetQrPrint .asset-qr-info h3{font-size:16pt}
   body.print-asset-qr #assetQrPrint .asset-detail-grid{font-size:8pt}
 }
+
+
+/* Catálogo vinculado de Fluidos e Granéis */
+.catalog-link-flow{display:grid;grid-template-columns:1fr auto 1fr auto 1fr;gap:12px;align-items:center;margin-bottom:15px;background:linear-gradient(135deg,#f3f8ff,#fbfdff)}
+.catalog-flow-step{display:grid;grid-template-columns:auto 1fr;column-gap:9px;align-items:center}.catalog-flow-step b{grid-row:1/3;width:32px;height:32px;border-radius:10px;display:grid;place-items:center;background:#1768ff;color:#fff}.catalog-flow-step strong,.catalog-flow-step small{display:block}.catalog-flow-step small{color:var(--muted);font-size:10px;margin-top:2px}.catalog-flow-arrow{font-size:24px;color:#8ca1bf}
+.catalog-summary-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:12px;margin-bottom:20px}.catalog-summary{text-align:left;border:1px solid var(--line)}.catalog-summary span,.catalog-summary strong,.catalog-summary small{display:block}.catalog-summary strong{font-size:30px;margin:5px 0}.catalog-summary small{color:var(--muted)}.fluid-summary{background:#f1f7ff}.bulk-summary{background:#fff8e9}
+.catalog-section{margin-top:18px;padding:16px;border:1px solid #cfe0f7;border-radius:20px;background:#f7fbff}.catalog-bulk-section{border-color:#ead8b7;background:#fffaf1}
+.catalog-section-heading{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:13px}.catalog-section-heading>div{display:flex;align-items:center;gap:10px}.catalog-section-heading h2{margin:0}.catalog-section-heading p{margin:3px 0 0;color:var(--muted);font-size:11px}
+.catalog-section-icon{width:40px;height:40px;border-radius:13px;display:grid;place-items:center}.catalog-section-icon.fluid{background:#deebff;color:#1768ff}.catalog-section-icon.bulk{background:#f4e4c7;color:#95651c}
+.catalog-product-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(235px,1fr));gap:10px}.catalog-product-card{display:grid;gap:12px}.catalog-fluid-card{background:#fff;border-color:#d8e6f8}.catalog-bulk-card{background:#fffdf8;border-color:#eadbc2}
+.catalog-product-top{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:9px}.catalog-product-top strong,.catalog-product-top small{display:block}.catalog-product-top small{color:var(--muted);margin-top:3px}.catalog-product-icon{width:38px;height:38px;border-radius:12px;display:grid;place-items:center;background:#eaf2ff;color:#1768ff}.catalog-bulk-card .catalog-product-icon{background:#f5ead6;color:#95651c}
+.catalog-product-details{display:grid;grid-template-columns:repeat(2,1fr);gap:8px}.catalog-product-details span{padding:8px;border-radius:10px;background:#f6f8fb;font-size:9px;color:var(--muted)}.catalog-product-details strong{display:block;color:var(--text);font-size:11px;margin-top:3px}
+.catalog-linked-field{padding:12px;border:1px solid #bfd4f6;border-radius:14px;background:#f4f8ff}.catalog-linked-heading{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:8px}.catalog-linked-heading label{margin:0}.catalog-linked-heading small{display:block;color:var(--muted);margin-top:3px}.catalog-link-warning{margin-top:8px}.tank-catalog-info{margin-bottom:14px}
+
+/* Fundos suaves dos tanques e silos */
+.compact-tank-card{position:relative;overflow:hidden;border-width:1px;transition:transform .16s ease,box-shadow .16s ease,border-color .16s ease}
+.compact-tank-card:hover{transform:translateY(-1px)}
+.fluid-tank-card{background:linear-gradient(145deg,#f6faff,#ffffff);border-color:#d5e3f4}
+.silo-card{background:linear-gradient(145deg,#fff9ed,#fffdf9);border-color:#ead8b7!important}
+.tank-bg-wbm{background:linear-gradient(145deg,#eaf3ff,#fbfdff);border-color:#bed6fa}
+.tank-bg-brine{background:linear-gradient(145deg,#eaf9f0,#fbfffd);border-color:#bee5ce}
+.tank-bg-sbm{background:linear-gradient(145deg,#f7efe5,#fffdf9);border-color:#dfc8ad}
+.tank-bg-olefin{background:linear-gradient(145deg,#eff2f5,#fcfdfe);border-color:#d2d9e1}
+.tank-bg-bulk{background:linear-gradient(145deg,#fff4df,#fffdf8);border-color:#e4c894!important}
+.compact-tank-card.no-volume{background:linear-gradient(145deg,#f3f5f8,#ffffff);border-color:#dce2e9}
+.compact-tank-card:before{content:"";position:absolute;inset:0 auto 0 0;width:5px;background:#b9c4d1}
+.tank-bg-wbm:before{background:#2a66e8}.tank-bg-brine:before{background:#1ba35a}.tank-bg-sbm:before{background:#85501f}.tank-bg-olefin:before{background:#818b9a}.tank-bg-bulk:before{background:#b88a45}
+:root[data-theme="dark"] .catalog-link-flow,:root[data-theme="dark"] .catalog-section,:root[data-theme="dark"] .catalog-summary,:root[data-theme="dark"] .catalog-product-card,:root[data-theme="dark"] .catalog-linked-field{background:#111d2d}
+:root[data-theme="dark"] .catalog-bulk-section,:root[data-theme="dark"] .catalog-bulk-card{background:#211b12}
+:root[data-theme="dark"] .fluid-tank-card,:root[data-theme="dark"] .tank-bg-wbm,:root[data-theme="dark"] .tank-bg-brine,:root[data-theme="dark"] .tank-bg-sbm,:root[data-theme="dark"] .tank-bg-olefin{background:#101c2b}
+:root[data-theme="dark"] .silo-card,:root[data-theme="dark"] .tank-bg-bulk{background:#211b12}
+@media(max-width:820px){
+  .catalog-link-flow{grid-template-columns:1fr}.catalog-flow-arrow{transform:rotate(90deg);text-align:center;line-height:14px}.catalog-summary-grid{grid-template-columns:1fr}.catalog-section{padding:12px}.catalog-section-heading{align-items:flex-start}.catalog-section-heading .btn{flex:0 0 auto}.catalog-product-grid{grid-template-columns:1fr}.catalog-linked-heading{align-items:flex-start;flex-direction:column}.catalog-linked-heading .btn{width:100%}
+}

@@ -1,10 +1,10 @@
-const CACHE="opscontrol-20260715-field-experience-1";
+const CACHE="opscontrol-20260715-linked-fluid-catalog-1";
 const FILES=[
   "./",
   "./index.html",
-  "./app.css?v=20260715-field-experience-1",
-  "./js/config.js?v=20260715-field-experience-1",
-  "./js/app.js?v=20260715-field-experience-1",
+  "./app.css?v=20260715-linked-fluid-catalog-1",
+  "./js/config.js?v=20260715-linked-fluid-catalog-1",
+  "./js/app.js?v=20260715-linked-fluid-catalog-1",
   "./manifest.json",
   "./assets/icon.svg","./vendor/qrcode.js"
 ];

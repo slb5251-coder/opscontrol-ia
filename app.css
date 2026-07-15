@@ -823,3 +823,24 @@ body.kiosk-mode .pull-refresh-indicator{display:none!important}
 @media(max-width:1000px){.packaging-summary-grid{grid-template-columns:repeat(3,1fr)}}
 @media(max-width:820px){.packaging-summary-grid{grid-template-columns:repeat(2,1fr)}}
 @media(max-width:390px){.packaging-summary-grid{grid-template-columns:1fr}.chemical-packaging-section-head{align-items:flex-start}}
+
+
+/* Cliente nos tanques, silos e Dashboard */
+.tank-title-tags{display:flex;align-items:center;gap:5px;flex-wrap:wrap;margin-top:5px}
+.tank-client-badge{display:inline-flex;padding:4px 7px;border-radius:999px;font-size:8px;font-weight:900;border:1px solid transparent}
+.tank-client-badge.client-petrobras,.tank-client-summary.client-petrobras{background:#eef7eb;color:#246d2b;border-color:#add8a9}
+.tank-client-badge.client-prio,.tank-client-summary.client-prio{background:#eef1ff;color:#354fa3;border-color:#bcc7f4}
+.tank-client-badge.client-equinor,.tank-client-summary.client-equinor{background:#fff0f5;color:#a3315b;border-color:#efbad0}
+.tank-client-badge.client-a-definir,.tank-client-summary.client-a-definir{background:#f2f3f5;color:#596170;border-color:#ccd0d7}
+.tank-client-line{font-size:9px;color:var(--muted);margin-bottom:5px}.tank-client-line strong{display:inline;color:var(--text)}
+.tank-client-summary-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:12px 0}
+.tank-client-summary{display:block;padding:9px 11px;border:1px solid;border-radius:12px}
+.tank-client-summary strong,.tank-client-summary small{display:block}.tank-client-summary small{margin-top:3px;font-size:8px}
+.dashboard-tank-client-grid{margin-bottom:14px}
+.dashboard-client-tank-card{display:grid;gap:8px;border-top:4px solid #8b95a5}
+.dashboard-client-tank-card.client-petrobras{border-top-color:#3e9b47}.dashboard-client-tank-card.client-prio{border-top-color:#526ed3}.dashboard-client-tank-card.client-equinor{border-top-color:#d34d80}.dashboard-client-tank-card.client-a-definir{border-top-color:#89919c}
+.dashboard-client-tank-head{display:flex;justify-content:space-between;align-items:center}.dashboard-client-tank-head span{font-weight:900}.dashboard-client-tank-head strong{font-size:21px}
+.dashboard-client-tank-card>small{color:var(--muted);font-size:8px}
+.dashboard-client-tank-values{display:grid;grid-template-columns:1fr 1fr;gap:6px}.dashboard-client-tank-values span{padding:7px;border-radius:9px;background:var(--bg);font-size:8px;color:var(--muted)}.dashboard-client-tank-values strong{display:block;color:var(--text);margin-top:3px}
+@media(max-width:820px){.tank-client-summary-strip{grid-template-columns:repeat(2,1fr)}}
+@media(max-width:390px){.tank-client-summary-strip{grid-template-columns:1fr}.dashboard-client-tank-values{grid-template-columns:1fr}}

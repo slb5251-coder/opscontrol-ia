@@ -12,7 +12,7 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const APP_VERSION = "20260715-chemical-packaging-bombonas-1";
+  const APP_VERSION = "20260715-tank-client-dashboard-1";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -314,7 +314,7 @@
       haystack: normalizeSearch(`${title} ${subtitle} ${terms}`)
     });
 
-    (d.tanks || []).forEach(x => add("tank", x.id, "tanks", x.name, `${x.product || "Sem produto"} • lote ${x.lot || "-"}`, `${x.phase} ${x.kind} ${x.status}`));
+    (d.tanks || []).forEach(x => add("tank", x.id, "tanks", x.name, `${x.product || "Sem produto"} • ${x.client || "A definir"} • lote ${x.lot || "-"}`, `${x.phase} ${x.kind} ${x.status} ${x.client || "A definir"}`));
     (d.operations || []).forEach(x => add("operation", x.id, "operations", `${x.client} • ${x.vessel}`, `${x.activity} de ${x.product}`, `${x.service_order} ${x.ticketNumber} ${x.rig} ${x.well} ${x.lot} ${x.status}`));
     (d.trucks || []).forEach(x => {
       const itemTerms = (x.items || []).map(item => `${item.productName} ${item.quantity} ${item.unit}`).join(" ");
@@ -1008,8 +1008,8 @@
       return downloadCsv(`operacoes-${date}.csv`, ["Cliente", "Embarcação", "Sonda", "Poço", "Ticket", "OS", "Atividade", "Produto", "ID do produto", "Lote", "Planejado", "Executado", "Unidade", "Distribuição tanques/silos", "Status", "Início", "Término", "Parado (min)", "Tancagem"], rows);
     }
     if (kind === "tanks") {
-      const rows = state.data.tanks.map(t => [t.phase, t.name, t.kind, t.product, t.lot, t.volume, t.capacity, t.unit, t.physicalCapacityM3 || "", t.status, t.updated_at]);
-      return downloadCsv(`tancagem-${date}.csv`, ["Fase", "Tanque/Silo", "Tipo", "Produto", "Lote", "Volume", "Capacidade", "Unidade", "Status", "Atualização"], rows);
+      const rows = state.data.tanks.map(t => [t.phase, t.name, t.kind, t.client || "A definir", t.product, t.lot, t.volume, t.capacity, t.unit, t.physicalCapacityM3 || "", t.status, t.updated_at]);
+      return downloadCsv(`tancagem-${date}.csv`, ["Fase", "Tanque/Silo", "Tipo", "Cliente", "Produto", "Lote", "Volume", "Capacidade", "Unidade", "Volume físico m³", "Status", "Atualização"], rows);
     }
     if (kind === "chemicals") {
       const totals = new Map(groupedChemicalInventory().map(item => [item.id, item.total]));
@@ -1463,6 +1463,7 @@
           ? null : Number(x.physical_capacity_m3),
         fluidTypeId: x.current_fluid_type_id || null,
         product: x.current_product || "", lot: x.current_lot || "",
+        client: x.client || "A definir",
         density: x.current_density === null || x.current_density === undefined ? null : Number(x.current_density),
         densityUnit: x.current_density_unit || null,
         status: x.status, order: x.display_order,
@@ -2142,6 +2143,49 @@
     </section>`;
   }
 
+
+  const TANK_CLIENTS = ["Petrobras", "PRIO", "Equinor", "A definir"];
+
+  function tankClientOptions(selected = "A definir") {
+    return TANK_CLIENTS.map(client =>
+      `<option value="${client}" ${client === selected ? "selected" : ""}>${client}</option>`
+    ).join("");
+  }
+
+  function tankClientClass(client = "A definir") {
+    return normalizeSearch(client).replace(/\s+/g, "-") || "a-definir";
+  }
+
+  function tankClientSummary(client) {
+    const items = (state.data.tanks || []).filter(item => (item.client || "A definir") === client);
+    const occupied = items.filter(item => Number(item.volume || 0) > 0);
+    const fluidVolume = occupied
+      .filter(item => !isSiloAsset(item))
+      .reduce((sum, item) => sum + Number(item.volume || 0), 0);
+    const bulkVolume = occupied
+      .filter(item => isSiloAsset(item))
+      .reduce((sum, item) => sum + Number(item.volume || 0), 0);
+    return { client, items, occupied, fluidVolume, bulkVolume };
+  }
+
+  function dashboardTankClientCards() {
+    return TANK_CLIENTS.map(client => {
+      const summary = tankClientSummary(client);
+      return `<article class="card dashboard-client-tank-card client-${tankClientClass(client)}">
+        <div class="dashboard-client-tank-head">
+          <span>${esc(client)}</span>
+          <strong>${summary.occupied.length}/${summary.items.length}</strong>
+        </div>
+        <small>equipamentos com saldo / cadastrados</small>
+        <div class="dashboard-client-tank-values">
+          <span>Fluidos<strong>${fmt.format(summary.fluidVolume)} bbl</strong></span>
+          <span>Granéis<strong>${fmt.format(summary.bulkVolume)} ton</strong></span>
+        </div>
+        <button class="btn small secondary" data-page-link="tanks">Abrir tancagem</button>
+      </article>`;
+    }).join("");
+  }
+
   function renderDashboard() {
     const d = state.data;
     const operations = filteredOperations();
@@ -2248,6 +2292,9 @@
       </div>
       ${genericVolume > 0 ? `<div class="dashboard-data-warning">Existem ${fmt.format(genericVolume)} bbl com produto não classificado. Informe ou vincule o produto para incluir esse volume no card correto.</div>` : ""}
 
+      <div class="section-title">Tancagem por cliente</div>
+      <div class="grid four dashboard-tank-client-grid">${dashboardTankClientCards()}</div>
+
       <div class="grid two" style="margin-top:14px">
         <div class="card"><h3>Operações em andamento</h3><p>${activeOps.length} operação(ões) ativa(s) ${filtersActive ? "no filtro" : ""}</p>
           ${activeOps.length ? activeOps.slice(0, 6).map(op => {
@@ -2286,6 +2333,7 @@
     });
 
     d.tanks.forEach(tank => {
+      if (tank.volume > 0 && (!tank.client || tank.client === "A definir")) add("Média", "Tancagem", `${tank.name} com cliente a definir`, `${tank.product || "Produto não informado"} possui ${fmt.format(tank.volume)} ${tank.unit} sem cliente definido.`, "tanks", "tank", tank.id);
       if (tank.volume > 0 && !tank.product) add("Alta", "Tancagem", `${tank.name} com saldo sem produto`, `${fmt.format(tank.volume)} ${tank.unit} precisam ser classificados.`, "tanks", "tank", tank.id);
       if (tank.volume > 0 && !tank.lot) add("Média", "Tancagem", `${tank.name} sem lote`, `${tank.product || "Produto não informado"} possui saldo sem rastreabilidade de lote.`, "tanks", "tank", tank.id);
       if (isSiloAsset(tank) && tank.volume > 0 && !(Number(tank.density) > 0)) add("Alta", "Tancagem", `${tank.name} sem densidade`, "A capacidade operacional do silo depende da densidade cadastrada.", "tanks", "tank", tank.id);
@@ -2584,9 +2632,13 @@
 
   function renderTanks() {
     $("#page-tanks").innerHTML =
-      header("Tanques e silos", "Volumetria, transferências, produto, lote, status e histórico.",
+      header("Tanques e silos", "Volumetria, cliente, produto, lote, status, transferências e histórico.",
         `<button class="btn secondary" data-page-link="fluids">Fluidos e Granéis</button><button class="btn secondary" data-export="tanks">Exportar CSV</button>${hasRole(["supervisor", "lider", "operador", "logistica"]) ? `<button class="btn primary" data-action="new-tank-transfer">Transferir entre tanques</button>` : ""}`) +
-      `<div class="info-box tank-catalog-info"><strong>Produtos vinculados:</strong> cadastre primeiro em Fluidos e Granéis e depois selecione no tanque ou silo.</div>` +
+      `<div class="info-box tank-catalog-info"><strong>Produtos vinculados:</strong> cadastre primeiro em Fluidos e Granéis e depois selecione no tanque ou silo.</div>
+      <div class="tank-client-summary-strip">${TANK_CLIENTS.map(client => {
+        const summary = tankClientSummary(client);
+        return `<span class="tank-client-summary client-${tankClientClass(client)}"><strong>${esc(client)}</strong><small>${summary.occupied.length} com saldo • ${summary.items.length} total</small></span>`;
+      }).join("")}</div>` +
       ["Phase #1", "Phase #2"].map(phase => {
         const phaseItems = state.data.tanks
           .filter(item => item.phase === phase)
@@ -2624,12 +2676,13 @@
       <div class="tank-top">
         <div>
           <h3>${esc(tank.name)}</h3>
-          <span class="tag">${esc(tank.kind)}</span>
+          <div class="tank-title-tags"><span class="tag">${esc(tank.kind)}</span><span class="tank-client-badge client-${tankClientClass(tank.client)}">${esc(tank.client || "A definir")}</span></div>
         </div>
         ${badge(tank.status)}
       </div>
 
       <div class="compact-tank-product">
+        <span class="tank-client-line">Cliente: <strong>${esc(tank.client || "A definir")}</strong></span>
         <strong>${esc(tank.product || (volume > 0 ? "Produto não informado" : "Sem produto"))}</strong>
         <span>Lote: ${esc(tank.lot || "-")}${volume > 0 && !tank.product ? ` • volume registrado` : ""}</span>
         <span>Densidade: ${tank.density !== null && tank.density !== undefined ? `${fmt.format(tank.density)} ${esc(tank.densityUnit || (silo ? "t/m³" : "ppg"))}` : "não informada"}</span>
@@ -2679,7 +2732,7 @@
     const last=coords.at(-1);
     return `<div class="tank-history-visual"><div class="history-chart-head"><div><strong>Evolução do volume</strong><span>Últimas ${ordered.length} alterações</span></div><div><strong>${fmt.format(tank.volume)} ${esc(tank.unit)}</strong><span>Atual</span></div></div>
       ${ordered.length?`<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Evolução do volume"><line x1="${pad}" y1="${height-pad}" x2="${width-pad}" y2="${height-pad}" class="chart-axis"/><line x1="${pad}" y1="${pad}" x2="${pad}" y2="${height-pad}" class="chart-axis"/><polyline points="${poly}" class="history-line" fill="none"/>${coords.map((p,i)=>`<circle cx="${p.x}" cy="${p.y}" r="${i===coords.length-1?5:3}" class="history-point"><title>${fmt.format(p.value)} ${esc(tank.unit)} — ${dateTime(ordered[i].created_at)}</title></circle>`).join("")}${last?`<text x="${Math.min(width-80,last.x+8)}" y="${Math.max(18,last.y-8)}">${fmt.format(last.value)} ${esc(tank.unit)}</text>`:""}</svg>`:`<div class="empty">Sem histórico suficiente para o gráfico.</div>`}
-      <div class="history-summary-grid"><span>Capacidade<strong>${fmt.format(tank.capacity)} ${esc(tank.unit)}</strong></span><span>Produto atual<strong>${esc(tank.product||"-")}</strong></span><span>Densidade<strong>${tank.density?`${fmt.format(tank.density)} ${esc(tank.densityUnit||"")}`:"-"}</strong></span></div></div>`;
+      <div class="history-summary-grid"><span>Capacidade<strong>${fmt.format(tank.capacity)} ${esc(tank.unit)}</strong></span><span>Cliente atual<strong>${esc(tank.client || "A definir")}</strong></span><span>Produto atual<strong>${esc(tank.product||"-")}</strong></span><span>Densidade<strong>${tank.density?`${fmt.format(tank.density)} ${esc(tank.densityUnit||"")}`:"-"}</strong></span></div></div>`;
   }
 
 
@@ -2688,7 +2741,20 @@
     const entries=[];
     state.data.tankHistory.filter(item=>item.tank_id===tank.id).forEach(item=>{
       const user=state.data.users.find(x=>x.id===item.changed_by)?.name||"Sistema";
-      entries.push({time:item.created_at,title:`Atualização: ${item.previous_product||"Vazio"} → ${item.new_product||"Vazio"}`,meta:`${user} • saldo ${fmt.format(item.previous_volume||0)} → ${fmt.format(item.new_volume||0)} ${tank.unit}`,detail:item.notes||`Lote ${item.previous_lot||"-"} → ${item.new_lot||"-"}`});
+      const clientChanged = item.previous_client !== null && item.previous_client !== undefined
+        && item.new_client !== null && item.new_client !== undefined
+        && item.previous_client !== item.new_client;
+      const productChanged = (item.previous_product || "") !== (item.new_product || "");
+      const title = clientChanged && !productChanged
+        ? `Cliente: ${item.previous_client || "A definir"} → ${item.new_client || "A definir"}`
+        : `Atualização: ${item.previous_product||"Vazio"} → ${item.new_product||"Vazio"}`;
+      const clientDetail = clientChanged ? `Cliente ${item.previous_client || "A definir"} → ${item.new_client || "A definir"}` : "";
+      entries.push({
+        time:item.created_at,
+        title,
+        meta:`${user} • saldo ${fmt.format(item.previous_volume||0)} → ${fmt.format(item.new_volume||0)} ${tank.unit}`,
+        detail:[clientDetail,item.notes||`Lote ${item.previous_lot||"-"} → ${item.new_lot||"-"}`].filter(Boolean).join(" • ")
+      });
     });
     state.data.tankMovements.filter(item=>item.source_tank_id===tank.id||item.destination_tank_id===tank.id).forEach(item=>{
       const direction=item.source_tank_id===tank.id?"Saída":"Entrada";
@@ -2934,6 +3000,7 @@
           `}
         `}
 
+        <div><label>Cliente *</label><select name="client" required>${tankClientOptions(tank.client || "A definir")}</select><small class="field-help">Cliente responsável pelo produto armazenado neste equipamento.</small></div>
         <div><label>Status</label><select name="status">${["Disponível", "Liberado", "Em uso", "Bloqueado", "Limpeza", "Manutenção"].map(x => `<option ${tank.status === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
         <div>
           <label>Volume atual (${esc(tank.unit)}) *</label>
@@ -2988,7 +3055,7 @@
         <div class="wide"><label>Lote</label><input name="lot" value="${esc(tank.lot)}"></div>
         ${admin
           ? `<div class="wide admin-edit-notice structure-edit-notice"><strong>Edição estrutural</strong><span>Este modo altera nome, fase, tipo, capacidade, ordem e conteúdo. Use apenas para modificar a estrutura do equipamento.</span></div>`
-          : `<div class="wide info-box content-update-notice"><strong>Atualização operacional segura</strong><span>Produto, lote, volume e status serão alterados. Densidade e capacidade serão calculadas pelo cadastro oficial; nome e estrutura não serão enviados.</span></div>`}
+          : `<div class="wide info-box content-update-notice"><strong>Atualização operacional segura</strong><span>Cliente, produto, lote, volume e status serão alterados. Densidade e capacidade serão calculadas pelo cadastro oficial; nome e estrutura não serão enviados.</span></div>`}
       </div>
 
       <div id="tankSaveMessage" class="message hidden"></div>
@@ -4330,6 +4397,11 @@
       throw new Error(`O equipamento aberto era ${targetTankName}, mas os dados atuais pertencem a ${tank.name}. Atualize a página.`);
     }
 
+    const selectedClient = payload.client || "A definir";
+    if (!TANK_CLIENTS.includes(selectedClient)) {
+      throw new Error("Selecione Petrobras, PRIO, Equinor ou A definir.");
+    }
+
     const adminFull = form.dataset.adminFull === "true" && isAdmin();
     const newKind = adminFull ? payload.kind : tank.kind;
     const silo = isSiloAsset(newKind);
@@ -4398,9 +4470,10 @@
       // O modo operacional usa uma função que não recebe nome, fase, tipo,
       // capacidade ou densidade. Isso elimina conflitos de nome e garante
       // que o produto seja derivado exclusivamente pelo ID do catálogo.
-      const rpcName = adminFull ? "admin_update_tank_product_capacity_v2" : "update_tank_content_v4";
+      const rpcName = adminFull ? "admin_update_tank_product_capacity_v3" : "update_tank_content_v5";
       const rpcPayload = adminFull ? {
         p_tank_id: targetTankId,
+        p_client: selectedClient,
         p_name: payload.name?.trim(),
         p_phase: payload.phase,
         p_kind: payload.kind,
@@ -4419,6 +4492,7 @@
         p_tank_id: targetTankId,
         p_expected_name: targetTankName,
         p_expected_updated_at: expectedUpdatedAt,
+        p_client: selectedClient,
         p_volume: newVolume,
         p_status: payload.status,
         p_fluid_type_id: selectedFluidId,
@@ -4453,6 +4527,9 @@
       if ((serverRow.current_fluid_type_id || null) !== selectedFluidId) {
         throw new Error("O banco não confirmou o produto selecionado.");
       }
+      if ((serverRow.client || "A definir") !== selectedClient) {
+        throw new Error("O banco não confirmou o cliente selecionado.");
+      }
 
       const mapped = {
         id: serverRow.id,
@@ -4467,6 +4544,7 @@
         fluidTypeId: serverRow.current_fluid_type_id || null,
         product: serverRow.current_product || "",
         lot: serverRow.current_lot || "",
+        client: serverRow.client || "A definir",
         density: serverRow.current_density === null || serverRow.current_density === undefined ? null : Number(serverRow.current_density),
         densityUnit: serverRow.current_density_unit || null,
         status: serverRow.status,
@@ -4481,7 +4559,7 @@
       renderTanks();
       renderDashboard();
       closeModal();
-      toast(`${mapped.name} confirmado em ${fmt.format(mapped.volume)} ${mapped.unit}.`, "success");
+      toast(`${mapped.name} confirmado para ${mapped.client} em ${fmt.format(mapped.volume)} ${mapped.unit}.`, "success");
 
       // Sincronização completa em segundo plano. Uma falha em outro módulo
       // não impede a confirmação visual do tanque que já foi salvo.

@@ -1,10 +1,10 @@
-const CACHE="opscontrol-20260714-reports-audit-settings-fix-1";
+const CACHE="opscontrol-20260714-mobile-first-1";
 const FILES=[
   "./",
   "./index.html",
-  "./app.css?v=20260714-reports-audit-settings-fix-1",
-  "./js/config.js?v=20260714-reports-audit-settings-fix-1",
-  "./js/app.js?v=20260714-reports-audit-settings-fix-1",
+  "./app.css?v=20260714-mobile-first-1",
+  "./js/config.js?v=20260714-mobile-first-1",
+  "./js/app.js?v=20260714-mobile-first-1",
   "./manifest.json",
   "./assets/icon.svg"
 ];

@@ -1,10 +1,10 @@
 {
-  "name": "OpsControl IA Pro",
-  "short_name": "OpsControl Pro",
-  "start_url": "./index.html",
+  "name": "OpsControl IA Pro — B-Port LMP",
+  "short_name": "OpsControl",
+  "start_url": "./index.html#dashboard",
   "scope": "./",
   "display": "standalone",
-  "orientation": "portrait-primary",
+  "orientation": "any",
   "background_color": "#f4f7fb",
   "theme_color": "#071a35",
   "description": "Controle operacional profissional para a B-Port LMP.",
@@ -14,6 +14,58 @@
       "sizes": "any",
       "type": "image/svg+xml",
       "purpose": "any maskable"
+    }
+  ],
+  "id": "./index.html",
+  "display_override": [
+    "window-controls-overlay",
+    "standalone",
+    "minimal-ui"
+  ],
+  "lang": "pt-BR",
+  "categories": [
+    "business",
+    "productivity"
+  ],
+  "shortcuts": [
+    {
+      "name": "Operações",
+      "short_name": "Operações",
+      "description": "Abrir operações",
+      "url": "./index.html#operations",
+      "icons": [
+        {
+          "src": "assets/icon.svg",
+          "sizes": "any",
+          "type": "image/svg+xml"
+        }
+      ]
+    },
+    {
+      "name": "Tanques e Silos",
+      "short_name": "Tancagem",
+      "description": "Abrir inventário da planta",
+      "url": "./index.html#tanks",
+      "icons": [
+        {
+          "src": "assets/icon.svg",
+          "sizes": "any",
+          "type": "image/svg+xml"
+        }
+      ]
+    },
+    {
+      "name": "Passagem de Serviço",
+      "short_name": "Passagem",
+      "description": "Abrir relatórios e passagem",
+      "url": "./index.html#reports",
+      "icons": [
+        {
+          "src": "assets/icon.svg",
+          "sizes": "any",
+          "type": "image/svg+xml"
+        }
+      ]
     }
   ]
 }

@@ -7,7 +7,7 @@
   <title>OpsControl IA Pro</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="app.css?v=20260714-reports-audit-settings-fix-1">
+  <link rel="stylesheet" href="app.css?v=20260714-mobile-first-1">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -36,7 +36,7 @@
     <header class="topbar">
       <div class="topbar-left">
         <button id="menuBtn" class="icon-btn mobile-only" aria-label="Abrir menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16"></path><path d="M4 12h16"></path><path d="M4 17h16"></path></svg></button>
-        <div class="brand"><span class="brand-mark">OC</span><div><strong>OpsControl IA</strong><small>PRO</small></div></div>
+        <div class="brand"><span class="brand-mark">OC</span><div class="desktop-brand-copy"><strong>OpsControl IA</strong><small>PRO</small></div><div class="mobile-page-copy"><strong id="mobilePageTitle">Dashboard</strong><small id="mobilePageSubtitle">Visão geral</small></div></div>
       </div>
       <div class="topbar-right">
         <span id="syncBadge" class="status-badge neutral">Modo local</span>
@@ -45,7 +45,11 @@
       </div>
     </header>
 
+    <div id="mobileStatusBanner" class="mobile-status-banner hidden" role="status"></div>
+    <div id="pullRefreshIndicator" class="pull-refresh-indicator"><span>↻</span><strong>Puxe para atualizar</strong></div>
+
     <div class="shell">
+      <button id="sidebarBackdrop" class="sidebar-backdrop mobile-only" aria-label="Fechar menu"></button>
       <aside id="sidebar" class="sidebar">
         <nav>
           <button class="nav-item active" data-page="dashboard"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13h8V3H3z"></path><path d="M13 21h8v-6h-8z"></path><path d="M13 11h8V3h-8z"></path><path d="M3 21h8v-6H3z"></path></svg></span><span class="nav-label">Dashboard</span></button>
@@ -88,6 +92,45 @@
     </div>
   </section>
 
+
+  <nav id="mobileBottomNav" class="mobile-bottom-nav" aria-label="Navegação principal">
+    <button data-mobile-page="dashboard" class="mobile-nav-item active" aria-label="Início">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 13h8V3H3z"></path><path d="M13 21h8v-6h-8z"></path><path d="M13 11h8V3h-8z"></path><path d="M3 21h8v-6H3z"></path></svg>
+      <span>Início</span>
+    </button>
+    <button data-mobile-page="operations" class="mobile-nav-item" aria-label="Operações">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 3v15"></path><path d="M8 7l4-4 4 4"></path><path d="M5 21h14"></path><path d="M4 17c2.5 0 3.5 1 5 1s2.5-1 4-1 2.5 1 4 1 2.5-1 3-1"></path></svg>
+      <span>Operações</span>
+    </button>
+    <button data-action="mobile-quick" class="mobile-nav-item mobile-nav-main" aria-label="Novo registro">
+      <span class="mobile-plus">+</span>
+      <span>Novo</span>
+    </button>
+    <button data-mobile-page="tanks" class="mobile-nav-item" aria-label="Tancagem">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M7 4h10"></path><path d="M7 20h10"></path><path d="M8 4v16"></path><path d="M16 4v16"></path><path d="M8 10h8"></path><path d="M8 15h8"></path></svg>
+      <span>Tancagem</span>
+    </button>
+    <button data-action="mobile-more" class="mobile-nav-item" aria-label="Mais módulos">
+      <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"></circle><circle cx="12" cy="12" r="1.7"></circle><circle cx="19" cy="12" r="1.7"></circle></svg>
+      <span>Mais</span>
+    </button>
+  </nav>
+
+  <button id="mobileSheetBackdrop" class="mobile-sheet-backdrop hidden" aria-label="Fechar painel"></button>
+
+  <section id="mobileQuickSheet" class="mobile-sheet hidden" aria-label="Novo registro">
+    <div class="mobile-sheet-handle"></div>
+    <div class="mobile-sheet-header"><div><small>ATALHOS</small><h2>Novo registro</h2></div><button class="icon-btn" data-action="mobile-close-sheet" aria-label="Fechar">×</button></div>
+    <div id="mobileQuickActions" class="mobile-action-list"></div>
+  </section>
+
+  <section id="mobileMoreSheet" class="mobile-sheet hidden" aria-label="Mais módulos">
+    <div class="mobile-sheet-handle"></div>
+    <div class="mobile-sheet-header"><div><small>MENU</small><h2>Todos os módulos</h2></div><button class="icon-btn" data-action="mobile-close-sheet" aria-label="Fechar">×</button></div>
+    <div id="mobileMoreModules" class="mobile-module-grid"></div>
+    <div id="mobileInstallArea" class="mobile-install-area"></div>
+  </section>
+
   <div id="modal" class="modal hidden">
     <div class="modal-card">
       <div class="modal-header">
@@ -99,7 +142,7 @@
   </div>
 
   <div id="toastContainer" class="toast-container"></div>
-  <script src="js/config.js?v=20260714-reports-audit-settings-fix-1"></script>
-  <script src="js/app.js?v=20260714-reports-audit-settings-fix-1"></script>
+  <script src="js/config.js?v=20260714-mobile-first-1"></script>
+  <script src="js/app.js?v=20260714-mobile-first-1"></script>
 </body>
 </html>

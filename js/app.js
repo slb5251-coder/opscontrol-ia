@@ -28,6 +28,15 @@
     handover: { date: "", shift: "" },
     tv: { slide: 0, paused: false, timer: null, clockTimer: null, intervalMs: 15000 },
     offlineSyncing: false,
+    installPrompt: null,
+    mobile: {
+      moreOpen: false,
+      quickOpen: false,
+      pullReady: false,
+      pullDistance: 0,
+      pullStartY: 0,
+      pullRefreshing: false
+    },
     config: loadConfig()
   };
 
@@ -121,6 +130,145 @@
 
   function filterIsActive() {
     return Object.values(state.filters).some(Boolean);
+  }
+
+  const MOBILE_PAGE_META = {
+    dashboard: ["Dashboard", "Visão geral"],
+    tv: ["Painel TV", "Exibição coletiva"],
+    operations: ["Operações", "Serviços e movimentações"],
+    tanks: ["Tanques e Silos", "Inventário da planta"],
+    fluids: ["Fluidos e Granéis", "Catálogo de produtos"],
+    chemicals: ["Inventário Químico", "Estoque e validade"],
+    trucks: ["Carretas", "Entradas e saídas"],
+    qhse: ["QHSE", "Segurança e ações"],
+    maintenance: ["Manutenção", "Equipamentos e ordens"],
+    certificates: ["Certificados", "Documentos da equipe"],
+    alerts: ["Alertas e Chat", "Comunicação operacional"],
+    reports: ["Relatórios", "Passagem de serviço"],
+    audit: ["Auditoria", "Rastreabilidade"],
+    settings: ["Configurações", "Perfil e sistema"]
+  };
+
+  function isMobileViewport() {
+    return window.matchMedia("(max-width: 820px)").matches;
+  }
+
+  function isStandaloneApp() {
+    return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+  }
+
+  function closeMobileSheets() {
+    state.mobile.moreOpen = false;
+    state.mobile.quickOpen = false;
+    $("#mobileMoreSheet")?.classList.add("hidden");
+    $("#mobileQuickSheet")?.classList.add("hidden");
+    $("#mobileSheetBackdrop")?.classList.add("hidden");
+    document.body.classList.remove("mobile-sheet-open");
+  }
+
+  function openMobileSheet(kind) {
+    if (!isMobileViewport()) return;
+    closeMobileSheets();
+    const target = kind === "quick" ? $("#mobileQuickSheet") : $("#mobileMoreSheet");
+    if (!target) return;
+    state.mobile.quickOpen = kind === "quick";
+    state.mobile.moreOpen = kind === "more";
+    target.classList.remove("hidden");
+    $("#mobileSheetBackdrop")?.classList.remove("hidden");
+    document.body.classList.add("mobile-sheet-open");
+  }
+
+  function mobileModuleButton(page, label, description = "") {
+    return `<button class="mobile-module-button" data-mobile-page="${page}">
+      <span class="mobile-module-icon">${esc(label.slice(0, 2).toUpperCase())}</span>
+      <span><strong>${esc(label)}</strong><small>${esc(description)}</small></span>
+      <b>›</b>
+    </button>`;
+  }
+
+  function mobileQuickButton(action, label, description, icon) {
+    return `<button class="mobile-quick-button" data-action="${action}">
+      <span>${icon}</span><span><strong>${esc(label)}</strong><small>${esc(description)}</small></span><b>+</b>
+    </button>`;
+  }
+
+  function renderMobileShell() {
+    if (!state.data) return;
+
+    const [title, subtitle] = MOBILE_PAGE_META[state.page] || [state.page, ""];
+    if ($("#mobilePageTitle")) $("#mobilePageTitle").textContent = title;
+    if ($("#mobilePageSubtitle")) $("#mobilePageSubtitle").textContent = subtitle;
+
+    $$("[data-mobile-page]").forEach(button => {
+      const page = button.dataset.mobilePage;
+      button.classList.toggle("active", page === state.page);
+      if (button.closest("#mobileBottomNav")) {
+        button.classList.toggle("hidden", !moduleAllowed(page));
+      }
+    });
+
+    const morePages = [
+      ["reports", "Relatórios", "Passagem e indicadores"],
+      ["chemicals", "Químicos", "Estoque e validade"],
+      ["trucks", "Carretas", "Entradas e saídas"],
+      ["qhse", "QHSE", "Segurança e ocorrências"],
+      ["maintenance", "Manutenção", "Equipamentos e OS"],
+      ["fluids", "Fluidos", "Catálogo de produtos"],
+      ["certificates", "Certificados", "Documentos"],
+      ["alerts", "Alertas", "Avisos e chat"],
+      ["audit", "Auditoria", "Alterações do sistema"],
+      ["settings", "Configurações", "Perfil e sistema"],
+      ["tv", "Painel TV", "Exibição coletiva"]
+    ].filter(([page]) => moduleAllowed(page));
+
+    const more = $("#mobileMoreModules");
+    if (more) more.innerHTML = morePages.map(([page, label, description]) => mobileModuleButton(page, label, description)).join("");
+
+    const quickActions = [];
+    if (moduleAllowed("operations") && hasRole(["supervisor", "lider", "operador"])) {
+      quickActions.push(mobileQuickButton("new-operation", "Nova operação", "Bombeio, fabricação, backload ou descarga", "⚓"));
+    }
+    if (moduleAllowed("trucks") && hasRole(["supervisor", "lider", "logistica"])) {
+      quickActions.push(mobileQuickButton("new-truck", "Movimentar carreta", "Entrada, saída, NF e produto", "🚛"));
+    }
+    if (moduleAllowed("qhse") && hasRole(["supervisor", "lider", "operador", "qhse"])) {
+      quickActions.push(mobileQuickButton("new-qhse", "Novo registro QHSE", "DDS, APR, risco, inspeção ou ocorrência", "🛡"));
+    }
+    if (moduleAllowed("maintenance") && hasRole(["supervisor", "lider", "mecanico"])) {
+      quickActions.push(mobileQuickButton("new-maintenance-order", "Abrir ordem de serviço", "Preventiva, corretiva ou inspeção", "🔧"));
+    }
+    if (moduleAllowed("chemicals") && canManageChemicals()) {
+      quickActions.push(mobileQuickButton("new-chemical", "Cadastrar químico", "Produto, lote, validade e saldo", "◈"));
+    }
+    if (moduleAllowed("alerts") && hasRole(["supervisor", "lider", "qhse", "logistica"])) {
+      quickActions.push(mobileQuickButton("new-alert", "Criar comunicado", "Aviso para a equipe", "🔔"));
+    }
+
+    const quick = $("#mobileQuickActions");
+    if (quick) quick.innerHTML = quickActions.join("") || `<div class="empty">Nenhum atalho disponível para seu perfil.</div>`;
+
+    const installArea = $("#mobileInstallArea");
+    if (installArea) {
+      installArea.innerHTML = state.installPrompt && !isStandaloneApp()
+        ? `<button class="btn primary full" data-action="install-app">Instalar OpsControl neste celular</button><small>O aplicativo ficará disponível na tela inicial.</small>`
+        : isStandaloneApp()
+          ? `<div class="info-box">OpsControl já está instalado neste aparelho.</div>`
+          : `<small>Use “Adicionar à tela de início” no navegador para instalar.</small>`;
+    }
+
+    const pending = offlineQueue().length;
+    const banner = $("#mobileStatusBanner");
+    if (banner) {
+      if (!navigator.onLine || pending) {
+        banner.classList.remove("hidden");
+        banner.className = `mobile-status-banner ${navigator.onLine ? "pending" : "offline"}`;
+        banner.innerHTML = navigator.onLine
+          ? `<strong>${pending} registro(s) aguardando sincronização</strong><button data-action="sync-offline">Sincronizar</button>`
+          : `<strong>Sem conexão</strong><span>${pending ? `${pending} registro(s) salvos no aparelho` : "Você está trabalhando offline"}</span>`;
+      } else {
+        banner.classList.add("hidden");
+      }
+    }
   }
 
   function toast(message, kind = "normal") {
@@ -219,16 +367,23 @@
   }
 
   function openModal(title, body, eyebrow = "REGISTRO") {
+    closeMobileSheets();
     $("#modalTitle").textContent = title;
     $("#modalEyebrow").textContent = eyebrow;
     $("#modalBody").innerHTML = body;
     $("#modal").classList.remove("hidden");
+    document.body.classList.add("modal-open");
     syncOperationTankFields($("#operationForm"));
     updateTransferPreview($("#tankTransferForm"));
+    setTimeout(() => {
+      const firstField = $("#modalBody input:not([type='hidden']):not([disabled]), #modalBody select:not([disabled]), #modalBody textarea:not([disabled])");
+      firstField?.focus({ preventScroll: true });
+    }, 120);
   }
 
   function closeModal() {
     $("#modal").classList.add("hidden");
+    document.body.classList.remove("modal-open");
   }
 
   function productClass(product = "", kind = "", volume = 0) {
@@ -975,9 +1130,14 @@
     const kiosk = role() === "tv";
     document.body.classList.toggle("kiosk-mode", kiosk);
     const firstAllowed = $$(".nav-item").find(button => !button.classList.contains("hidden"))?.dataset.page || "dashboard";
-    showPage(kiosk ? "tv" : (moduleAllowed(state.page) ? state.page : firstAllowed));
+    const storedPage = localStorage.getItem("opscontrol_last_page");
+    const hashPage = String(location.hash || "").replace("#", "");
+    const requestedPage = hashPage || storedPage || state.page;
+    showPage(kiosk ? "tv" : (moduleAllowed(requestedPage) ? requestedPage : firstAllowed), { history: false });
     subscribeRealtime();
     startAutoRefresh();
+    setupMobilePullToRefresh();
+    renderMobileShell();
     saveLocalDailyBackup();
     syncOfflineQueue();
     updateConnectionBadge();
@@ -1000,12 +1160,14 @@
     if (!navigator.onLine) {
       badgeEl.textContent = pendingOffline ? `Sem conexão • ${pendingOffline} pendente(s)` : "Sem conexão";
       badgeEl.className = "status-badge neutral";
+      renderMobileShell();
       return;
     }
 
     if (state.lastRefreshError) {
       badgeEl.textContent = "Falha de sincronização";
       badgeEl.className = "status-badge red";
+      renderMobileShell();
       return;
     }
 
@@ -1013,6 +1175,7 @@
       const time = state.lastSync ? state.lastSync.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "";
       badgeEl.textContent = time ? `Atualizado ${time}` : "Tempo real ativo";
       badgeEl.className = "status-badge online";
+      renderMobileShell();
       return;
     }
 
@@ -1020,6 +1183,7 @@
       ? "Tempo real indisponível"
       : "Conectando...";
     badgeEl.className = "status-badge neutral";
+    renderMobileShell();
   }
 
   function scheduleRealtimeRefresh() {
@@ -1116,6 +1280,7 @@
     const manualUnread = (state.data.alerts || []).filter(x => !x.read).length;
     const alertCount = $("#alertCount");
     if (alertCount) alertCount.textContent = manualUnread + (state.data.systemAlerts || []).length;
+    renderMobileShell();
   }
 
   function statCard(title, value, unit, icon, detail = "") {
@@ -2043,11 +2208,16 @@
         <td><div class="row-actions"><button class="btn small secondary" data-attachments="certificate:${item.id}" data-attachment-title="${esc(item.title)}">📎 ${attachmentCount("certificate", item.id)}</button>${canManage ? `<button class="btn small primary" data-edit-certificate="${item.id}">Editar</button>` : ""}</div></td>
       </tr>`;
     }).join("");
+    const mobile = state.data.certificates.map(item => {
+      const days = daysUntil(item.expires_at);
+      const automaticStatus = days !== null && days < 0 ? "Vencido" : days !== null && days <= 60 ? "A vencer" : item.status;
+      return `<article class="card mobile-record-card"><div class="mobile-record-head"><div><strong>${esc(item.title)}</strong><small>${esc(item.issuer || "-")}</small></div>${badge(automaticStatus)}</div><div class="mobile-record-grid"><span>Colaborador<strong>${esc(item.owner)}</strong></span><span>Validade<strong>${dateOnly(item.expires_at)}</strong></span></div><div class="row-actions"><button class="btn small secondary" data-attachments="certificate:${item.id}" data-attachment-title="${esc(item.title)}">Anexos (${attachmentCount("certificate", item.id)})</button>${canManage ? `<button class="btn small primary" data-edit-certificate="${item.id}">Editar</button>` : ""}</div></article>`;
+    }).join("");
     $("#page-certificates").innerHTML =
       header("Certificados", "Cada certificado fica vinculado ao usuário selecionado.",
         canManage ? `<button class="btn primary" data-action="new-certificate">+ Adicionar certificado</button>` : "") +
       `${!canManage ? `<div class="info-box" style="margin-bottom:14px">Você pode consultar seus certificados. O cadastro é feito pela Logística, Supervisor ou Administrador.</div>` : ""}
-       <div class="card table-wrap"><table class="data-table"><thead><tr><th>Certificado</th><th>Colaborador</th><th>Validade</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows || `<tr><td colspan="5" class="empty">Nenhum certificado disponível.</td></tr>`}</tbody></table></div>`;
+       <div class="card table-wrap desktop-record-table"><table class="data-table"><thead><tr><th>Certificado</th><th>Colaborador</th><th>Validade</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows || `<tr><td colspan="5" class="empty">Nenhum certificado disponível.</td></tr>`}</tbody></table></div><div class="mobile-record-list">${mobile || `<div class="card empty">Nenhum certificado disponível.</div>`}</div>`;
   }
 
   function renderAlerts() {
@@ -2340,16 +2510,18 @@
     if(!canViewAudit()){page.innerHTML=header("Auditoria","Acesso restrito.")+`<div class="card empty">Somente administração e supervisão podem consultar a auditoria.</div>`;return;}
     const auditLogs = state.data.auditLogs || [];
     const rows=auditLogs.map(item=>{const user=state.data.users.find(u=>u.id===item.changed_by)?.name||"Sistema";return `<tr><td>${dateTime(item.created_at)}</td><td><strong>${esc(user)}</strong></td><td>${esc(item.table_name)}</td><td>${badge(item.action)}</td><td>${esc(item.record_id||"-")}</td><td><small>${esc(auditChangeSummary(item))}</small></td></tr>`}).join("");
-    page.innerHTML=header("Auditoria do sistema","Quem alterou, quando, em qual módulo e o que mudou.",`<button class="btn secondary" data-export="audit">Exportar CSV</button>`)+`<div class="grid four audit-kpis"><div class="card"><span>Registros carregados</span><strong>${auditLogs.length}</strong></div><div class="card"><span>Usuários envolvidos</span><strong>${new Set(auditLogs.map(x=>x.changed_by).filter(Boolean)).size}</strong></div><div class="card"><span>Módulos alterados</span><strong>${new Set(auditLogs.map(x=>x.table_name)).size}</strong></div><div class="card"><span>Última alteração</span><strong>${auditLogs[0]?dateTime(auditLogs[0].created_at):"-"}</strong></div></div><div class="card table-wrap"><table class="data-table"><thead><tr><th>Data</th><th>Usuário</th><th>Tabela</th><th>Ação</th><th>Registro</th><th>Alterações</th></tr></thead><tbody>${rows||`<tr><td colspan="6" class="empty">Nenhuma auditoria disponível.</td></tr>`}</tbody></table></div>`;
+    const mobileAudit=auditLogs.map(item=>{const user=state.data.users.find(u=>u.id===item.changed_by)?.name||"Sistema";return `<article class="card mobile-record-card audit-mobile-card"><div class="mobile-record-head"><div><strong>${esc(user)}</strong><small>${dateTime(item.created_at)}</small></div>${badge(item.action)}</div><div class="mobile-record-grid"><span>Módulo<strong>${esc(item.table_name)}</strong></span><span>Registro<strong>${esc(item.record_id||"-")}</strong></span></div><p>${esc(auditChangeSummary(item))}</p></article>`}).join("");
+    page.innerHTML=header("Auditoria do sistema","Quem alterou, quando, em qual módulo e o que mudou.",`<button class="btn secondary" data-export="audit">Exportar CSV</button>`)+`<div class="grid four audit-kpis"><div class="card"><span>Registros carregados</span><strong>${auditLogs.length}</strong></div><div class="card"><span>Usuários envolvidos</span><strong>${new Set(auditLogs.map(x=>x.changed_by).filter(Boolean)).size}</strong></div><div class="card"><span>Módulos alterados</span><strong>${new Set(auditLogs.map(x=>x.table_name)).size}</strong></div><div class="card"><span>Última alteração</span><strong>${auditLogs[0]?dateTime(auditLogs[0].created_at):"-"}</strong></div></div><div class="card table-wrap desktop-record-table"><table class="data-table"><thead><tr><th>Data</th><th>Usuário</th><th>Tabela</th><th>Ação</th><th>Registro</th><th>Alterações</th></tr></thead><tbody>${rows||`<tr><td colspan="6" class="empty">Nenhuma auditoria disponível.</td></tr>`}</tbody></table></div><div class="mobile-record-list">${mobileAudit||`<div class="card empty">Nenhuma auditoria disponível.</div>`}</div>`;
   }
 
 
   function renderSettings() {
     const users = state.data?.users || [];
     const userRows = users.map(user => `<tr><td><strong>${esc(user.name)}</strong><br><small>${esc(user.email)}</small></td><td>${badge(user.role)}</td><td>${esc(user.department || "-")}</td><td>${badge(user.active ? "Ativo" : "Inativo")}</td><td>${dateOnly(user.created_at)}</td><td>${isAdmin() ? `<button class="btn small primary" data-edit-user="${user.id}">Gerenciar</button>` : ""}</td></tr>`).join("");
+    const mobileUsers = users.map(user => `<article class="card mobile-record-card"><div class="mobile-record-head"><div><strong>${esc(user.name)}</strong><small>${esc(user.email)}</small></div>${badge(user.active ? "Ativo" : "Inativo")}</div><div class="mobile-record-grid"><span>Cargo<strong>${esc(user.role)}</strong></span><span>Setor<strong>${esc(user.department || "-")}</strong></span></div>${isAdmin() ? `<button class="btn primary full" data-edit-user="${user.id}">Gerenciar usuário</button>` : ""}</article>`).join("");
     const lastSync = state.lastSync ? state.lastSync.toLocaleString("pt-BR") : "Não sincronizado";
     const errors = state.data?.systemErrors || [];
-    $("#page-settings").innerHTML = header("Configurações", "Perfil, usuários, permissões, diagnóstico e aparência.", `<button class="btn secondary" data-action="toggle-theme">Alternar tema</button>${isAdmin() ? `<button class="btn primary" data-action="new-user">+ Novo usuário</button>` : ""}`) + `<div class="grid two"><div class="card"><h3>Meu perfil</h3><div class="kpi-list" style="margin-top:14px"><div class="kpi-row"><span>Nome</span><strong>${esc(state.data.profile.name)}</strong></div><div class="kpi-row"><span>E-mail</span><strong>${esc(state.data.profile.email)}</strong></div><div class="kpi-row"><span>Cargo</span>${badge(state.data.profile.role)}</div><div class="kpi-row"><span>Departamento</span><strong>${esc(state.data.profile.department || "-")}</strong></div></div></div><div class="card"><h3>Diagnóstico do sistema</h3><div class="kpi-list" style="margin-top:14px"><div class="kpi-row"><span>Última sincronização</span><strong>${esc(lastSync)}</strong></div><div class="kpi-row"><span>Tanques e silos</span><strong>${(state.data.tanks || []).length}</strong></div><div class="kpi-row"><span>Operações</span><strong>${(state.data.operations || []).length}</strong></div><div class="kpi-row"><span>Alertas automáticos</span><strong>${(state.data.systemAlerts || []).length}</strong></div><div class="kpi-row"><span>Erros registrados</span><strong>${errors.length}</strong></div><div class="kpi-row"><span>Fila offline</span><strong>${offlineQueue().length}</strong></div><div class="kpi-row"><span>Backup local</span><strong>${latestLocalBackup()?.created_at ? dateTime(latestLocalBackup().created_at) : "-"}</strong></div></div><div class="row-actions" style="margin-top:12px"><button class="btn primary" data-action="backup-json">Backup JSON</button><button class="btn secondary" data-action="sync-offline">Sincronizar offline</button></div><div class="info-box" style="margin-top:12px">Movimentações automáticas e transferências são executadas por transações no Supabase.</div>${isAdmin() ? `<div class="admin-edit-notice" style="margin-top:12px"><strong>Edição total ativa</strong><span>O administrador pode editar registros operacionais de todos os módulos. Históricos e auditorias permanecem protegidos.</span></div>` : ""}</div></div><div class="section-title">Usuários e permissões</div><div class="card table-wrap">${isAdmin() ? "" : `<div class="info-box" style="margin-bottom:12px">Somente o administrador pode alterar cargo, setor, status e permissões.</div>`}<table class="data-table"><thead><tr><th>Usuário</th><th>Cargo</th><th>Departamento</th><th>Status</th><th>Cadastro</th><th>Ação</th></tr></thead><tbody>${userRows}</tbody></table></div>${isAdmin() && errors.length ? `<div class="section-title">Erros recentes</div><div class="card table-wrap"><table class="data-table"><thead><tr><th>Data</th><th>Contexto</th><th>Mensagem</th></tr></thead><tbody>${errors.slice(0,20).map(e => `<tr><td>${dateTime(e.created_at)}</td><td>${esc(e.context || "-")}</td><td>${esc(e.message)}</td></tr>`).join("")}</tbody></table></div>` : ""}`;
+    $("#page-settings").innerHTML = header("Configurações", "Perfil, usuários, permissões, diagnóstico e aparência.", `<button class="btn secondary" data-action="toggle-theme">Alternar tema</button>${isAdmin() ? `<button class="btn primary" data-action="new-user">+ Novo usuário</button>` : ""}`) + `<div class="grid two"><div class="card"><h3>Meu perfil</h3><div class="kpi-list" style="margin-top:14px"><div class="kpi-row"><span>Nome</span><strong>${esc(state.data.profile.name)}</strong></div><div class="kpi-row"><span>E-mail</span><strong>${esc(state.data.profile.email)}</strong></div><div class="kpi-row"><span>Cargo</span>${badge(state.data.profile.role)}</div><div class="kpi-row"><span>Departamento</span><strong>${esc(state.data.profile.department || "-")}</strong></div></div></div><div class="card"><h3>Diagnóstico do sistema</h3><div class="kpi-list" style="margin-top:14px"><div class="kpi-row"><span>Última sincronização</span><strong>${esc(lastSync)}</strong></div><div class="kpi-row"><span>Tanques e silos</span><strong>${(state.data.tanks || []).length}</strong></div><div class="kpi-row"><span>Operações</span><strong>${(state.data.operations || []).length}</strong></div><div class="kpi-row"><span>Alertas automáticos</span><strong>${(state.data.systemAlerts || []).length}</strong></div><div class="kpi-row"><span>Erros registrados</span><strong>${errors.length}</strong></div><div class="kpi-row"><span>Fila offline</span><strong>${offlineQueue().length}</strong></div><div class="kpi-row"><span>Backup local</span><strong>${latestLocalBackup()?.created_at ? dateTime(latestLocalBackup().created_at) : "-"}</strong></div></div><div class="row-actions" style="margin-top:12px"><button class="btn primary" data-action="backup-json">Backup JSON</button><button class="btn secondary" data-action="sync-offline">Sincronizar offline</button></div><div class="info-box" style="margin-top:12px">Movimentações automáticas e transferências são executadas por transações no Supabase.</div>${isAdmin() ? `<div class="admin-edit-notice" style="margin-top:12px"><strong>Edição total ativa</strong><span>O administrador pode editar registros operacionais de todos os módulos. Históricos e auditorias permanecem protegidos.</span></div>` : ""}</div></div><div class="section-title">Usuários e permissões</div><div class="card table-wrap desktop-record-table">${isAdmin() ? "" : `<div class="info-box" style="margin-bottom:12px">Somente o administrador pode alterar cargo, setor, status e permissões.</div>`}<table class="data-table"><thead><tr><th>Usuário</th><th>Cargo</th><th>Departamento</th><th>Status</th><th>Cadastro</th><th>Ação</th></tr></thead><tbody>${userRows}</tbody></table></div><div class="mobile-record-list">${mobileUsers || `<div class="card empty">Nenhum usuário disponível.</div>`}</div>${isAdmin() && errors.length ? `<div class="section-title">Erros recentes</div><div class="card table-wrap"><table class="data-table"><thead><tr><th>Data</th><th>Contexto</th><th>Mensagem</th></tr></thead><tbody>${errors.slice(0,20).map(e => `<tr><td>${dateTime(e.created_at)}</td><td>${esc(e.context || "-")}</td><td>${esc(e.message)}</td></tr>`).join("")}</tbody></table></div>` : ""}`;
   }
 
 
@@ -2948,7 +3120,7 @@
     return data.id;
   }
 
-  function showPage(page) {
+  function showPage(page, options = {}) {
     if (role() === "tv" && page !== "tv") page = "tv";
     if (!moduleAllowed(page)) return toast("Seu perfil não possui acesso a este módulo.", "error");
     state.page = page;
@@ -2958,12 +3130,63 @@
     $$(".nav-item").forEach(item => item.classList.toggle("active", item.dataset.page === page));
     targetPage.classList.add("active");
     $("#sidebar")?.classList.remove("open");
+    $("#sidebarBackdrop")?.classList.remove("visible");
+    closeMobileSheets();
+    localStorage.setItem("opscontrol_last_page", page);
+    if (options.history !== false && location.hash !== `#${page}`) {
+      history.pushState({ page }, "", `#${page}`);
+    }
+    if (options.scroll !== false) window.scrollTo({ top: 0, behavior: "instant" });
     if (page === "tv") {
       renderTv();
       startTvMode();
     } else {
       stopTvMode();
     }
+    renderMobileShell();
+  }
+
+  function setupMobilePullToRefresh() {
+    const main = $(".main-content");
+    const indicator = $("#pullRefreshIndicator");
+    if (!main || !indicator || main.dataset.pullReady === "true") return;
+    main.dataset.pullReady = "true";
+
+    main.addEventListener("touchstart", event => {
+      if (!isMobileViewport() || window.scrollY > 0 || !$("#modal")?.classList.contains("hidden") || state.mobile.pullRefreshing) return;
+      state.mobile.pullStartY = event.touches[0].clientY;
+      state.mobile.pullDistance = 0;
+      state.mobile.pullReady = true;
+    }, { passive: true });
+
+    main.addEventListener("touchmove", event => {
+      if (!state.mobile.pullReady) return;
+      const distance = Math.max(0, Math.min(110, (event.touches[0].clientY - state.mobile.pullStartY) * 0.55));
+      if (distance <= 0) return;
+      state.mobile.pullDistance = distance;
+      document.documentElement.style.setProperty("--pull-distance", `${distance}px`);
+      document.body.classList.add("mobile-pulling");
+      indicator.querySelector("strong").textContent = distance >= 72 ? "Solte para atualizar" : "Puxe para atualizar";
+      if (distance > 10) event.preventDefault();
+    }, { passive: false });
+
+    main.addEventListener("touchend", async () => {
+      if (!state.mobile.pullReady) return;
+      const shouldRefresh = state.mobile.pullDistance >= 72;
+      state.mobile.pullReady = false;
+      state.mobile.pullDistance = 0;
+      document.body.classList.remove("mobile-pulling");
+      document.documentElement.style.setProperty("--pull-distance", "0px");
+      indicator.querySelector("strong").textContent = shouldRefresh ? "Atualizando..." : "Puxe para atualizar";
+      if (shouldRefresh) {
+        state.mobile.pullRefreshing = true;
+        indicator.classList.add("refreshing");
+        await refreshRealtime("gesto de atualização", true);
+        state.mobile.pullRefreshing = false;
+        indicator.classList.remove("refreshing");
+        indicator.querySelector("strong").textContent = "Puxe para atualizar";
+      }
+    }, { passive: true });
   }
 
   function applyTheme(theme) {
@@ -3307,8 +3530,21 @@
 
     if (button.id === "loginBtn") return login();
     if (button.id === "logoutBtn") return logout();
-    if (button.id === "menuBtn") return $("#sidebar").classList.toggle("open");
+    if (button.id === "menuBtn") {
+      const sidebar = $("#sidebar");
+      const open = !sidebar.classList.contains("open");
+      sidebar.classList.toggle("open", open);
+      $("#sidebarBackdrop")?.classList.toggle("visible", open);
+      return;
+    }
+    if (button.id === "sidebarBackdrop") {
+      $("#sidebar")?.classList.remove("open");
+      button.classList.remove("visible");
+      return;
+    }
+    if (button.id === "mobileSheetBackdrop") return closeMobileSheets();
     if (button.id === "modalClose" || button.hasAttribute("data-close-modal")) return closeModal();
+    if (button.dataset.mobilePage) return showPage(button.dataset.mobilePage);
     if (button.classList.contains("nav-item")) return showPage(button.dataset.page);
     if (button.closest(".user-chip")) return showPage("settings");
     if (button.id === "notificationsBtn") return showPage("alerts");
@@ -3335,6 +3571,28 @@
     }
 
     const action = button.dataset.action;
+    if (button.closest(".mobile-sheet") && !["mobile-more", "mobile-quick"].includes(action)) closeMobileSheets();
+    if (action === "mobile-more") {
+      openMobileSheet("more");
+      return;
+    }
+    if (action === "mobile-quick") {
+      openMobileSheet("quick");
+      return;
+    }
+    if (action === "mobile-close-sheet") {
+      closeMobileSheets();
+      return;
+    }
+    if (action === "install-app") {
+      if (!state.installPrompt) return toast("Use a opção “Adicionar à tela de início” do navegador.", "error");
+      state.installPrompt.prompt();
+      const choice = await state.installPrompt.userChoice;
+      if (choice.outcome === "accepted") toast("Instalação iniciada.", "success");
+      state.installPrompt = null;
+      renderMobileShell();
+      return;
+    }
     if (action === "tv-prev") {
       changeTvSlide(-1);
       return;
@@ -3729,6 +3987,14 @@
     if (event.target === $("#modal")) closeModal();
   });
 
+  document.addEventListener("keydown", event => {
+    if (event.key !== "Escape") return;
+    if (!$("#modal")?.classList.contains("hidden")) return closeModal();
+    if (state.mobile.moreOpen || state.mobile.quickOpen) return closeMobileSheets();
+    $("#sidebar")?.classList.remove("open");
+    $("#sidebarBackdrop")?.classList.remove("visible");
+  });
+
   $("#loginPassword").addEventListener("keydown", event => {
     if (event.key === "Enter") login();
   });
@@ -3741,6 +4007,30 @@
     const current=checklistForShift(selection).find(item=>item.item_key===key);
     const {error}=await state.client.from("shift_checklist_items").upsert({shift_date:selection.date,shift_type:selection.shift,item_key:key,item_label:template?.[1]||key,category:template?.[2]||"Operacional",completed:current?.completed||false,notes:event.target.value||null,completed_by:current?.completed_by||null,completed_at:current?.completed_at||null,created_by:state.user.id},{onConflict:"shift_date,shift_type,item_key"});
     if(error)toast(error.message,"error"); else await loadData();
+  });
+
+  window.addEventListener("beforeinstallprompt", event => {
+    event.preventDefault();
+    state.installPrompt = event;
+    renderMobileShell();
+  });
+
+  window.addEventListener("appinstalled", () => {
+    state.installPrompt = null;
+    toast("OpsControl instalado com sucesso.", "success");
+    renderMobileShell();
+  });
+
+  window.addEventListener("popstate", event => {
+    if (!$("#modal")?.classList.contains("hidden")) return closeModal();
+    if (state.mobile.moreOpen || state.mobile.quickOpen) return closeMobileSheets();
+    if ($("#sidebar")?.classList.contains("open")) {
+      $("#sidebar").classList.remove("open");
+      $("#sidebarBackdrop")?.classList.remove("visible");
+      return;
+    }
+    const page = event.state?.page || String(location.hash || "").replace("#", "") || "dashboard";
+    if (moduleAllowed(page)) showPage(page, { history: false });
   });
 
   window.addEventListener("online", () => {

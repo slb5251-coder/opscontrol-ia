@@ -8,6 +8,10 @@
   const THEME_KEY = "opscontrol_theme";
   const OFFLINE_QUEUE_KEY = "opscontrol_offline_queue";
   const LOCAL_BACKUP_KEY = "opscontrol_daily_backups";
+  const FORM_DRAFT_KEY = "opscontrol_form_drafts";
+  const TEST_MODE_KEY = "opscontrol_homologation_mode";
+  const TEST_LOG_KEY = "opscontrol_homologation_log";
+  const APP_VERSION = "20260715-field-experience-1";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -29,6 +33,9 @@
     tv: { slide: 0, paused: false, timer: null, clockTimer: null, intervalMs: 15000 },
     offlineSyncing: false,
     installPrompt: null,
+    searchQuery: "",
+    testMode: localStorage.getItem(TEST_MODE_KEY) === "true",
+    draftTimer: null,
     mobile: {
       moreOpen: false,
       quickOpen: false,
@@ -133,7 +140,8 @@
   }
 
   const MOBILE_PAGE_META = {
-    dashboard: ["Dashboard", "Visão geral"],
+    dashboard: ["Início", "Resumo do seu perfil"],
+    quality: ["Qualidade dos Dados", "Conciliação e inconsistências"],
     tv: ["Painel TV", "Exibição coletiva"],
     operations: ["Operações", "Serviços e movimentações"],
     tanks: ["Tanques e Silos", "Inventário da planta"],
@@ -208,6 +216,7 @@
     });
 
     const morePages = [
+      ["quality", "Qualidade", "Conciliação e inconsistências"],
       ["reports", "Relatórios", "Passagem e indicadores"],
       ["chemicals", "Químicos", "Estoque e validade"],
       ["trucks", "Carretas", "Entradas e saídas"],
@@ -249,11 +258,12 @@
 
     const installArea = $("#mobileInstallArea");
     if (installArea) {
-      installArea.innerHTML = state.installPrompt && !isStandaloneApp()
+      const feedbackButton = `<button class="btn secondary full mobile-feedback-button" data-action="open-feedback">Enviar feedback da versão</button>`;
+      installArea.innerHTML = feedbackButton + (state.installPrompt && !isStandaloneApp()
         ? `<button class="btn primary full" data-action="install-app">Instalar OpsControl neste celular</button><small>O aplicativo ficará disponível na tela inicial.</small>`
         : isStandaloneApp()
           ? `<div class="info-box">OpsControl já está instalado neste aparelho.</div>`
-          : `<small>Use “Adicionar à tela de início” no navegador para instalar.</small>`;
+          : `<small>Use “Adicionar à tela de início” no navegador para instalar.</small>`);
     }
 
     const pending = offlineQueue().length;
@@ -269,6 +279,319 @@
         banner.classList.add("hidden");
       }
     }
+  }
+
+
+  function normalizeSearch(value = "") {
+    return String(value)
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+  }
+
+  function searchIndex() {
+    const d = state.data || {};
+    const rows = [];
+    const add = (type, id, page, title, subtitle, terms = "") => rows.push({
+      type, id, page, title, subtitle,
+      haystack: normalizeSearch(`${title} ${subtitle} ${terms}`)
+    });
+
+    (d.tanks || []).forEach(x => add("tank", x.id, "tanks", x.name, `${x.product || "Sem produto"} • lote ${x.lot || "-"}`, `${x.phase} ${x.kind} ${x.status}`));
+    (d.operations || []).forEach(x => add("operation", x.id, "operations", `${x.client} • ${x.vessel}`, `${x.activity} de ${x.product}`, `${x.service_order} ${x.lot} ${x.status}`));
+    (d.trucks || []).forEach(x => add("truck", x.id, "trucks", x.plate || x.product, `${x.product} • NF ${x.invoice || "-"}`, `${x.driver} ${x.supplier} ${x.client} ${x.lot}`));
+    (d.chemicals || []).forEach(x => add("chemical", x.id, "chemicals", x.name, `Lote ${x.lot || "-"} • ${fmt.format(x.quantity)} ${x.unit}`, `${x.location} ${x.supplier} ${x.category}`));
+    (d.equipment || []).forEach(x => add("equipment", x.id, "maintenance", x.name, `${x.category} • ${x.status}`, `${x.location} ${x.notes}`));
+    (d.maintenanceOrders || []).forEach(x => add("maintenance", x.id, "maintenance", x.title, `${x.responsible || "Sem responsável"} • ${x.status}`, `${x.priority} ${x.description}`));
+    (d.qhse || []).forEach(x => add("qhse", x.id, "qhse", x.title, `${x.type} • ${x.status}`, `${x.description} ${x.responsible}`));
+    (d.certificates || []).forEach(x => add("certificate", x.id, "certificates", x.title, `${x.owner} • ${dateOnly(x.expires_at)}`, `${x.issuer} ${x.status}`));
+    (d.users || []).forEach(x => add("user", x.id, "settings", x.name, `${x.role} • ${x.department || "-"}`, x.email));
+    return rows;
+  }
+
+  function globalSearchResults(query) {
+    const normalized = normalizeSearch(query);
+    if (normalized.length < 2) return [];
+    const tokens = normalized.split(/\s+/).filter(Boolean);
+    return searchIndex()
+      .map(item => ({ ...item, score: tokens.reduce((sum, token) => sum + (item.haystack.includes(token) ? 1 : 0), 0) }))
+      .filter(item => item.score === tokens.length)
+      .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title))
+      .slice(0, 40);
+  }
+
+  function searchResultIcon(type) {
+    return ({ tank: "TK", operation: "OP", truck: "CR", chemical: "QI", equipment: "EQ", maintenance: "OS", qhse: "QS", certificate: "CT", user: "US" })[type] || "•";
+  }
+
+  function renderGlobalSearchResults(query = "") {
+    const container = $("#globalSearchResults");
+    if (!container) return;
+    const results = globalSearchResults(query);
+    container.innerHTML = query.trim().length < 2
+      ? `<div class="search-empty-state"><strong>Digite pelo menos duas letras</strong><span>Pesquise embarcação, OS, NF, lote, tanque, produto, placa, funcionário ou equipamento.</span></div>`
+      : results.length
+        ? results.map(item => `<button class="global-search-result" data-search-type="${item.type}" data-search-id="${item.id}" data-search-page="${item.page}">
+            <span class="global-search-icon">${searchResultIcon(item.type)}</span>
+            <span><strong>${esc(item.title)}</strong><small>${esc(item.subtitle)}</small></span><b>›</b>
+          </button>`).join("")
+        : `<div class="search-empty-state"><strong>Nenhum resultado encontrado</strong><span>Tente pesquisar outro nome, lote, NF, OS ou placa.</span></div>`;
+  }
+
+  function globalSearchModal() {
+    return `<div class="global-search-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg><input id="globalSearchInput" autocomplete="off" placeholder="Pesquisar em todo o sistema" value="${esc(state.searchQuery)}"></div><div id="globalSearchResults" class="global-search-results"></div>`;
+  }
+
+  function openGlobalSearch() {
+    openModal("Busca geral", globalSearchModal(), "LOCALIZAR");
+    setTimeout(() => {
+      $("#globalSearchInput")?.focus();
+      renderGlobalSearchResults(state.searchQuery);
+    }, 50);
+  }
+
+  function openSearchResult(type, id, page) {
+    closeModal();
+    showPage(page);
+    if (type === "tank") return openAssetQr("tank", id);
+    if (type === "equipment") return openAssetQr("equipment", id);
+    if (type === "operation") {
+      const item = state.data.operations.find(x => x.id === id);
+      if (item && hasRole(["supervisor", "lider", "operador"])) openModal(`Operação — ${item.vessel}`, operationForm(item), "RESULTADO");
+      return;
+    }
+    if (type === "chemical") {
+      const item = state.data.chemicals.find(x => x.id === id);
+      if (item) {
+        const history = state.data.chemicalMovements.filter(x => x.inventory_id === id);
+        openModal(`Produto — ${item.name}`, `<div class="asset-detail-summary"><h3>${esc(item.name)}</h3><p>Lote ${esc(item.lot || "-")} • ${fmt.format(item.quantity)} ${esc(item.unit)}</p></div><div class="timeline professional-timeline">${history.slice(0, 30).map(x => `<div class="timeline-item"><span class="timeline-dot"></span><div><strong>${esc(x.movement_type)} — ${fmt.format(x.quantity)} ${esc(item.unit)}</strong><small>${dateTime(x.created_at)}</small><p>Saldo: ${fmt.format(x.previous_balance)} → ${fmt.format(x.new_balance)}</p></div></div>`).join("") || `<div class="empty">Sem movimentações.</div>`}</div>`, "RESULTADO");
+      }
+      return;
+    }
+    if (type === "maintenance") {
+      const item = state.data.maintenanceOrders.find(x => x.id === id);
+      if (item && hasRole(["supervisor", "lider", "mecanico"])) openModal("Ordem de serviço", maintenanceOrderForm(item), "RESULTADO");
+      return;
+    }
+    if (type === "qhse") {
+      document.querySelector(`[data-qhse-actions="${id}"]`)?.click();
+      return;
+    }
+    toast("Módulo aberto no registro pesquisado.", "success");
+  }
+
+  function draftStore() {
+    try { return JSON.parse(localStorage.getItem(FORM_DRAFT_KEY) || "{}"); } catch (_) { return {}; }
+  }
+
+  function draftIdentity(form) {
+    if (!form || form.dataset.id || form.dataset.userId || form.dataset.operationId || form.dataset.recordId) return "";
+    const kind = form.dataset.kind || form.id;
+    return `${state.user?.id || "anon"}:${kind}`;
+  }
+
+  function serializeFormDraft(form) {
+    const fields = [...form.querySelectorAll("input[name],select[name],textarea[name]")]
+      .filter(field => field.type !== "file" && field.type !== "password")
+      .map((field, index) => ({
+        name: field.name,
+        index,
+        type: field.type,
+        value: field.value,
+        checked: field.checked
+      }));
+    const allocationRows = form.id === "operationForm"
+      ? [...form.querySelectorAll("[data-operation-allocation-row]")].map(row => ({
+          tank_id: row.querySelector("[data-allocation-tank]")?.value || "",
+          quantity: row.querySelector("[data-allocation-quantity]")?.value || ""
+        }))
+      : [];
+    return { fields, allocationRows, saved_at: new Date().toISOString() };
+  }
+
+  function saveFormDraft(form) {
+    const key = draftIdentity(form);
+    if (!key) return;
+    const drafts = draftStore();
+    drafts[key] = serializeFormDraft(form);
+    localStorage.setItem(FORM_DRAFT_KEY, JSON.stringify(drafts));
+    const status = $("#draftStatus");
+    if (status) status.textContent = `Rascunho salvo às ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
+  }
+
+  function clearFormDraft(form) {
+    const key = draftIdentity(form);
+    if (!key) return;
+    const drafts = draftStore();
+    delete drafts[key];
+    localStorage.setItem(FORM_DRAFT_KEY, JSON.stringify(drafts));
+  }
+
+  function restoreFormDraft(form) {
+    const key = draftIdentity(form);
+    if (!key) return false;
+    const draft = draftStore()[key];
+    if (!draft?.fields?.length) return false;
+
+    if (form.id === "operationForm" && draft.allocationRows?.length) {
+      const mode = tankMovementMode(form.elements.activity?.value || "");
+      const direction = mode === "out" ? "source" : "destination";
+      const unit = form.elements.unit?.value || "bbl";
+      const list = form.querySelector("[data-operation-allocation-list]");
+      if (list && mode !== "none") {
+        list.innerHTML = draft.allocationRows.map(row => operationAllocationRow({ tank_id: row.tank_id, quantity: row.quantity }, direction, unit, false)).join("");
+      }
+    }
+
+    const allFields = [...form.querySelectorAll("input[name],select[name],textarea[name]")].filter(field => field.type !== "file" && field.type !== "password");
+    draft.fields.forEach(saved => {
+      const candidates = allFields.filter(field => field.name === saved.name);
+      const field = candidates.shift() || allFields[saved.index];
+      if (!field || field.type === "file") return;
+      if (["checkbox", "radio"].includes(field.type)) field.checked = saved.checked;
+      else field.value = saved.value;
+    });
+
+    const banner = document.createElement("div");
+    banner.className = "draft-restored-banner";
+    banner.innerHTML = `<div><strong>Rascunho restaurado</strong><span id="draftStatus">Salvo em ${dateTime(draft.saved_at)}</span></div><button type="button" class="btn small secondary" data-action="discard-draft">Descartar</button>`;
+    form.prepend(banner);
+    syncOperationTankFields(form);
+    updateOperationAllocationSummary(form);
+    return true;
+  }
+
+  function scheduleDraftSave(form) {
+    if (!draftIdentity(form)) return;
+    clearTimeout(state.draftTimer);
+    state.draftTimer = setTimeout(() => saveFormDraft(form), 450);
+  }
+
+  function testLog() {
+    try { return JSON.parse(localStorage.getItem(TEST_LOG_KEY) || "[]"); } catch (_) { return []; }
+  }
+
+  function addTestLog(context, data = {}) {
+    const log = testLog();
+    log.unshift({
+      id: uid("test"),
+      context,
+      data,
+      user: state.data?.profile?.name || state.user?.email || "Usuário",
+      page: state.page,
+      created_at: new Date().toISOString()
+    });
+    localStorage.setItem(TEST_LOG_KEY, JSON.stringify(log.slice(0, 300)));
+  }
+
+  function setTestMode(enabled) {
+    state.testMode = enabled;
+    localStorage.setItem(TEST_MODE_KEY, String(enabled));
+    document.body.classList.toggle("homologation-mode", enabled);
+    renderAll();
+    toast(enabled ? "Modo homologação ativado. Nenhum salvamento irá para o banco oficial." : "Modo homologação desativado.", "success");
+  }
+
+  function simulateFormSubmission(form) {
+    const payload = Object.fromEntries(new FormData(form));
+    Object.keys(payload).forEach(key => {
+      if (payload[key] instanceof File) payload[key] = payload[key].name || "arquivo";
+    });
+    addTestLog(`form:${form.id || form.dataset.kind || "registro"}`, payload);
+    clearFormDraft(form);
+    closeModal();
+    renderSettings();
+    toast("Ação simulada na homologação local. O banco oficial não foi alterado.", "success");
+  }
+
+  function feedbackForm() {
+    return `<form id="feedbackForm">
+      <div class="form-grid">
+        <div><label>Tipo</label><select name="category"><option>Erro</option><option>Dificuldade</option><option selected>Sugestão</option><option>Campo desnecessário</option><option>Informação ausente</option></select></div>
+        <div><label>Nota da experiência</label><select name="rating"><option value="">Sem nota</option>${[1,2,3,4,5].map(value => `<option value="${value}">${value} de 5</option>`).join("")}</select></div>
+        <div class="wide"><label>O que aconteceu ou poderia melhorar? *</label><textarea name="message" required placeholder="Conte onde demorou, errou, precisou voltar ou não encontrou uma informação."></textarea></div>
+        <input type="hidden" name="page" value="${esc(state.page)}">
+      </div>${formActions("Enviar feedback")}
+    </form>`;
+  }
+
+  function assetData(type, id) {
+    if (type === "tank") {
+      const item = state.data.tanks.find(x => x.id === id);
+      if (!item) return null;
+      return {
+        type, id, page: "tanks", code: item.name, title: item.name,
+        subtitle: `${item.phase} • ${item.kind}`,
+        lines: [
+          ["Produto", item.product || "Sem produto"],
+          ["Lote", item.lot || "-"],
+          ["Saldo", `${fmt.format(item.volume)} ${item.unit}`],
+          ["Capacidade", `${fmt.format(item.capacity)} ${item.unit}`],
+          ["Status", item.status],
+          ["Atualização", dateTime(item.updated_at)]
+        ]
+      };
+    }
+    if (type === "equipment") {
+      const item = state.data.equipment.find(x => x.id === id);
+      if (!item) return null;
+      return {
+        type, id, page: "maintenance", code: item.name, title: item.name,
+        subtitle: `${item.category} • ${item.location || "-"}`,
+        lines: [
+          ["Status", item.status],
+          ["Horímetro", `${fmt.format(item.hourmeter)} h`],
+          ["Próxima manutenção", dateOnly(item.next_maintenance_date)],
+          ["Localização", item.location || "-"],
+          ["Atualização", dateTime(item.updated_at)]
+        ]
+      };
+    }
+    return null;
+  }
+
+  function assetDeepLink(type, id) {
+    const url = new URL(location.href);
+    url.searchParams.set("asset", type);
+    url.searchParams.set("id", id);
+    const data = assetData(type, id);
+    url.hash = data?.page || "dashboard";
+    return url.toString();
+  }
+
+  function qrSvg(text) {
+    if (typeof qrcode !== "function") return `<div class="qr-error">Gerador de QR indisponível.</div>`;
+    const qr = qrcode(0, "M");
+    qr.addData(text);
+    qr.make();
+    return qr.createSvgTag({ cellSize: 5, margin: 2, scalable: true });
+  }
+
+  function assetQrContent(type, id) {
+    const data = assetData(type, id);
+    if (!data) return `<div class="empty">Ativo não localizado.</div>`;
+    const link = assetDeepLink(type, id);
+    return `<div class="asset-qr-layout" id="assetQrPrint">
+      <div class="asset-qr-code">${qrSvg(link)}</div>
+      <div class="asset-qr-info"><span class="asset-code">${esc(data.code)}</span><h3>${esc(data.title)}</h3><p>${esc(data.subtitle)}</p><div class="asset-detail-grid">${data.lines.map(([label, value]) => `<span>${esc(label)}<strong>${esc(value)}</strong></span>`).join("")}</div></div>
+      <div class="asset-qr-actions no-print"><button class="btn secondary" data-action="copy-asset-link" data-link="${esc(link)}">Copiar link</button><button class="btn primary" data-action="print-asset-qr">Imprimir etiqueta</button></div>
+    </div>`;
+  }
+
+  function openAssetQr(type, id) {
+    const data = assetData(type, id);
+    if (!data) return toast("Ativo não localizado.", "error");
+    showPage(data.page);
+    openModal(`Identificação — ${data.title}`, assetQrContent(type, id), "QR CODE");
+  }
+
+  function openDeepLinkedAsset() {
+    const params = new URLSearchParams(location.search);
+    const type = params.get("asset");
+    const id = params.get("id");
+    if (!type || !id) return;
+    setTimeout(() => openAssetQr(type, id), 180);
   }
 
   function toast(message, kind = "normal") {
@@ -327,14 +650,14 @@
     if (Object.prototype.hasOwnProperty.call(permissions, module)) return permissions[module] !== false;
 
     const defaults = {
-      supervisor: ["dashboard", "tv", "operations", "tanks", "fluids", "chemicals", "trucks", "qhse", "maintenance", "certificates", "alerts", "reports", "audit"],
-      lider: ["dashboard", "tv", "operations", "tanks", "fluids", "chemicals", "trucks", "qhse", "maintenance", "certificates", "alerts", "reports"],
-      operador: ["dashboard", "tv", "operations", "tanks", "fluids", "chemicals", "trucks", "qhse", "alerts", "reports"],
-      logistica: ["dashboard", "tv", "operations", "tanks", "fluids", "chemicals", "trucks", "certificates", "alerts", "reports"],
-      mecanico: ["dashboard", "tv", "maintenance", "certificates", "alerts", "reports"],
-      qhse: ["dashboard", "tv", "operations", "chemicals", "qhse", "certificates", "alerts", "reports"],
+      supervisor: ["dashboard", "quality", "tv", "operations", "tanks", "fluids", "chemicals", "trucks", "qhse", "maintenance", "certificates", "alerts", "reports", "audit"],
+      lider: ["dashboard", "quality", "tv", "operations", "tanks", "fluids", "chemicals", "trucks", "qhse", "maintenance", "certificates", "alerts", "reports"],
+      operador: ["dashboard", "quality", "tv", "operations", "tanks", "fluids", "chemicals", "trucks", "qhse", "alerts", "reports"],
+      logistica: ["dashboard", "quality", "tv", "operations", "tanks", "fluids", "chemicals", "trucks", "certificates", "alerts", "reports"],
+      mecanico: ["dashboard", "quality", "tv", "maintenance", "certificates", "alerts", "reports"],
+      qhse: ["dashboard", "quality", "tv", "operations", "chemicals", "qhse", "certificates", "alerts", "reports"],
       tv: ["tv"],
-      user: ["dashboard", "tv", "certificates", "alerts"]
+      user: ["dashboard", "quality", "tv", "certificates", "alerts"]
     };
     return (defaults[role()] || defaults.user).includes(module);
   }
@@ -375,6 +698,8 @@
     document.body.classList.add("modal-open");
     syncOperationTankFields($("#operationForm"));
     updateTransferPreview($("#tankTransferForm"));
+    const modalForm = $("#modalBody form");
+    if (modalForm) restoreFormDraft(modalForm);
     setTimeout(() => {
       const firstField = $("#modalBody input:not([type='hidden']):not([disabled]), #modalBody select:not([disabled]), #modalBody textarea:not([disabled])");
       firstField?.focus({ preventScroll: true });
@@ -477,6 +802,7 @@
   function saveOfflineQueue(items) {
     localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(items.slice(-100)));
     updateConnectionBadge();
+    openDeepLinkedAsset();
   }
 
   function hasFileSelection(form) {
@@ -609,7 +935,11 @@
     }
     if (kind === "audit") {
       const rows = state.data.auditLogs.map(x => [x.created_at, state.data.users.find(u=>u.id===x.changed_by)?.name||"Sistema", x.table_name, x.action, x.record_id, auditChangeSummary(x)]);
-      return downloadCsv(`auditoria-${date}.csv`, ["Data", "Usuário", "Tabela", "Ação", "Registro", "Alterações"], rows);
+      return downloadCsv("auditoria.csv", ["Data","Usuário","Tabela","Ação","Registro","Alterações"], rows);
+    }
+    if (kind === "quality") {
+      const rows = dataQualityIssues().map(x => [x.severity, x.category, x.title, x.detail, x.page, x.entityType, x.entityId]);
+      return downloadCsv(`qualidade-dados-${localDateKey()}.csv`, ["Severidade","Categoria","Pendência","Detalhe","Módulo","Tipo","ID"], rows);
     }
   }
 
@@ -917,7 +1247,8 @@
       c.from("operational_alert_center").select("*").order("created_at", { ascending: false }).limit(1000),
       c.from("shift_handover_approvals").select("*").order("shift_date", { ascending: false }).limit(500),
       c.from("shift_checklist_items").select("*").order("shift_date", { ascending: false }).limit(2000),
-      c.from("audit_logs").select("*").order("created_at", { ascending: false }).limit(1500)
+      c.from("audit_logs").select("*").order("created_at", { ascending: false }).limit(1500),
+      c.from("app_feedback").select("*").order("created_at", { ascending: false }).limit(500)
     ]);
 
     if (results[0]?.error) throw results[0].error;
@@ -1103,6 +1434,11 @@
       auditLogs: (results[29].data || []).map(x => ({
         id:x.id, table_name:x.table_name, record_id:x.record_id, action:x.action,
         old_data:x.old_data, new_data:x.new_data, changed_by:x.changed_by, created_at:x.created_at
+      })),
+      feedback: (results[30].data || []).map(x => ({
+        id:x.id, category:x.category, page:x.page || "dashboard", rating:x.rating,
+        message:x.message, device_info:x.device_info || "", app_version:x.app_version || "",
+        status:x.status || "Novo", created_by:x.created_by, created_at:x.created_at, updated_at:x.updated_at
       }))
     };
     state.data.systemAlerts = [...state.data.systemAlerts, ...state.data.alertCenter]
@@ -1129,6 +1465,7 @@
 
     const kiosk = role() === "tv";
     document.body.classList.toggle("kiosk-mode", kiosk);
+    document.body.classList.toggle("homologation-mode", state.testMode);
     const firstAllowed = $$(".nav-item").find(button => !button.classList.contains("hidden"))?.dataset.page || "dashboard";
     const storedPage = localStorage.getItem("opscontrol_last_page");
     const hashPage = String(location.hash || "").replace("#", "");
@@ -1261,6 +1598,7 @@
   function renderAll() {
     const modules = [
       ["Dashboard", "dashboard", renderDashboard],
+      ["Qualidade dos Dados", "quality", renderQuality],
       ["Painel TV", "tv", renderTv],
       ["Operações", "operations", renderOperations],
       ["Tanques e silos", "tanks", renderTanks],
@@ -1462,6 +1800,114 @@
   }
 
 
+
+  function dashboardRoleHome(d, activeOps) {
+    const currentRole = role();
+    const currentShift = handoverSnapshot();
+    const openPendings = (d.handoverPendings || []).filter(x => ["Pendente", "Em andamento"].includes(x.status));
+    const lowChemicals = (d.chemicals || []).filter(x => x.quantity <= x.minimum);
+    const openOrders = (d.maintenanceOrders || []).filter(x => !["Concluída", "Fechada", "Cancelada"].includes(x.status));
+    const openActions = (d.actionItems || []).filter(x => x.status !== "Concluído");
+    const todayTrucks = (d.trucks || []).filter(x => recordDateKey(x.date || x.created_at) === localDateKey());
+    const checklist = checklistForShift();
+    const checklistDone = checklist.filter(x => x.completed).length;
+    const qualityCount = dataQualityIssues().filter(x => x.severity !== "Baixa").length;
+
+    const action = (page, label, description, icon) => `<button class="role-home-action" data-page-link="${page}"><span>${icon}</span><div><strong>${esc(label)}</strong><small>${esc(description)}</small></div><b>›</b></button>`;
+    const create = (name, label, description, icon) => `<button class="role-home-action" data-action="${name}"><span>${icon}</span><div><strong>${esc(label)}</strong><small>${esc(description)}</small></div><b>+</b></button>`;
+
+    let title = `Olá, ${esc(d.profile.name.split(" ")[0])}`;
+    let subtitle = "Resumo operacional da planta";
+    let metrics = [];
+    let actions = [];
+
+    if (["operador", "user"].includes(currentRole)) {
+      title = `Turno operacional — ${esc(d.profile.name.split(" ")[0])}`;
+      subtitle = activeOps.length ? `${activeOps.length} operação(ões) exigindo acompanhamento` : "Nenhuma operação ativa neste momento";
+      metrics = [
+        ["Operações ativas", activeOps.length, "operations"],
+        ["Checklist do turno", `${checklistDone}/${checklist.length}`, "reports"],
+        ["Pendências", openPendings.length, "reports"]
+      ];
+      actions = [
+        create("new-operation", "Registrar operação", "Início, volume, paralisação ou conclusão", "⚓"),
+        action("tanks", "Consultar tancagem", "Saldo, produto e lote", "TK"),
+        action("reports", "Passagem do turno", "Checklist e pendências", "PS")
+      ];
+    } else if (currentRole === "lider") {
+      title = "Painel do líder de turno";
+      subtitle = "Operações, pendências e entrega da equipe";
+      metrics = [
+        ["Operações ativas", activeOps.length, "operations"],
+        ["Pendências abertas", openPendings.length, "reports"],
+        ["Qualidade dos dados", qualityCount, "quality"]
+      ];
+      actions = [
+        create("new-operation", "Nova operação", "Programar e distribuir tancagem", "⚓"),
+        action("reports", "Preparar passagem", "Checklist, atividades e pendências", "PS"),
+        action("quality", "Conferir lançamentos", "Inconsistências antes do fechamento", "DQ")
+      ];
+    } else if (currentRole === "logistica") {
+      title = "Painel da logística";
+      subtitle = "Carretas, estoques, lotes e documentação";
+      metrics = [
+        ["Carretas hoje", todayTrucks.length, "trucks"],
+        ["Químicos baixos", lowChemicals.length, "chemicals"],
+        ["Pendências", openPendings.length, "reports"]
+      ];
+      actions = [
+        create("new-truck", "Movimentar carreta", "Entrada, saída, NF e lote", "CR"),
+        action("chemicals", "Inventário químico", "Saldo, validade e FEFO", "QI"),
+        action("quality", "Conferir documentos", "NF, lote e rastreabilidade", "DQ")
+      ];
+    } else if (currentRole === "mecanico") {
+      title = "Painel da manutenção";
+      subtitle = "Equipamentos e ordens de serviço";
+      metrics = [
+        ["OS abertas", openOrders.length, "maintenance"],
+        ["Equipamentos parados", d.equipment.filter(x => String(x.status).toLowerCase().includes("parado")).length, "maintenance"],
+        ["Pendências do turno", openPendings.filter(x => x.category === "Manutenção").length, "reports"]
+      ];
+      actions = [
+        create("new-maintenance-order", "Abrir ordem de serviço", "Registrar falha ou preventiva", "OS"),
+        action("maintenance", "Ver equipamentos", "Horímetro e programação", "EQ"),
+        action("reports", "Pendências recebidas", "Itens do turno anterior", "PS")
+      ];
+    } else if (currentRole === "qhse") {
+      title = "Painel QHSE";
+      subtitle = "Riscos, ações, validade e conformidade";
+      metrics = [
+        ["Ações pendentes", openActions.length, "qhse"],
+        ["Alertas críticos", d.systemAlerts.filter(x => isCriticalAlert(x.level)).length, "alerts"],
+        ["Qualidade dos dados", qualityCount, "quality"]
+      ];
+      actions = [
+        create("new-qhse", "Novo registro QHSE", "Risco, inspeção, DDS ou ocorrência", "QS"),
+        action("qhse", "Acompanhar ações", "Responsáveis e prazos", "AC"),
+        action("quality", "Ver conformidade", "Campos obrigatórios e documentos", "DQ")
+      ];
+    } else {
+      title = currentRole === "supervisor" ? "Painel da supervisão" : "Visão administrativa";
+      subtitle = "Riscos, produtividade, qualidade e decisões";
+      metrics = [
+        ["Operações ativas", activeOps.length, "operations"],
+        ["Alertas críticos", d.systemAlerts.filter(x => isCriticalAlert(x.level)).length, "alerts"],
+        ["Inconsistências", dataQualityIssues().length, "quality"]
+      ];
+      actions = [
+        action("quality", "Qualidade e conciliação", "Validar dados antes do fechamento", "DQ"),
+        action("reports", "Relatórios gerenciais", "Indicadores e passagem", "RG"),
+        action("audit", "Auditoria", "Quem alterou e quando", "AU")
+      ];
+    }
+
+    return `<section class="role-home-panel role-${esc(currentRole)}">
+      <div class="role-home-heading"><div><small>MEU PAINEL</small><h2>${title}</h2><p>${subtitle}</p></div><button class="btn secondary" data-action="open-feedback">Dar feedback</button></div>
+      <div class="role-home-metrics">${metrics.map(([label, value, page]) => `<button data-page-link="${page}"><span>${esc(label)}</span><strong>${esc(value)}</strong></button>`).join("")}</div>
+      <div class="role-home-actions">${actions.join("")}</div>
+    </section>`;
+  }
+
   function renderDashboard() {
     const d = state.data;
     const operations = filteredOperations();
@@ -1530,11 +1976,12 @@
     const truckCount = filtersActive ? periodTrucks : todayTrucks;
 
     $("#page-dashboard").innerHTML =
-      header("Visão gerencial", "Indicadores atuais da planta, produtividade e riscos operacionais.",
+      header(MOBILE_PAGE_META.dashboard[0], "Informações priorizadas conforme o seu cargo.",
         `<button class="btn secondary" data-export="operations">Exportar CSV</button>
          <button class="btn secondary" data-action="refresh">↻ Atualizar agora</button>
          <button class="btn primary" data-action="new-operation">+ Nova operação</button>`) +
 
+      dashboardRoleHome(d, activeOps) +
       `<div class="dashboard-sync-strip">
         <div><span class="live-dot"></span><strong>Atualização automática ativa</strong><small>Verificação em tempo real e a cada 60 segundos</small></div>
         <div><span>Última sincronização</span><strong>${state.lastSync ? dateTime(state.lastSync) : "-"}</strong></div>
@@ -1594,6 +2041,120 @@
       <div class="card smart-query" style="margin-top:14px"><div><h3>Consulta inteligente</h3><p>Pergunte sobre volumes, clientes, carretas, tanques, químicos, certificados ou diesel.</p></div><div class="smart-input"><input id="smartQuestion" placeholder="Ex.: Quantos bbl de Brine temos?"><button class="btn primary" data-action="smart-query">Perguntar</button></div><div id="smartAnswer" class="smart-answer hidden"></div></div>`;
   }
 
+
+
+  function dataQualityIssues() {
+    const d = state.data;
+    const issues = [];
+    const add = (severity, category, title, detail, page, entityType = "", entityId = "") => issues.push({
+      id: `${category}:${entityType}:${entityId}:${title}`,
+      severity, category, title, detail, page, entityType, entityId
+    });
+
+    d.tanks.forEach(tank => {
+      if (tank.volume > 0 && !tank.product) add("Alta", "Tancagem", `${tank.name} com saldo sem produto`, `${fmt.format(tank.volume)} ${tank.unit} precisam ser classificados.`, "tanks", "tank", tank.id);
+      if (tank.volume > 0 && !tank.lot) add("Média", "Tancagem", `${tank.name} sem lote`, `${tank.product || "Produto não informado"} possui saldo sem rastreabilidade de lote.`, "tanks", "tank", tank.id);
+      if (isSiloAsset(tank) && tank.volume > 0 && !(Number(tank.density) > 0)) add("Alta", "Tancagem", `${tank.name} sem densidade`, "A capacidade operacional do silo depende da densidade cadastrada.", "tanks", "tank", tank.id);
+      if (tank.capacity > 0 && tank.volume > tank.capacity + 0.001) add("Crítica", "Tancagem", `${tank.name} acima da capacidade`, `${fmt.format(tank.volume)} de ${fmt.format(tank.capacity)} ${tank.unit}.`, "tanks", "tank", tank.id);
+      const latest = d.tankHistory.filter(x => x.tank_id === tank.id).sort((a,b) => new Date(b.created_at)-new Date(a.created_at))[0];
+      if (latest && Math.abs(Number(latest.new_volume || 0) - Number(tank.volume || 0)) > 0.001) add("Alta", "Conciliação", `${tank.name} diferente do último histórico`, `Atual ${fmt.format(tank.volume)} ${tank.unit}; histórico ${fmt.format(latest.new_volume)} ${tank.unit}.`, "tanks", "tank", tank.id);
+    });
+
+    d.operations.forEach(op => {
+      const mode = tankMovementMode(op.activity);
+      const allocations = normalizedOperationAllocations(op);
+      const total = allocations.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+      if (op.status === "Concluída" && !op.end_at) add("Alta", "Operações", `${op.vessel}: concluída sem término`, `${op.client} • ${op.activity} de ${op.product}.`, "operations", "operation", op.id);
+      if (["Em andamento", "Paralisada", "Concluída"].includes(op.status) && !op.start_at) add("Alta", "Operações", `${op.vessel}: sem horário inicial`, `${op.client} • ${op.activity} de ${op.product}.`, "operations", "operation", op.id);
+      if (mode !== "none" && op.executed > 0 && !allocations.length) add("Crítica", "Operações", `${op.vessel}: sem rateio de tancagem`, `${fmt.format(op.executed)} ${op.unit} executados sem origem/destino distribuído.`, "operations", "operation", op.id);
+      if (mode !== "none" && allocations.length && Math.abs(total - op.executed) > 0.001) add("Alta", "Conciliação", `${op.vessel}: rateio diferente do executado`, `Executado ${fmt.format(op.executed)}; rateado ${fmt.format(total)} ${op.unit}.`, "operations", "operation", op.id);
+      if (op.executed > op.planned + 0.001 && op.planned > 0) add("Média", "Operações", `${op.vessel}: executado acima do planejado`, `${fmt.format(op.executed)} de ${fmt.format(op.planned)} ${op.unit}.`, "operations", "operation", op.id);
+    });
+
+    d.trucks.forEach(truck => {
+      if (!truck.invoice) add("Média", "Logística", `${truck.plate || truck.product}: carreta sem NF`, `${truck.movement} de ${truck.product} • ${fmt.format(truck.quantity)} ${truck.unit}.`, "trucks", "truck", truck.id);
+      if (!truck.lot) add("Média", "Logística", `${truck.plate || truck.product}: carreta sem lote`, `${truck.product} sem lote informado.`, "trucks", "truck", truck.id);
+      if (!truck.plate) add("Baixa", "Logística", `Movimentação sem placa`, `${truck.product} • NF ${truck.invoice || "-"}.`, "trucks", "truck", truck.id);
+    });
+
+    d.chemicals.forEach(item => {
+      if (!item.lot) add("Alta", "Químicos", `${item.name} sem lote`, "O controle FEFO e a rastreabilidade ficam incompletos.", "chemicals", "chemical", item.id);
+      if (!item.expiry_date) add("Média", "Químicos", `${item.name} sem validade`, `Lote ${item.lot || "-"}.`, "chemicals", "chemical", item.id);
+      if (item.quantity < 0) add("Crítica", "Químicos", `${item.name} com saldo negativo`, `${fmt.format(item.quantity)} ${item.unit}.`, "chemicals", "chemical", item.id);
+      const movements = d.chemicalMovements.filter(x => x.inventory_id === item.id).sort((a,b) => new Date(a.created_at)-new Date(b.created_at));
+      const latest = movements.at(-1);
+      if (latest && Math.abs(Number(latest.new_balance) - Number(item.quantity)) > 0.001) add("Crítica", "Conciliação", `${item.name} diferente da movimentação`, `Estoque ${fmt.format(item.quantity)}; último saldo ${fmt.format(latest.new_balance)} ${item.unit}.`, "chemicals", "chemical", item.id);
+      movements.forEach((movement, index) => {
+        if (index === 0) return;
+        const previous = movements[index - 1];
+        if (Math.abs(Number(movement.previous_balance) - Number(previous.new_balance)) > 0.001) add("Alta", "Conciliação", `${item.name}: quebra na sequência de saldos`, `${dateTime(previous.created_at)} → ${dateTime(movement.created_at)}.`, "chemicals", "chemical", item.id);
+      });
+    });
+
+    d.certificates.forEach(item => {
+      if (!item.user_id) add("Média", "Documentação", `${item.title} sem usuário vinculado`, `${item.owner || "Colaborador não informado"}.`, "certificates", "certificate", item.id);
+      if (!item.expires_at) add("Média", "Documentação", `${item.title} sem validade`, `${item.owner || "-"}.`, "certificates", "certificate", item.id);
+    });
+
+    d.equipment.forEach(item => {
+      if (!item.location) add("Baixa", "Manutenção", `${item.name} sem localização`, `${item.category}.`, "maintenance", "equipment", item.id);
+      if (!item.next_maintenance_date && !item.maintenance_due_hourmeter) add("Média", "Manutenção", `${item.name} sem preventiva programada`, "Cadastre data ou horímetro para a próxima manutenção.", "maintenance", "equipment", item.id);
+    });
+
+    return issues.sort((a, b) => {
+      const rank = { "Crítica": 0, "Alta": 1, "Média": 2, "Baixa": 3 };
+      return (rank[a.severity] ?? 9) - (rank[b.severity] ?? 9) || a.category.localeCompare(b.category);
+    });
+  }
+
+  function reconciliationSummary() {
+    const d = state.data;
+    const chemicalOk = d.chemicals.filter(item => {
+      const latest = d.chemicalMovements.filter(x => x.inventory_id === item.id).sort((a,b) => new Date(b.created_at)-new Date(a.created_at))[0];
+      return !latest || Math.abs(Number(latest.new_balance) - Number(item.quantity)) <= 0.001;
+    }).length;
+    const tankOk = d.tanks.filter(tank => {
+      const latest = d.tankHistory.filter(x => x.tank_id === tank.id).sort((a,b) => new Date(b.created_at)-new Date(a.created_at))[0];
+      return !latest || Math.abs(Number(latest.new_volume || 0) - Number(tank.volume || 0)) <= 0.001;
+    }).length;
+    const operationOk = d.operations.filter(op => {
+      const mode = tankMovementMode(op.activity);
+      if (mode === "none" || op.executed <= 0) return true;
+      const total = normalizedOperationAllocations(op).reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+      return Math.abs(total - op.executed) <= 0.001;
+    }).length;
+    return {
+      tankOk, tankTotal: d.tanks.length,
+      chemicalOk, chemicalTotal: d.chemicals.length,
+      operationOk, operationTotal: d.operations.length
+    };
+  }
+
+  function renderQuality() {
+    const issues = dataQualityIssues();
+    const summary = reconciliationSummary();
+    const critical = issues.filter(x => ["Crítica", "Alta"].includes(x.severity));
+    const categories = [...new Set(issues.map(x => x.category))];
+    const cards = issues.map(item => `<article class="card quality-issue-card ${statusClass(item.severity)}">
+      <div class="quality-issue-top"><span>${esc(item.category)}</span>${badge(item.severity)}</div>
+      <h3>${esc(item.title)}</h3><p>${esc(item.detail)}</p>
+      <footer><button class="btn small secondary" data-quality-page="${item.page}" data-quality-type="${item.entityType}" data-quality-id="${item.entityId}">Corrigir registro</button></footer>
+    </article>`).join("");
+
+    $("#page-quality").innerHTML =
+      header("Qualidade dos dados", "Verificação automática de rastreabilidade, conciliação e campos obrigatórios.",
+        `<button class="btn secondary" data-action="refresh">↻ Recalcular</button><button class="btn primary" data-export="quality">Exportar pendências</button>`) +
+      `<div class="quality-score-card card"><div><small>ÍNDICE DE QUALIDADE</small><strong>${Math.max(0, Math.round(100 - Math.min(100, issues.reduce((sum, item) => sum + ({Crítica:8,Alta:5,Média:2,Baixa:1}[item.severity] || 1)))))}%</strong><span>${issues.length} ponto(s) encontrado(s)</span></div><div class="quality-score-bars"><span>Críticos/altos<strong>${critical.length}</strong></span><span>Categorias<strong>${categories.length}</strong></span><span>Última análise<strong>${new Date().toLocaleTimeString("pt-BR")}</strong></span></div></div>
+      <div class="section-title">Conciliação automática</div>
+      <div class="grid three reconciliation-grid">
+        <div class="card reconciliation-card"><span>Tanques e silos</span><strong>${summary.tankOk}/${summary.tankTotal}</strong><small>Saldo atual igual ao último histórico</small><div class="progress"><span style="width:${summary.tankTotal ? summary.tankOk / summary.tankTotal * 100 : 100}%"></span></div></div>
+        <div class="card reconciliation-card"><span>Inventário químico</span><strong>${summary.chemicalOk}/${summary.chemicalTotal}</strong><small>Saldo igual à última movimentação</small><div class="progress"><span style="width:${summary.chemicalTotal ? summary.chemicalOk / summary.chemicalTotal * 100 : 100}%"></span></div></div>
+        <div class="card reconciliation-card"><span>Operações com rateio</span><strong>${summary.operationOk}/${summary.operationTotal}</strong><small>Rateio igual ao volume executado</small><div class="progress"><span style="width:${summary.operationTotal ? summary.operationOk / summary.operationTotal * 100 : 100}%"></span></div></div>
+      </div>
+      <div class="section-title">Pendências encontradas</div>
+      <div class="quality-filter-chips">${categories.map(category => `<span>${esc(category)} <strong>${issues.filter(x => x.category === category).length}</strong></span>`).join("") || `<span>Nenhuma pendência</span>`}</div>
+      <div class="quality-issues-grid">${cards || `<div class="card quality-all-good"><strong>✓ Dados consistentes</strong><p>Nenhuma inconsistência automática foi encontrada.</p></div>`}</div>`;
+  }
 
   function planningAssessment(operation) {
     const allocations = normalizedOperationAllocations(operation);
@@ -1791,6 +2352,7 @@
         ${hasRole(["supervisor", "lider", "operador", "logistica"]) ? `<button class="btn small primary" data-edit-tank="${tank.id}">${isAdmin() ? "Editar tudo" : "Atualizar volume"}</button>` : ""}
         <button class="btn small secondary" data-tank-history="${tank.id}">Histórico</button>
         <button class="btn small secondary" data-tank-movements="${tank.id}">Movimentações</button>
+        <button class="btn small secondary" data-asset-qr="tank:${tank.id}">QR Code</button>
       </div>
     </div>`;
   }
@@ -2179,7 +2741,11 @@
       const openOrders = state.data.maintenanceOrders.filter(order => order.equipment_id === item.id && !["Concluída", "Fechada", "Cancelada"].includes(order.status)).length;
       const hoursDue = item.maintenance_due_hourmeter > 0 ? item.maintenance_due_hourmeter - item.hourmeter : null;
       const preventive = hoursDue !== null && hoursDue <= 0 ? "Vencida por horímetro" : item.next_maintenance_date ? `${dateOnly(item.next_maintenance_date)}${hoursDue !== null ? ` • ${fmt.format(hoursDue)} h` : ""}` : hoursDue !== null ? `${fmt.format(hoursDue)} h restantes` : "Não programada";
-      return `<tr><td><strong>${esc(item.name)}</strong><br><small>${esc(item.category)} • ${esc(item.location || "-")}</small></td><td>${badge(item.status)}</td><td>${fmt.format(item.hourmeter)} h</td><td>${esc(preventive)}</td><td>${fmt.format(used)} L</td><td>${fmt.format(average)} L/h</td><td>${openOrders}</td><td><div class="row-actions">${canManageMaintenance ? `<button class="btn small primary" data-new-order-equipment="${item.id}">Abrir OS</button>` : ""}${isAdmin() ? `<button class="btn small secondary" data-edit-equipment="${item.id}">Editar</button>` : ""}</div></td></tr>`;
+      return `<tr><td><strong>${esc(item.name)}</strong><br><small>${esc(item.category)} • ${esc(item.location || "-")}</small></td><td>${badge(item.status)}</td><td>${fmt.format(item.hourmeter)} h</td><td>${esc(preventive)}</td><td>${fmt.format(used)} L</td><td>${fmt.format(average)} L/h</td><td>${openOrders}</td><td><div class="row-actions">${canManageMaintenance ? `<button class="btn small primary" data-new-order-equipment="${item.id}">Abrir OS</button>` : ""}${isAdmin() ? `<button class="btn small secondary" data-edit-equipment="${item.id}">Editar</button>` : ""}<button class="btn small secondary" data-asset-qr="equipment:${item.id}">QR</button></div></td></tr>`;
+    }).join("");
+    const mobileEquipment = state.data.equipment.map(item => {
+      const openOrders = state.data.maintenanceOrders.filter(order => order.equipment_id === item.id && !["Concluída", "Fechada", "Cancelada"].includes(order.status)).length;
+      return `<article class="card mobile-record-card"><div class="mobile-record-head"><div><strong>${esc(item.name)}</strong><small>${esc(item.category)} • ${esc(item.location || "-")}</small></div>${badge(item.status)}</div><div class="mobile-record-grid"><span>Horímetro<strong>${fmt.format(item.hourmeter)} h</strong></span><span>OS abertas<strong>${openOrders}</strong></span></div><div class="row-actions">${canManageMaintenance ? `<button class="btn small primary" data-new-order-equipment="${item.id}">Abrir OS</button>` : ""}<button class="btn small secondary" data-asset-qr="equipment:${item.id}">QR Code</button>${isAdmin() ? `<button class="btn small secondary" data-edit-equipment="${item.id}">Editar</button>` : ""}</div></article>`;
     }).join("");
     const orderRows = state.data.maintenanceOrders.map(order => {
       const equipment = state.data.equipment.find(x => x.id === order.equipment_id)?.name || "Equipamento removido";
@@ -2193,7 +2759,7 @@
     const headerActions = `<button class="btn secondary" data-export="maintenance">Exportar CSV</button>${canManageMaintenance ? `<button class="btn secondary" data-action="new-equipment">+ Novo equipamento</button><button class="btn primary" data-action="new-maintenance-order">+ Nova ordem de serviço</button>` : ""}`;
     const quickActions = canManageMaintenance ? `<div class="module-action-grid"><button class="module-action-card" data-action="new-equipment"><span class="module-action-card-icon">EQ</span><span><strong>Adicionar equipamento</strong><small>Cadastre motor a diesel, bomba, compressor ou outro ativo.</small></span><b>+</b></button><button class="module-action-card primary-action-card" data-action="new-maintenance-order"><span class="module-action-card-icon">OS</span><span><strong>Abrir ordem de serviço</strong><small>Registre manutenção preventiva ou corretiva.</small></span><b>+</b></button></div>` : "";
 
-    $("#page-maintenance").innerHTML = header("Manutenção", "Equipamentos, preventiva, horímetro, diesel e ordens de serviço.", headerActions) + quickActions + `<div class="section-title">Equipamentos</div><div class="card table-wrap"><table class="data-table"><thead><tr><th>Equipamento</th><th>Status</th><th>Horímetro</th><th>Preventiva</th><th>Diesel</th><th>Média</th><th>OS abertas</th><th>Ação</th></tr></thead><tbody>${equipmentRows || `<tr><td colspan="8" class="empty">Nenhum equipamento cadastrado.</td></tr>`}</tbody></table></div><div class="section-title">Ordens de serviço</div><div class="card table-wrap desktop-record-table"><table class="data-table"><thead><tr><th>Ordem</th><th>Prioridade</th><th>Status</th><th>Responsável</th><th>Prazo</th><th>Custo</th><th>Ações</th></tr></thead><tbody>${orderRows || `<tr><td colspan="7" class="empty">Nenhuma ordem de serviço.</td></tr>`}</tbody></table></div><div class="mobile-record-list">${mobileOrders || `<div class="card empty">Nenhuma ordem de serviço.</div>`}</div>`;
+    $("#page-maintenance").innerHTML = header("Manutenção", "Equipamentos, preventiva, horímetro, diesel e ordens de serviço.", headerActions) + quickActions + `<div class="section-title">Equipamentos</div><div class="card table-wrap desktop-record-table"><table class="data-table"><thead><tr><th>Equipamento</th><th>Status</th><th>Horímetro</th><th>Preventiva</th><th>Diesel</th><th>Média</th><th>OS abertas</th><th>Ação</th></tr></thead><tbody>${equipmentRows || `<tr><td colspan="8" class="empty">Nenhum equipamento cadastrado.</td></tr>`}</tbody></table></div><div class="mobile-record-list">${mobileEquipment || `<div class="card empty">Nenhum equipamento cadastrado.</div>`}</div><div class="section-title">Ordens de serviço</div><div class="card table-wrap desktop-record-table"><table class="data-table"><thead><tr><th>Ordem</th><th>Prioridade</th><th>Status</th><th>Responsável</th><th>Prazo</th><th>Custo</th><th>Ações</th></tr></thead><tbody>${orderRows || `<tr><td colspan="7" class="empty">Nenhuma ordem de serviço.</td></tr>`}</tbody></table></div><div class="mobile-record-list">${mobileOrders || `<div class="card empty">Nenhuma ordem de serviço.</div>`}</div>`;
   }
 
   function renderCertificates() {
@@ -2515,13 +3081,32 @@
   }
 
 
+
+  function homologationPanel() {
+    const logs = testLog();
+    return `<div class="card homologation-card ${state.testMode ? "active" : ""}">
+      <div class="homologation-head"><div><span class="homologation-dot"></span><div><h3>Modo de homologação local</h3><p>Use os dados oficiais somente para consulta e simule salvamentos neste aparelho.</p></div></div>${badge(state.testMode ? "Ativo" : "Inativo")}</div>
+      <div class="info-box">${state.testMode ? "Nenhum formulário, checklist, transferência ou encerramento será enviado ao banco oficial." : "Ative antes de testar novos fluxos com a equipe."}</div>
+      <div class="row-actions"><button class="btn ${state.testMode ? "danger" : "primary"}" data-action="toggle-test-mode">${state.testMode ? "Desativar homologação" : "Ativar homologação"}</button><button class="btn secondary" data-action="export-test-log">Exportar testes (${logs.length})</button>${logs.length ? `<button class="btn secondary" data-action="clear-test-log">Limpar testes</button>` : ""}</div>
+    </div>`;
+  }
+
+  function feedbackManagementPanel() {
+    const items = state.data.feedback || [];
+    if (!items.length) return `<div class="card empty">Nenhum feedback recebido.</div>`;
+    return `<div class="feedback-management-list">${items.map(item => {
+      const user = state.data.users.find(x => x.id === item.created_by)?.name || "Usuário";
+      return `<article class="card feedback-card"><div class="mobile-record-head"><div><strong>${esc(item.category)}</strong><small>${esc(user)} • ${dateTime(item.created_at)} • ${esc(item.page)}</small></div>${badge(item.status)}</div><p>${esc(item.message)}</p>${item.rating ? `<span class="feedback-rating">Nota ${item.rating}/5</span>` : ""}</article>`;
+    }).join("")}</div>`;
+  }
+
   function renderSettings() {
     const users = state.data?.users || [];
     const userRows = users.map(user => `<tr><td><strong>${esc(user.name)}</strong><br><small>${esc(user.email)}</small></td><td>${badge(user.role)}</td><td>${esc(user.department || "-")}</td><td>${badge(user.active ? "Ativo" : "Inativo")}</td><td>${dateOnly(user.created_at)}</td><td>${isAdmin() ? `<button class="btn small primary" data-edit-user="${user.id}">Gerenciar</button>` : ""}</td></tr>`).join("");
     const mobileUsers = users.map(user => `<article class="card mobile-record-card"><div class="mobile-record-head"><div><strong>${esc(user.name)}</strong><small>${esc(user.email)}</small></div>${badge(user.active ? "Ativo" : "Inativo")}</div><div class="mobile-record-grid"><span>Cargo<strong>${esc(user.role)}</strong></span><span>Setor<strong>${esc(user.department || "-")}</strong></span></div>${isAdmin() ? `<button class="btn primary full" data-edit-user="${user.id}">Gerenciar usuário</button>` : ""}</article>`).join("");
     const lastSync = state.lastSync ? state.lastSync.toLocaleString("pt-BR") : "Não sincronizado";
     const errors = state.data?.systemErrors || [];
-    $("#page-settings").innerHTML = header("Configurações", "Perfil, usuários, permissões, diagnóstico e aparência.", `<button class="btn secondary" data-action="toggle-theme">Alternar tema</button>${isAdmin() ? `<button class="btn primary" data-action="new-user">+ Novo usuário</button>` : ""}`) + `<div class="grid two"><div class="card"><h3>Meu perfil</h3><div class="kpi-list" style="margin-top:14px"><div class="kpi-row"><span>Nome</span><strong>${esc(state.data.profile.name)}</strong></div><div class="kpi-row"><span>E-mail</span><strong>${esc(state.data.profile.email)}</strong></div><div class="kpi-row"><span>Cargo</span>${badge(state.data.profile.role)}</div><div class="kpi-row"><span>Departamento</span><strong>${esc(state.data.profile.department || "-")}</strong></div></div></div><div class="card"><h3>Diagnóstico do sistema</h3><div class="kpi-list" style="margin-top:14px"><div class="kpi-row"><span>Última sincronização</span><strong>${esc(lastSync)}</strong></div><div class="kpi-row"><span>Tanques e silos</span><strong>${(state.data.tanks || []).length}</strong></div><div class="kpi-row"><span>Operações</span><strong>${(state.data.operations || []).length}</strong></div><div class="kpi-row"><span>Alertas automáticos</span><strong>${(state.data.systemAlerts || []).length}</strong></div><div class="kpi-row"><span>Erros registrados</span><strong>${errors.length}</strong></div><div class="kpi-row"><span>Fila offline</span><strong>${offlineQueue().length}</strong></div><div class="kpi-row"><span>Backup local</span><strong>${latestLocalBackup()?.created_at ? dateTime(latestLocalBackup().created_at) : "-"}</strong></div></div><div class="row-actions" style="margin-top:12px"><button class="btn primary" data-action="backup-json">Backup JSON</button><button class="btn secondary" data-action="sync-offline">Sincronizar offline</button></div><div class="info-box" style="margin-top:12px">Movimentações automáticas e transferências são executadas por transações no Supabase.</div>${isAdmin() ? `<div class="admin-edit-notice" style="margin-top:12px"><strong>Edição total ativa</strong><span>O administrador pode editar registros operacionais de todos os módulos. Históricos e auditorias permanecem protegidos.</span></div>` : ""}</div></div><div class="section-title">Usuários e permissões</div><div class="card table-wrap desktop-record-table">${isAdmin() ? "" : `<div class="info-box" style="margin-bottom:12px">Somente o administrador pode alterar cargo, setor, status e permissões.</div>`}<table class="data-table"><thead><tr><th>Usuário</th><th>Cargo</th><th>Departamento</th><th>Status</th><th>Cadastro</th><th>Ação</th></tr></thead><tbody>${userRows}</tbody></table></div><div class="mobile-record-list">${mobileUsers || `<div class="card empty">Nenhum usuário disponível.</div>`}</div>${isAdmin() && errors.length ? `<div class="section-title">Erros recentes</div><div class="card table-wrap"><table class="data-table"><thead><tr><th>Data</th><th>Contexto</th><th>Mensagem</th></tr></thead><tbody>${errors.slice(0,20).map(e => `<tr><td>${dateTime(e.created_at)}</td><td>${esc(e.context || "-")}</td><td>${esc(e.message)}</td></tr>`).join("")}</tbody></table></div>` : ""}`;
+    $("#page-settings").innerHTML = header("Configurações", "Perfil, usuários, permissões, diagnóstico e aparência.", `<button class="btn secondary" data-action="toggle-theme">Alternar tema</button>${isAdmin() ? `<button class="btn primary" data-action="new-user">+ Novo usuário</button>` : ""}`) + `<div class="section-title">Teste seguro</div>${homologationPanel()}<div class="grid two"><div class="card"><h3>Meu perfil</h3><div class="kpi-list" style="margin-top:14px"><div class="kpi-row"><span>Nome</span><strong>${esc(state.data.profile.name)}</strong></div><div class="kpi-row"><span>E-mail</span><strong>${esc(state.data.profile.email)}</strong></div><div class="kpi-row"><span>Cargo</span>${badge(state.data.profile.role)}</div><div class="kpi-row"><span>Departamento</span><strong>${esc(state.data.profile.department || "-")}</strong></div></div></div><div class="card"><h3>Diagnóstico do sistema</h3><div class="kpi-list" style="margin-top:14px"><div class="kpi-row"><span>Última sincronização</span><strong>${esc(lastSync)}</strong></div><div class="kpi-row"><span>Tanques e silos</span><strong>${(state.data.tanks || []).length}</strong></div><div class="kpi-row"><span>Operações</span><strong>${(state.data.operations || []).length}</strong></div><div class="kpi-row"><span>Alertas automáticos</span><strong>${(state.data.systemAlerts || []).length}</strong></div><div class="kpi-row"><span>Erros registrados</span><strong>${errors.length}</strong></div><div class="kpi-row"><span>Fila offline</span><strong>${offlineQueue().length}</strong></div><div class="kpi-row"><span>Backup local</span><strong>${latestLocalBackup()?.created_at ? dateTime(latestLocalBackup().created_at) : "-"}</strong></div></div><div class="row-actions" style="margin-top:12px"><button class="btn primary" data-action="backup-json">Backup JSON</button><button class="btn secondary" data-action="sync-offline">Sincronizar offline</button></div><div class="info-box" style="margin-top:12px">Movimentações automáticas e transferências são executadas por transações no Supabase.</div>${isAdmin() ? `<div class="admin-edit-notice" style="margin-top:12px"><strong>Edição total ativa</strong><span>O administrador pode editar registros operacionais de todos os módulos. Históricos e auditorias permanecem protegidos.</span></div>` : ""}</div></div><div class="section-title">Usuários e permissões</div><div class="card table-wrap desktop-record-table">${isAdmin() ? "" : `<div class="info-box" style="margin-bottom:12px">Somente o administrador pode alterar cargo, setor, status e permissões.</div>`}<table class="data-table"><thead><tr><th>Usuário</th><th>Cargo</th><th>Departamento</th><th>Status</th><th>Cadastro</th><th>Ação</th></tr></thead><tbody>${userRows}</tbody></table></div><div class="mobile-record-list">${mobileUsers || `<div class="card empty">Nenhum usuário disponível.</div>`}</div>${hasRole(["supervisor"]) ? `<div class="section-title">Feedback da versão beta</div>${feedbackManagementPanel()}` : ""}${isAdmin() && errors.length ? `<div class="section-title">Erros recentes</div><div class="card table-wrap"><table class="data-table"><thead><tr><th>Data</th><th>Contexto</th><th>Mensagem</th></tr></thead><tbody>${errors.slice(0,20).map(e => `<tr><td>${dateTime(e.created_at)}</td><td>${esc(e.context || "-")}</td><td>${esc(e.message)}</td></tr>`).join("")}</tbody></table></div>` : ""}`;
   }
 
 
@@ -2751,7 +3336,7 @@
 
   function userForm(user) {
     const modules = [
-      ["dashboard", "Dashboard"], ["tv", "Painel TV"], ["operations", "Operações"], ["tanks", "Tanques"],
+      ["dashboard", "Dashboard"], ["quality", "Qualidade dos Dados"], ["tv", "Painel TV"], ["operations", "Operações"], ["tanks", "Tanques"],
       ["fluids", "Fluidos"], ["chemicals", "Inventário Químico"], ["trucks", "Carretas"], ["qhse", "QHSE"],
       ["maintenance", "Manutenção"], ["certificates", "Certificados"],
       ["alerts", "Alertas"], ["reports", "Relatórios"], ["audit", "Auditoria"]
@@ -3259,6 +3844,10 @@
   document.addEventListener("submit", async event => {
     event.preventDefault();
     const form = event.target;
+    if (state.testMode && form.id !== "feedbackForm") {
+      simulateFormSubmission(form);
+      return;
+    }
     if (!navigator.onLine && form.id !== "loginForm") {
       if (queueOfflineForm(form)) {
         closeModal(); toast("Registro salvo na fila offline. Será sincronizado quando a internet voltar.", "success");
@@ -3268,6 +3857,21 @@
     }
     try {
       if (!navigator.onLine) throw new Error("Sem internet. Reconecte para salvar alterações.");
+
+
+      if (form.id === "feedbackForm") {
+        const payload = Object.fromEntries(new FormData(form));
+        const { error } = await state.client.from("app_feedback").insert({
+          category: payload.category,
+          page: payload.page || state.page,
+          rating: payload.rating ? Number(payload.rating) : null,
+          message: payload.message.trim(),
+          device_info: `${navigator.userAgent} | ${window.innerWidth}x${window.innerHeight}`,
+          app_version: APP_VERSION,
+          created_by: state.user.id
+        });
+        if (error) throw error;
+      }
 
       if (form.id === "operationForm") {
         const payload = Object.fromEntries(new FormData(form));
@@ -3492,7 +4096,7 @@
           throw new Error("O administrador atual não pode remover o próprio cargo.");
         }
         const permissions = {};
-        ["dashboard", "tv", "operations", "tanks", "fluids", "chemicals", "trucks", "qhse", "maintenance", "certificates", "alerts", "reports", "audit"].forEach(module => {
+        ["dashboard", "quality", "tv", "operations", "tanks", "fluids", "chemicals", "trucks", "qhse", "maintenance", "certificates", "alerts", "reports", "audit"].forEach(module => {
           permissions[module] = form.querySelector(`[name="perm_${module}"]`)?.checked === true;
         });
         if (payload.role === "tv") Object.keys(permissions).forEach(key => permissions[key] = key === "tv");
@@ -3512,6 +4116,7 @@
         await uploadAttachments(form.dataset.module, form.dataset.recordId, files);
       }
 
+      clearFormDraft(form);
       await loadData();
       renderAll();
       closeModal();
@@ -3548,6 +4153,7 @@
     if (button.classList.contains("nav-item")) return showPage(button.dataset.page);
     if (button.closest(".user-chip")) return showPage("settings");
     if (button.id === "notificationsBtn") return showPage("alerts");
+    if (button.id === "globalSearchBtn") return openGlobalSearch();
 
     if (button.dataset.pageLink) { showPage(button.dataset.pageLink); return; }
     if (button.dataset.alertPage) { showPage(button.dataset.alertPage); return; }
@@ -3570,8 +4176,65 @@
       return;
     }
 
+
+    if (button.dataset.searchType) {
+      state.searchQuery = $("#globalSearchInput")?.value || state.searchQuery;
+      return openSearchResult(button.dataset.searchType, button.dataset.searchId, button.dataset.searchPage);
+    }
+
+    if (button.dataset.assetQr) {
+      const [type, id] = button.dataset.assetQr.split(":");
+      return openAssetQr(type, id);
+    }
+
+    if (button.dataset.qualityPage) {
+      const type = button.dataset.qualityType;
+      const id = button.dataset.qualityId;
+      showPage(button.dataset.qualityPage);
+      if (type === "tank" || type === "equipment") return openAssetQr(type, id);
+      if (type === "operation") return openSearchResult(type, id, "operations");
+      if (type === "chemical") return openSearchResult(type, id, "chemicals");
+      return;
+    }
+
     const action = button.dataset.action;
     if (button.closest(".mobile-sheet") && !["mobile-more", "mobile-quick"].includes(action)) closeMobileSheets();
+
+    if (action === "open-feedback") {
+      return openModal("Feedback da versão beta", feedbackForm(), "MELHORIA CONTÍNUA");
+    }
+    if (action === "discard-draft") {
+      const form = button.closest("form");
+      clearFormDraft(form);
+      button.closest(".draft-restored-banner")?.remove();
+      form?.reset();
+      syncOperationTankFields(form);
+      return toast("Rascunho descartado.");
+    }
+    if (action === "toggle-test-mode") {
+      setTestMode(!state.testMode);
+      return;
+    }
+    if (action === "export-test-log") {
+      downloadJson(`homologacao-${localDateKey()}.json`, { version: APP_VERSION, exported_at: new Date().toISOString(), records: testLog() });
+      return toast("Histórico de homologação exportado.", "success");
+    }
+    if (action === "clear-test-log") {
+      if (!confirm("Limpar o histórico local de homologação?")) return;
+      localStorage.removeItem(TEST_LOG_KEY);
+      renderSettings();
+      return toast("Histórico de homologação limpo.");
+    }
+    if (action === "copy-asset-link") {
+      await navigator.clipboard.writeText(button.dataset.link || "");
+      return toast("Link do ativo copiado.", "success");
+    }
+    if (action === "print-asset-qr") {
+      document.body.classList.add("print-asset-qr");
+      setTimeout(() => window.print(), 80);
+      return;
+    }
+
     if (action === "mobile-more") {
       openMobileSheet("more");
       return;
@@ -3658,6 +4321,11 @@
     if (action === "sync-offline") {
       if (!navigator.onLine) return toast("Sem conexão para sincronizar.", "error");
       await syncOfflineQueue(); return;
+    }
+    const directWriteActions = ["deliver-handover","approve-handover","reopen-handover","save-handover-note","save-tank-volume"];
+    if (state.testMode && directWriteActions.includes(action)) {
+      addTestLog(`action:${action}`, { page: state.page });
+      return toast("Ação simulada na homologação local. O banco oficial não foi alterado.", "success");
     }
     if (action === "deliver-handover") {
       const selection=ensureHandoverSelection(); const snapshot=handoverSnapshot(selection);
@@ -3954,6 +4622,8 @@
   });
 
   document.addEventListener("change", async event => {
+    const changedForm = event.target.closest("#modalBody form");
+    if (changedForm) scheduleDraftSave(changedForm);
     if (event.target.closest("#operationForm") && ["activity","unit","status","apply_tank_movement"].includes(event.target.name)) syncOperationTankFields(event.target.closest("#operationForm"));
     if (event.target.closest("#operationForm") && event.target.matches("[data-allocation-tank]")) updateOperationAllocationSummary(event.target.closest("#operationForm"));
     if (event.target.closest("#tankTransferForm")) updateTransferPreview(event.target.closest("#tankTransferForm"));
@@ -3967,6 +4637,11 @@
       if (owner && option?.dataset.userName) owner.value = option.dataset.userName;
     }
     if (event.target.matches("[data-shift-checklist]")) {
+      if (state.testMode) {
+        addTestLog("checklist", { key:event.target.dataset.shiftChecklist, completed:event.target.checked });
+        toast("Checklist simulado na homologação local.", "success");
+        return;
+      }
       const selection=ensureHandoverSelection(); const key=event.target.dataset.shiftChecklist;
       const template=SHIFT_CHECKLIST_TEMPLATE.find(item=>item[0]===key); const note=document.querySelector(`[data-shift-checklist-note="${key}"]`)?.value||"";
       const completed=event.target.checked;
@@ -3976,6 +4651,12 @@
   });
 
   document.addEventListener("input", event => {
+    if (event.target.id === "globalSearchInput") {
+      state.searchQuery = event.target.value;
+      renderGlobalSearchResults(state.searchQuery);
+    }
+    const draftForm = event.target.closest("#modalBody form");
+    if (draftForm) scheduleDraftSave(draftForm);
     if (event.target.closest("#tankTransferForm") && event.target.name === "quantity") updateTransferPreview(event.target.closest("#tankTransferForm"));
     if (event.target.closest("#operationForm") && (event.target.name === "executed" || event.target.matches("[data-allocation-quantity]"))) updateOperationAllocationSummary(event.target.closest("#operationForm"));
     if (event.target.closest("#tankForm") && ["density","physical_capacity_m3","volume"].includes(event.target.name)) {
@@ -4002,6 +4683,10 @@
 
   document.addEventListener("focusout", async event => {
     if (!event.target.matches("[data-shift-checklist-note]")) return;
+    if (state.testMode) {
+      addTestLog("checklist-note", { key:event.target.dataset.shiftChecklistNote, notes:event.target.value });
+      return;
+    }
     const selection=ensureHandoverSelection(); const key=event.target.dataset.shiftChecklistNote;
     const template=SHIFT_CHECKLIST_TEMPLATE.find(item=>item[0]===key);
     const current=checklistForShift(selection).find(item=>item.item_key===key);
@@ -4039,7 +4724,10 @@
     refreshRealtime("conexão restaurada");
   });
   window.addEventListener("offline", updateConnectionBadge);
-  window.addEventListener("afterprint", () => document.body.classList.remove("print-handover"));
+  window.addEventListener("afterprint", () => {
+    document.body.classList.remove("print-handover");
+    document.body.classList.remove("print-asset-qr");
+  });
   document.addEventListener("fullscreenchange", () => {
     if (state.page === "tv") renderTv();
   });

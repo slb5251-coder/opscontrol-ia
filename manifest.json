@@ -66,6 +66,20 @@
           "type": "image/svg+xml"
         }
       ]
+    },
+    {
+      "name": "Qualidade dos Dados",
+      "short_name": "Qualidade",
+      "description": "Abrir conciliação e inconsistências",
+      "url": "./index.html#quality",
+      "icons": [
+        {
+          "src": "assets/icon.svg",
+          "sizes": "any",
+          "type": "image/svg+xml"
+        }
+      ]
     }
-  ]
+  ],
+  "version": "20260715-field-experience-1"
 }

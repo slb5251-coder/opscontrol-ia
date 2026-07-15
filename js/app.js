@@ -1296,7 +1296,7 @@
         id: x.id, name: x.name, type: x.category, unit: x.default_unit,
         density: Number(x.density_value ?? x.density_ppg ?? 0),
         densityUnit: x.density_unit || (["granel", "insumo"].includes(String(x.category || "").toLowerCase()) ? "t/m³" : "ppg"),
-        active: x.active
+        active: x.active !== false
       })),
       tanks: (results[3].data || []).map(x => ({
         id: x.id, name: x.name, phase: x.phase, kind: x.kind,
@@ -2645,6 +2645,40 @@
     </form>`;
   }
 
+
+  async function toggleFluidCatalogActive(id, nextActive) {
+    if (!canManageFluidCatalog()) return toast("Seu perfil não pode alterar o catálogo.", "error");
+    const item = state.data.fluids.find(product => product.id === id);
+    if (!item) return toast("Produto não encontrado.", "error");
+
+    if (state.testMode) {
+      addTestLog("fluid-status", { id, name: item.name, active: nextActive });
+      return toast("Alteração simulada na homologação local.", "success");
+    }
+
+    const { data, error } = await state.client.rpc("save_fluid_catalog_item", {
+      p_id: item.id,
+      p_name: item.name,
+      p_category: item.type,
+      p_default_unit: item.unit,
+      p_density_value: item.density || null,
+      p_density_unit: item.densityUnit || defaultDensityUnit(item.type),
+      p_active: Boolean(nextActive)
+    });
+
+    if (error) throw error;
+    const saved = Array.isArray(data) ? data[0] : data;
+    if (!saved?.id || saved.active !== Boolean(nextActive)) {
+      throw new Error("O Supabase não confirmou a alteração do status.");
+    }
+
+    await loadData();
+    renderFluids();
+    renderTanks();
+    renderMobileShell();
+    toast(nextActive ? `${item.name} ativado e liberado na tancagem.` : `${item.name} desativado e removido das novas seleções.`, "success");
+  }
+
   function fluidCatalogCard(item) {
     const category = String(item.type || "Outros");
     const bulk = ["granel", "insumo"].includes(category.toLowerCase());
@@ -2660,7 +2694,7 @@
       </div>
       <div class="row-actions">
         <button class="btn small secondary" data-attachments="fluid:${item.id}" data-attachment-title="${esc(item.name)}">Anexos (${attachmentCount("fluid", item.id)})</button>
-        ${canManageFluidCatalog() ? `<button class="btn small primary" data-edit-fluid="${item.id}">Editar</button>` : ""}
+        ${canManageFluidCatalog() ? `<button class="btn small ${item.active ? "danger-soft" : "success-soft"}" data-toggle-fluid-active="${item.id}" data-next-active="${item.active ? "false" : "true"}">${item.active ? "Desativar" : "Ativar agora"}</button><button class="btn small primary" data-edit-fluid="${item.id}">Editar</button>` : ""}
       </div>
     </article>`;
   }
@@ -3255,7 +3289,7 @@
         <div><label>Unidade de estoque</label><select name="unit">${["bbl","ton","m³","kg"].map(x => `<option ${sel(item.unit,x)}>${x}</option>`).join("")}</select></div>
         <div><label>Densidade padrão</label><input name="density" type="text" inputmode="decimal" value="${item.density || ""}" placeholder="Ex.: 9,7 ou 4,10"></div>
         <div><label>Unidade da densidade</label><select name="density_unit"><option value="ppg" ${(item.densityUnit || defaultDensityUnit(item.type)) === "ppg" ? "selected" : ""}>ppg</option><option value="t/m³" ${(item.densityUnit || defaultDensityUnit(item.type)) === "t/m³" ? "selected" : ""}>t/m³</option></select></div>
-        <div><label>Ativo</label><select name="active"><option value="true" ${item.active !== false ? "selected" : ""}>Sim</option><option value="false" ${item.active === false ? "selected" : ""}>Não</option></select></div>
+        <div class="catalog-status-field"><label>Status do produto *</label><select name="active" required><option value="true" ${item.active !== false ? "selected" : ""}>Ativo — aparece nos tanques/silos</option><option value="false" ${item.active === false ? "selected" : ""}>Inativo — fica oculto na seleção</option></select><small class="field-help">Ao ativar, o produto volta imediatamente para o menu suspenso dos equipamentos compatíveis.</small></div>
         <div class="wide"><label>Documentos ou fotos</label><input name="attachment" type="file" accept=".pdf,image/jpeg,image/png,image/webp,image/heic,image/heif" multiple></div>
       </div>${formActions(id ? "Salvar alterações" : "Salvar produto")}</form>`,
 
@@ -3668,14 +3702,26 @@
   }
 
   async function saveEntity(kind, payload, id = null) {
+
+    if (kind === "fluid") {
+      const active = String(payload.active).toLowerCase() === "true";
+      const density = parseOptionalDecimal(payload.density);
+      const { data, error } = await state.client.rpc("save_fluid_catalog_item", {
+        p_id: id || null,
+        p_name: payload.name?.trim() || "",
+        p_category: payload.type,
+        p_default_unit: payload.unit,
+        p_density_value: density,
+        p_density_unit: payload.density_unit || defaultDensityUnit(payload.type),
+        p_active: active
+      });
+      if (error) throw error;
+      const saved = Array.isArray(data) ? data[0] : data;
+      if (!saved?.id) throw new Error("O Supabase não confirmou a atualização do produto.");
+      return saved.id;
+    }
+
     const maps = {
-      fluid: ["fluid_types", {
-        name: payload.name, category: payload.type, default_unit: payload.unit,
-        density_value: parseOptionalDecimal(payload.density),
-        density_unit: payload.density_unit || defaultDensityUnit(payload.type),
-        density_ppg: payload.density_unit === "ppg" ? parseOptionalDecimal(payload.density) : null,
-        active: payload.active === "true"
-      }],
       truck: ["trucks", {
         movement_date: payload.date, movement_type: payload.movement, supplier: payload.supplier,
         client: payload.client || null, product: payload.product, lot: payload.lot || null,
@@ -4159,7 +4205,7 @@
       await loadData();
       renderAll();
       closeModal();
-      toast("Registro salvo com sucesso.", "success");
+      toast(form.dataset.kind === "fluid" ? "Produto e status atualizados com sucesso." : "Registro salvo com sucesso.", "success");
     } catch (error) {
       try {
         if (state.client && state.user) await state.client.from("system_errors").insert({ user_id: state.user.id, context: `form:${form.id || "unknown"}`, message: error.message, stack: error.stack || null, user_agent: navigator.userAgent });
@@ -4494,6 +4540,21 @@
       if (error) return toast(error.message, "error");
       await loadData(); renderReports();
       return toast("Pendência excluída.");
+    }
+
+    if (button.dataset.toggleFluidActive) {
+      const nextActive = button.dataset.nextActive === "true";
+      const item = state.data.fluids.find(product => product.id === button.dataset.toggleFluidActive);
+      const verb = nextActive ? "ativar" : "desativar";
+      if (!item) return toast("Produto não encontrado.", "error");
+      if (!confirm(`Deseja ${verb} ${item.name}?`)) return;
+      try {
+        await toggleFluidCatalogActive(item.id, nextActive);
+      } catch (error) {
+        console.error("Falha ao alterar status do catálogo:", error);
+        toast(error.message || "Não foi possível alterar o status.", "error");
+      }
+      return;
     }
 
     if (button.dataset.editFluid) {

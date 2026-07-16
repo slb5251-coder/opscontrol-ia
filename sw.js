@@ -1,10 +1,10 @@
-const CACHE="opscontrol-20260716-industrial-tank-panel-1";
+const CACHE="opscontrol-20260715-mobile-complete-splash-slb-1";
 const FILES=[
   "./",
   "./index.html",
-  "./app.css?v=20260716-industrial-tank-panel-1",
-  "./js/config.js?v=20260716-industrial-tank-panel-1",
-  "./js/app.js?v=20260716-industrial-tank-panel-1",
+  "./app.css?v=20260715-mobile-complete-splash-slb-1",
+  "./js/config.js?v=20260715-mobile-complete-splash-slb-1",
+  "./js/app.js?v=20260715-mobile-complete-splash-slb-1",
   "./manifest.json",
   "./assets/icon.svg","./assets/slb-logo.png","./vendor/qrcode.js"
 ];

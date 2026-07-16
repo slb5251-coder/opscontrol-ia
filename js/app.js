@@ -12,7 +12,7 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const APP_VERSION = "20260716-v33-4-carretas-profissional-1";
+  const APP_VERSION = "20260716-v33-5-inventario-quimico-profissional-1";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -3404,12 +3404,33 @@
     const lowStock = groups.filter(item => item.inventoryStatus === "Baixo estoque" || item.inventoryStatus === "Sem estoque").length;
     const expired = groups.filter(item => item.expiredLots.length > 0).length;
     const expiring = groups.filter(item => item.expiringLots.length > 0).length;
+    const totalBalance = groups.reduce((sum,item)=>sum+Number(item.total||0),0);
+    const categories = [...new Set(groups.map(item=>item.category||"Produto químico"))].sort();
+    const statuses = [...new Set(groups.map(item=>item.inventoryStatus))].sort();
+    const fefoLots = lots.filter(item=>Number(item.quantity||0)>0).sort((a,b)=>(a.expiry_date||"9999-12-31").localeCompare(b.expiry_date||"9999-12-31")).slice(0,6);
+    const categorySummary = categories.map(category=>{
+      const items=groups.filter(item=>(item.category||"Produto químico")===category);
+      return `<div><span>${esc(category)}</span><strong>${items.length}</strong><small>${items.reduce((sum,item)=>sum+item.lots.length,0)} lote(s)</small></div>`;
+    }).join("");
+    const fefoRows = fefoLots.map((lot,index)=>{
+      const product=groups.find(item=>item.id===lot.productId);
+      const days=daysUntil(lot.expiry_date);
+      return `<article class="chemical-fefo-row">
+        <div class="chemical-fefo-rank">${index+1}</div>
+        <div><strong>${esc(product?.name||lot.name||"Produto")}</strong><small>Lote ${esc(lot.lot||"Sem lote")} • ${fmt.format(lot.quantity)} ${esc(lot.unit||product?.unit||"")}</small></div>
+        <div><span>${dateOnly(lot.expiry_date)}</span><small>${days===null?"Sem prazo":days<0?`${Math.abs(days)} dias vencido`:days===0?"Vence hoje":`${days} dias restantes`}</small></div>
+        ${badge(chemicalDisplayStatus(lot))}
+      </article>`;
+    }).join("");
 
     const cards = groups.map(item => {
       const nextLot = item.nextLot;
-      return `<article class="card chemical-product-stock-card ${item.active ? "" : "inactive"}">
+      const stockPct=item.minimum>0?Math.min(100,Math.max(0,item.total/item.minimum*100)):item.total>0?100:0;
+      const search=[item.name,item.category,item.inventoryStatus,...item.lots.flatMap(lot=>[lot.lot,lot.location,lot.supplier])].filter(Boolean).join(" ").toLowerCase();
+      return `<article class="card chemical-product-stock-card ${item.active ? "" : "inactive"}" data-chemical-card data-chemical-search="${esc(search)}" data-chemical-category="${esc(String(item.category||"Produto químico").toLowerCase())}" data-chemical-status="${esc(String(item.inventoryStatus||"").toLowerCase())}">
         <div class="chemical-product-stock-head"><div><span>${esc(item.category || "Produto químico")}</span><h3>${esc(item.name)}</h3></div>${badge(item.inventoryStatus)}</div>
         <div class="chemical-total-value"><small>Saldo total</small><strong>${fmt.format(item.total)} ${esc(item.unit)}</strong><span>Soma de ${item.lots.length} lote(s)</span></div>
+        <div class="chemical-stock-meter"><div><span>Referência de estoque mínimo</span><strong>${item.minimum>0?`${fmt.format(item.total)} / ${fmt.format(item.minimum)} ${esc(item.unit)}`:"Sem mínimo definido"}</strong></div><div class="progress"><span style="width:${stockPct}%"></span></div></div>
         <div class="chemical-product-stock-grid">
           <span>Lotes<strong>${item.lots.length}</strong></span>
           <span>Mínimo total<strong>${fmt.format(item.minimum)} ${esc(item.unit)}</strong></span>
@@ -3420,10 +3441,44 @@
       </article>`;
     }).join("");
 
-    $("#page-chemicals").innerHTML = header("Inventário de produtos químicos", "Um cartão por produto. O saldo total é a soma das quantidades cadastradas em cada lote.", `${canManageChemicals() ? `<button class="btn primary" data-action="new-chemical-product">+ Novo produto</button>` : ""}<button class="btn secondary" data-action="show-fefo">Ordem FEFO</button><button class="btn secondary" data-export="chemicals">Exportar lotes</button>`) +
-      `<div class="grid four">${statCard("Produtos", fmt.format(totalProducts), "cadastros únicos", uiIcon("products"))}${statCard("Lotes", fmt.format(totalLots), "quantidades separadas", uiIcon("layers"))}${statCard("Baixo ou sem estoque", fmt.format(lowStock), "produtos", uiIcon("alert"))}${statCard("Com vencimento crítico", fmt.format(expired + expiring), "vencidos ou até 60 dias", uiIcon("hourglass"))}</div>
+    $("#page-chemicals").innerHTML = header("Inventário de produtos químicos", "Controle profissional de saldo, lotes, validade, localização e movimentações por FEFO.", `${canManageChemicals() ? `<button class="btn primary" data-action="new-chemical-product">+ Novo produto</button>` : ""}<button class="btn secondary" data-action="show-fefo">Ordem FEFO</button><button class="btn secondary" data-export="chemicals">Exportar lotes</button>`) +
+      `<section class="chemical-command-grid">
+        ${statCard("Produtos", fmt.format(totalProducts), "cadastros únicos", uiIcon("products"))}
+        ${statCard("Lotes ativos", fmt.format(totalLots), "rastreabilidade individual", uiIcon("layers"))}
+        ${statCard("Baixo ou sem estoque", fmt.format(lowStock), "produtos críticos", uiIcon("alert"))}
+        ${statCard("Validade crítica", fmt.format(expired + expiring), "vencidos ou até 60 dias", uiIcon("hourglass"))}
+      </section>
+      <section class="chemical-control-grid">
+        <div class="card chemical-fefo-panel">
+          <div class="chemical-section-heading"><div><small>PRIORIDADE DE CONSUMO</small><h3>Fila FEFO</h3><p>Lotes com menor prazo aparecem primeiro.</p></div><span>${fefoLots.length} prioritários</span></div>
+          <div class="chemical-fefo-list">${fefoRows||`<div class="empty">Nenhum lote com saldo disponível.</div>`}</div>
+        </div>
+        <div class="card chemical-category-panel">
+          <div class="chemical-section-heading"><div><small>VISÃO DO ESTOQUE</small><h3>Distribuição por categoria</h3><p>${fmt.format(totalBalance)} em saldo somado nas unidades cadastradas.</p></div></div>
+          <div class="chemical-category-summary">${categorySummary||`<div class="empty">Sem categorias cadastradas.</div>`}</div>
+        </div>
+      </section>
+      <section class="chemical-filter-bar">
+        <div class="chemical-filter-search"><label>Buscar produto ou lote</label><input data-chemical-filter="search" placeholder="Produto, lote, localização ou fornecedor"></div>
+        <div><label>Categoria</label><select data-chemical-filter="category"><option value="">Todas</option>${categories.map(x=>`<option>${esc(x)}</option>`).join("")}</select></div>
+        <div><label>Status</label><select data-chemical-filter="status"><option value="">Todos</option>${statuses.map(x=>`<option>${esc(x)}</option>`).join("")}</select></div>
+        <button class="btn secondary" type="button" data-action="clear-chemical-filters">Limpar</button>
+      </section>
+      <div class="chemical-filter-result" data-chemical-filter-result>${groups.length} produto(s)</div>
       <div class="info-box chemical-inventory-rule"><strong>Carretas Plataforma desvinculadas:</strong> cadastrar um produto na carreta não cria lote e não altera este inventário. Os lotes são controlados somente aqui.</div>
       <div class="chemical-product-stock-grid-list">${cards || `<div class="card empty">Nenhum produto químico cadastrado.</div>`}</div>`;
+  }
+
+  function applyChemicalFilters() {
+    const page=$("#page-chemicals"); if(!page) return;
+    const value=key=>(page.querySelector(`[data-chemical-filter="${key}"]`)?.value||"").trim().toLowerCase();
+    const search=value("search"), category=value("category"), status=value("status");
+    let visible=0;
+    page.querySelectorAll("[data-chemical-card]").forEach(card=>{
+      const ok=(!search||card.dataset.chemicalSearch.includes(search))&&(!category||card.dataset.chemicalCategory===category)&&(!status||card.dataset.chemicalStatus===status);
+      card.hidden=!ok; if(ok) visible++;
+    });
+    const result=page.querySelector("[data-chemical-filter-result]"); if(result) result.textContent=`${visible} produto(s) exibido(s)`;
   }
 
   function renderTrucks() {
@@ -5886,6 +5941,12 @@
 
     if (button.dataset.newOrderEquipment) return openModal("Nova ordem de serviço", maintenanceOrderForm({}, button.dataset.newOrderEquipment), "MANUTENÇÃO");
 
+    if (button.dataset.action === "clear-chemical-filters") {
+      document.querySelectorAll("#page-chemicals [data-chemical-filter]").forEach(field => field.value = "");
+      applyChemicalFilters();
+      return;
+    }
+
     if (button.dataset.action === "clear-tank-filters") {
       document.querySelectorAll("#page-tanks [data-tank-filter]").forEach(field => field.value = "");
       applyTankFilters();
@@ -5926,6 +5987,7 @@
 
   document.addEventListener("change", async event => {
     if (event.target.matches("[data-tank-filter]")) applyTankFilters();
+    if (event.target.matches("[data-chemical-filter]")) applyChemicalFilters();
     const changedForm = event.target.closest("#modalBody form");
     if (changedForm) scheduleDraftSave(changedForm);
     if (event.target.closest("#truckForm") && event.target.name === "truck_type") syncTruckForm(event.target.closest("#truckForm"), true);
@@ -5963,6 +6025,7 @@
 
   document.addEventListener("input", event => {
     if (event.target.matches("[data-tank-filter]")) applyTankFilters();
+    if (event.target.matches("[data-chemical-filter]")) applyChemicalFilters();
     if (event.target.closest("#operationForm")) updateOperationReview(event.target.closest("#operationForm"));
     if (event.target.id === "globalSearchInput") {
       state.searchQuery = event.target.value;

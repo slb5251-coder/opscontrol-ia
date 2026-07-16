@@ -12,7 +12,7 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const APP_VERSION = "20260716-tv-steps-operations-phase1-phase2-silos-1";
+  const APP_VERSION = "20260716-control-center-light-visual-1";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -2373,6 +2373,119 @@
     </section>`;
   }
 
+
+  function controlStatusTone(status = "") {
+    const value = normalizeSearch(status);
+    if (value.includes("manutencao") || value.includes("critico") || value.includes("bloqueado")) return "danger";
+    if (value.includes("bombeando")) return "pumping";
+    if (value.includes("recebendo")) return "receiving";
+    if (value.includes("fabricacao")) return "manufacturing";
+    if (value.includes("operacional") || value.includes("disponivel") || value.includes("concluida")) return "operational";
+    return "neutral";
+  }
+
+  function controlCenterKpis(d, activeOps) {
+    const today = localDateKey();
+    const todayTrucks = d.trucks.filter(item => recordDateKey(item.date || item.created_at) === today);
+    const occupied = d.tanks.filter(item => Number(item.volume || 0) > 0);
+    const fluidVolume = occupied.filter(item => !isSiloAsset(item)).reduce((sum,item)=>sum+Number(item.volume||0),0);
+    const bulkVolume = occupied.filter(isSiloAsset).reduce((sum,item)=>sum+Number(item.volume||0),0);
+    const unread = d.alerts.filter(item => !item.read).length + d.systemAlerts.length;
+    return [
+      {label:"Operações ativas",value:activeOps.length,detail:"acompanhamento em tempo real",icon:"⚓",tone:"blue",page:"operations"},
+      {label:"Equipamentos com produto",value:`${occupied.length}/${d.tanks.length}`,detail:"tanques, Mix Tanks e silos",icon:"◫",tone:"green",page:"tanks"},
+      {label:"Carretas hoje",value:todayTrucks.length,detail:"entradas, saídas e programadas",icon:"▱",tone:"orange",page:"trucks"},
+      {label:"Fluidos armazenados",value:`${fmt.format(fluidVolume)} bbl`,detail:"saldo atual da planta",icon:"◉",tone:"cyan",page:"tanks"},
+      {label:"Granéis armazenados",value:`${fmt.format(bulkVolume)} ton`,detail:"saldo atual dos silos",icon:"◆",tone:"gold",page:"tanks"},
+      {label:"Alertas e pendências",value:unread,detail:"itens que exigem atenção",icon:"!",tone:"red",page:"alerts"}
+    ];
+  }
+
+  function controlCenterHeader(d, activeOps) {
+    const firstName = String(d.profile?.name || "Equipe").split(/\s+/)[0];
+    return `<section class="control-center-hero">
+      <div class="control-center-intro"><small>CENTRO DE CONTROLE OPERACIONAL</small><h1>Bom trabalho, ${esc(firstName)}</h1><p>Acompanhe operações, tancagem, logística e alertas em uma única visão.</p></div>
+      <div class="control-center-live"><span class="live-dot"></span><div><strong>Planta conectada</strong><small>${activeOps.length} operação(ões) ativa(s) • atualização automática</small></div><button class="btn primary" data-action="new-operation">+ Nova operação</button></div>
+    </section>`;
+  }
+
+  function plantMapAsset(tank) {
+    const pct = Number(tank.capacity || 0) > 0 ? Math.max(0,Math.min(100,Number(tank.volume||0)/Number(tank.capacity)*100)) : 0;
+    const status = equipmentStatus(tank);
+    const tone = controlStatusTone(status);
+    const product = equipmentProductLabel(tank);
+    return `<button class="plant-map-asset tone-${tone}" data-action="open-equipment-details" data-tank-id="${tank.id}" data-demo="false" title="${esc(tank.name)} • ${esc(tank.product||'Sem produto')}">
+      <span class="plant-map-vessel ${isSiloAsset(tank)?'silo':'tank'}"><i style="height:${pct}%"></i><b>${fmt.format(pct)}%</b></span>
+      <strong>${esc(tank.name)}</strong><small>${esc(product)}</small><em>${esc(status)}</em>
+    </button>`;
+  }
+
+  function plantMapGroup(title, items, kindClass = "") {
+    return `<section class="plant-map-zone ${kindClass}"><div class="plant-map-zone-head"><div><small>ÁREA OPERACIONAL</small><h3>${esc(title)}</h3></div><span>${items.length} equipamento(s)</span></div><div class="plant-map-assets">${items.map(plantMapAsset).join("") || `<div class="empty compact">Nenhum equipamento.</div>`}</div></section>`;
+  }
+
+  function plantMapDashboard(d) {
+    const phase1 = d.tanks.filter(item => item.phase === "Phase #1" && !isSiloAsset(item)).sort((a,b)=>Number(a.order||0)-Number(b.order||0));
+    const phase2 = d.tanks.filter(item => item.phase === "Phase #2" && !isSiloAsset(item)).sort((a,b)=>Number(a.order||0)-Number(b.order||0));
+    const silos = d.tanks.filter(isSiloAsset).sort((a,b)=>String(a.phase).localeCompare(String(b.phase)) || Number(a.order||0)-Number(b.order||0));
+    return `<section class="card control-plant-map"><div class="control-section-heading"><div><small>MAPA SIMPLIFICADO</small><h2>Visão da planta</h2><p>Clique em um equipamento para abrir detalhes e histórico.</p></div><button class="btn secondary" data-page-link="tanks">Abrir tancagem completa</button></div><div class="plant-map-layout">${plantMapGroup("Phase #1",phase1,"phase-one")}${plantMapGroup("Phase #2",phase2,"phase-two")}${plantMapGroup("Silos de granéis",silos,"silo-zone")}</div><div class="plant-map-legend"><span class="operational">Operacional</span><span class="manufacturing">Fabricação</span><span class="receiving">Recebendo</span><span class="pumping">Bombeando</span><span class="danger">Manutenção/Bloqueado</span></div></section>`;
+  }
+
+  function shiftTimelineItems(d) {
+    const today = localDateKey();
+    const operationItems = d.operations.filter(item => recordDateKey(item.start_at || item.created_at) === today).map(item => ({
+      time:item.start_at || item.created_at,
+      title:`${item.activity} • ${item.product}`,
+      subtitle:`${item.client} • ${item.vessel}`,
+      status:item.status,
+      page:"operations"
+    }));
+    const truckItems = d.trucks.filter(item => recordDateKey(item.date || item.created_at) === today).map(item => ({
+      time:item.date || item.created_at,
+      title:`Carreta ${item.plate || item.invoice || "registrada"}`,
+      subtitle:`${item.product || item.truckType || "Movimentação logística"}${item.invoice ? ` • NF ${item.invoice}` : ""}`,
+      status:item.status || "Registrada",
+      page:"trucks"
+    }));
+    return [...operationItems,...truckItems].sort((a,b)=>new Date(a.time)-new Date(b.time)).slice(-12);
+  }
+
+  function shiftTimelineDashboard(d) {
+    const items = shiftTimelineItems(d);
+    return `<section class="card control-timeline"><div class="control-section-heading"><div><small>LINHA DO TEMPO</small><h2>Movimentações do turno</h2><p>Operações e carretas organizadas por horário.</p></div><button class="btn secondary" data-page-link="reports">Passagem do turno</button></div><div class="shift-timeline">${items.map((item,index)=>{const date=new Date(item.time);return `<button data-page-link="${item.page}" class="shift-timeline-item tone-${controlStatusTone(item.status)}"><time>${Number.isNaN(date.getTime())?'--:--':date.toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}</time><span class="timeline-node"></span><div><strong>${esc(item.title)}</strong><small>${esc(item.subtitle)}</small></div>${badge(item.status)}</button>`}).join("") || `<div class="empty">Nenhuma movimentação registrada hoje.</div>`}</div></section>`;
+  }
+
+  function dashboardAttentionPanel(d) {
+    const items = [
+      ...d.systemAlerts.map(item=>({title:item.title,message:item.message,level:item.level,page:"alerts",time:item.created_at})),
+      ...d.alerts.filter(item=>!item.read).map(item=>({title:item.title,message:item.message,level:item.level,page:"alerts",time:item.created_at})),
+      ...dataQualityIssues().slice(0,6).map(item=>({title:item.title,message:item.detail,level:item.severity,page:item.page,time:new Date().toISOString()}))
+    ].sort((a,b)=>new Date(b.time)-new Date(a.time)).slice(0,8);
+    return `<section class="card control-attention"><div class="control-section-heading"><div><small>ATENÇÃO OPERACIONAL</small><h2>Alertas prioritários</h2><p>Itens mais importantes para o turno atual.</p></div><button class="btn secondary" data-action="open-notification-center">Ver todos</button></div><div class="control-attention-list">${items.map(item=>`<button data-page-link="${item.page}" class="attention-item tone-${controlStatusTone(item.level)}"><span>!</span><div><strong>${esc(item.title)}</strong><small>${esc(item.message||'Sem detalhes adicionais')}</small></div>${badge(item.level)}</button>`).join("") || `<div class="control-all-clear"><span>✓</span><strong>Nenhuma pendência prioritária.</strong></div>`}</div></section>`;
+  }
+
+  function operationalControlCenter(d, activeOps) {
+    const kpis = controlCenterKpis(d,activeOps);
+    return `${controlCenterHeader(d,activeOps)}<section class="control-kpi-grid">${kpis.map(item=>`<button class="control-kpi tone-${item.tone}" data-page-link="${item.page}"><span>${item.icon}</span><div><small>${esc(item.label)}</small><strong>${esc(item.value)}</strong><em>${esc(item.detail)}</em></div><b>›</b></button>`).join("")}</section><div class="control-center-grid"><div class="control-center-main">${plantMapDashboard(d)}</div><div class="control-center-side">${dashboardAttentionPanel(d)}</div></div><div class="control-center-grid lower"><div class="control-center-main">${shiftTimelineDashboard(d)}</div><div class="control-center-side">${dashboardQuickActions()}</div></div>`;
+  }
+
+  function dashboardQuickActions() {
+    const actions=[
+      ["new-operation","⚓","Nova operação","Programar, iniciar ou registrar volume"],
+      ["new-truck","▱","Registrar carreta","Entrada, saída, NF e produto"],
+      ["new-chemical","◈","Adicionar lote","Inventário químico e validade"],
+      ["mobile-quick","＋","Mais ações","Abrir atalhos operacionais"]
+    ];
+    return `<section class="card control-quick-actions"><div class="control-section-heading"><div><small>ATALHOS</small><h2>Ações rápidas</h2><p>Principais lançamentos do turno.</p></div></div><div>${actions.map(([action,icon,title,desc])=>`<button data-action="${action}"><span>${icon}</span><div><strong>${title}</strong><small>${desc}</small></div><b>+</b></button>`).join("")}</div></section>`;
+  }
+
+  function notificationCenterPanel() {
+    const d=state.data;
+    const alerts=[...d.systemAlerts,...d.alerts.filter(item=>!item.read)].sort((a,b)=>new Date(b.created_at)-new Date(a.created_at));
+    const issues=dataQualityIssues().slice(0,12);
+    return `<div class="notification-center"><div class="notification-summary"><span><small>Alertas não lidos</small><strong>${alerts.length}</strong></span><span><small>Pendências de dados</small><strong>${issues.length}</strong></span></div><div class="notification-group"><div class="section-title">Alertas operacionais</div>${alerts.map(item=>`<button class="notification-row tone-${controlStatusTone(item.level)}" data-page-link="alerts"><span>!</span><div><strong>${esc(item.title)}</strong><p>${esc(item.message||'Sem detalhes')}</p><small>${dateTime(item.created_at)}</small></div>${badge(item.level)}</button>`).join("")||`<div class="empty">Nenhum alerta não lido.</div>`}</div><div class="notification-group"><div class="section-title">Pendências de qualidade</div>${issues.map(item=>`<button class="notification-row tone-${controlStatusTone(item.severity)}" data-quality-page="${item.page}" data-quality-type="${item.entityType}" data-quality-id="${item.entityId}"><span>!</span><div><strong>${esc(item.title)}</strong><p>${esc(item.detail)}</p></div>${badge(item.severity)}</button>`).join("")||`<div class="empty">Nenhuma pendência de qualidade.</div>`}</div></div>`;
+  }
+
   function renderDashboard() {
     const d = state.data;
     const operations = filteredOperations();
@@ -2448,6 +2561,7 @@
 
       mobileDashboardPriority(d, activeOps) +
       mobileOperationQuickMode() +
+      operationalControlCenter(d, activeOps) +
       dashboardRoleHome(d, activeOps) +
       `<div class="dashboard-sync-strip">
         <div><span class="live-dot"></span><strong>Atualização automática ativa</strong><small>Verificação em tempo real e a cada 60 segundos</small></div>
@@ -6191,7 +6305,11 @@
     if (button.dataset.mobilePage) return showPage(button.dataset.mobilePage);
     if (button.classList.contains("nav-item")) return showPage(button.dataset.page);
     if (button.closest(".user-chip")) return showPage("settings");
-    if (button.id === "notificationsBtn") return showPage("alerts");
+    if (button.id === "notificationsBtn" || button.dataset.action === "open-notification-center") {
+      openModal("Central de notificações", notificationCenterPanel(), "ATENÇÃO OPERACIONAL");
+      $("#modal").classList.add("equipment-drawer","notification-drawer");
+      return;
+    }
     if (button.id === "globalSearchBtn") return openGlobalSearch();
 
     if (button.dataset.pageLink) { showPage(button.dataset.pageLink); return; }
@@ -6939,6 +7057,11 @@
   });
 
   document.addEventListener("keydown", event => {
+    if ((event.ctrlKey || event.metaKey) && String(event.key).toLowerCase() === "k") {
+      event.preventDefault();
+      openGlobalSearch();
+      return;
+    }
     if (event.key !== "Escape") return;
     if (!$("#actionConfirm")?.classList.contains("hidden")) return resolveActionConfirmation(false);
     if (!$("#modal")?.classList.contains("hidden")) return closeModal();

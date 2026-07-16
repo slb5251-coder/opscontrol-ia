@@ -7,7 +7,7 @@
   <title>OpsControl IA Pro</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="app.css?v=20260716-tv-steps-operations-phase1-phase2-silos-1">
+  <link rel="stylesheet" href="app.css?v=20260716-control-center-light-visual-1">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -45,7 +45,7 @@
       </div>
       <div class="topbar-right">
         <div class="topbar-datetime"><strong id="shellTime">--:--</strong><span id="shellDate">--/--/----</span></div>
-        <button id="globalSearchBtn" class="icon-btn" aria-label="Busca geral" title="Busca geral"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg></button>
+        <button id="globalSearchBtn" class="topbar-search-trigger" aria-label="Busca geral" title="Pesquisar em todo o sistema"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg><span>Pesquisar no sistema</span><kbd>Ctrl K</kbd></button>
         <span id="syncBadge" class="status-badge neutral">Conectando...</span>
         <button id="themeToggleBtn" class="icon-btn theme-toggle-btn" data-action="toggle-theme" aria-label="Alternar tema" title="Alternar tema">
           <span class="theme-light-icon">☀</span><span class="theme-dark-icon">☾</span>
@@ -188,8 +188,8 @@
   </div>
 
   <div id="toastContainer" class="toast-container"></div>
-  <script src="js/config.js?v=20260716-tv-steps-operations-phase1-phase2-silos-1"></script>
-  <script src="vendor/qrcode.js?v=20260716-tv-steps-operations-phase1-phase2-silos-1"></script>
-  <script src="js/app.js?v=20260716-tv-steps-operations-phase1-phase2-silos-1"></script>
+  <script src="js/config.js?v=20260716-control-center-light-visual-1"></script>
+  <script src="vendor/qrcode.js?v=20260716-control-center-light-visual-1"></script>
+  <script src="js/app.js?v=20260716-control-center-light-visual-1"></script>
 </body>
 </html>

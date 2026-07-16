@@ -12,7 +12,7 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const APP_VERSION = "20260716-v33-8-relatorios-auditoria-profissional-1";
+  const APP_VERSION = "20260716-v33-9-certificados-alertas-profissionais-1";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -3671,41 +3671,52 @@
 
   function renderCertificates() {
     const canManage = canManageCertificates();
-    const rows = state.data.certificates.map(item => {
+    const certificates = state.data.certificates || [];
+    const enriched = certificates.map(item => {
       const days = daysUntil(item.expires_at);
-      const automaticStatus = days !== null && days < 0 ? "Vencido" : days !== null && days <= 60 ? "A vencer" : item.status;
-      return `<tr>
-        <td><strong>${esc(item.title)}</strong><br><small>${esc(item.issuer || "-")}</small></td>
-        <td>${esc(item.owner)}</td><td>${dateOnly(item.expires_at)}${days !== null ? `<br><small>${days < 0 ? `${Math.abs(days)} dias vencido` : `${days} dias restantes`}</small>` : ""}</td>
-        <td>${badge(automaticStatus)}</td>
-        <td><div class="row-actions"><button class="btn small secondary" data-attachments="certificate:${item.id}" data-attachment-title="${esc(item.title)}">${uiIcon("paperclip", "ui-icon btn-icon")} ${attachmentCount("certificate", item.id)}</button>${canManage ? `<button class="btn small primary" data-edit-certificate="${item.id}">Editar</button>` : ""}</div></td>
-      </tr>`;
-    }).join("");
-    const mobile = state.data.certificates.map(item => {
-      const days = daysUntil(item.expires_at);
-      const automaticStatus = days !== null && days < 0 ? "Vencido" : days !== null && days <= 60 ? "A vencer" : item.status;
-      return `<article class="card mobile-record-card"><div class="mobile-record-head"><div><strong>${esc(item.title)}</strong><small>${esc(item.issuer || "-")}</small></div>${badge(automaticStatus)}</div><div class="mobile-record-grid"><span>Colaborador<strong>${esc(item.owner)}</strong></span><span>Validade<strong>${dateOnly(item.expires_at)}</strong></span></div><div class="row-actions"><button class="btn small secondary" data-attachments="certificate:${item.id}" data-attachment-title="${esc(item.title)}">Anexos (${attachmentCount("certificate", item.id)})</button>${canManage ? `<button class="btn small primary" data-edit-certificate="${item.id}">Editar</button>` : ""}</div></article>`;
-    }).join("");
+      const automaticStatus = days !== null && days < 0 ? "Vencido" : days !== null && days <= 60 ? "A vencer" : (item.status || "Válido");
+      return { ...item, days, automaticStatus };
+    });
+    const expired = enriched.filter(item => item.automaticStatus === "Vencido");
+    const expiring = enriched.filter(item => item.automaticStatus === "A vencer");
+    const valid = enriched.filter(item => !["Vencido","A vencer"].includes(item.automaticStatus));
+    const owners = [...new Set(enriched.map(item => item.owner).filter(Boolean))];
+    const priority = [...expired, ...expiring].sort((a,b) => (a.days ?? 99999) - (b.days ?? 99999)).slice(0,8);
+    const rows = enriched.map(item => `<tr>
+      <td><strong>${esc(item.title)}</strong><br><small>${esc(item.issuer || "-")}</small></td>
+      <td>${esc(item.owner || "-")}</td><td>${dateOnly(item.expires_at)}${item.days !== null ? `<br><small>${item.days < 0 ? `${Math.abs(item.days)} dias vencido` : `${item.days} dias restantes`}</small>` : ""}</td>
+      <td>${badge(item.automaticStatus)}</td>
+      <td><div class="row-actions"><button class="btn small secondary" data-attachments="certificate:${item.id}" data-attachment-title="${esc(item.title)}">${uiIcon("paperclip", "ui-icon btn-icon")} ${attachmentCount("certificate", item.id)}</button>${canManage ? `<button class="btn small primary" data-edit-certificate="${item.id}">Editar</button>` : ""}</div></td>
+    </tr>`).join("");
+    const mobile = enriched.map(item => `<article class="card mobile-record-card certificate-mobile-card"><div class="mobile-record-head"><div><strong>${esc(item.title)}</strong><small>${esc(item.issuer || "-")}</small></div>${badge(item.automaticStatus)}</div><div class="mobile-record-grid"><span>Colaborador<strong>${esc(item.owner || "-")}</strong></span><span>Validade<strong>${dateOnly(item.expires_at)}</strong></span><span>Prazo<strong>${item.days === null ? "Sem data" : item.days < 0 ? `${Math.abs(item.days)} dias vencido` : `${item.days} dias`}</strong></span></div><div class="row-actions"><button class="btn small secondary" data-attachments="certificate:${item.id}" data-attachment-title="${esc(item.title)}">Anexos (${attachmentCount("certificate", item.id)})</button>${canManage ? `<button class="btn small primary" data-edit-certificate="${item.id}">Editar</button>` : ""}</div></article>`).join("");
+    const priorityCards = priority.map(item => `<article class="certificate-priority-card ${statusClass(item.automaticStatus)}"><span class="certificate-priority-icon">${uiIcon("file")}</span><div><strong>${esc(item.title)}</strong><small>${esc(item.owner || "-")} • ${dateOnly(item.expires_at)}</small></div><div>${badge(item.automaticStatus)}<small>${item.days < 0 ? `${Math.abs(item.days)}d vencido` : `${item.days}d restantes`}</small></div></article>`).join("");
+    const ownerCoverage = owners.slice(0,8).map(owner => { const list=enriched.filter(item=>item.owner===owner); const pending=list.filter(item=>["Vencido","A vencer"].includes(item.automaticStatus)).length; return `<div class="certificate-owner-row"><span><strong>${esc(owner)}</strong><small>${list.length} certificado(s)</small></span><b class="${pending ? "needs-attention" : "is-ok"}">${pending ? `${pending} pendente(s)` : "Regular"}</b></div>`; }).join("");
     $("#page-certificates").innerHTML =
-      header("Certificados", "Cada certificado fica vinculado ao usuário selecionado.",
-        canManage ? `<button class="btn primary" data-action="new-certificate">+ Adicionar certificado</button>` : "") +
+      header("Gestão de certificados", "Validades, documentos, colaboradores e pendências de conformidade.", canManage ? `<button class="btn primary" data-action="new-certificate">+ Adicionar certificado</button>` : "") +
       `${!canManage ? `<div class="info-box" style="margin-bottom:14px">Você pode consultar seus certificados. O cadastro é feito pela Logística, Supervisor ou Administrador.</div>` : ""}
-       <div class="card table-wrap desktop-record-table"><table class="data-table"><thead><tr><th>Certificado</th><th>Colaborador</th><th>Validade</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows || `<tr><td colspan="5" class="empty">Nenhum certificado disponível.</td></tr>`}</tbody></table></div><div class="mobile-record-list">${mobile || `<div class="card empty">Nenhum certificado disponível.</div>`}</div>`;
+      <section class="certificate-kpi-grid">${statCard("Certificados", fmt.format(enriched.length), "documentos cadastrados", uiIcon("file"), `${owners.length} colaborador(es)`, "blue")}${statCard("Válidos", fmt.format(valid.length), "sem vencimento próximo", uiIcon("check"), "Situação regular", "green")}${statCard("A vencer", fmt.format(expiring.length), "nos próximos 60 dias", uiIcon("hourglass"), "Planejar renovação", "orange")}${statCard("Vencidos", fmt.format(expired.length), "exigem regularização", uiIcon("alert"), expired.length ? "Ação imediata" : "Nenhuma pendência", "red")}</section>
+      <section class="certificate-control-grid"><div class="card certificate-priority-panel"><div class="professional-section-heading"><div><small>CONFORMIDADE</small><h3>Renovações prioritárias</h3></div><span>${priority.length} item(ns)</span></div><div class="certificate-priority-list">${priorityCards || `<div class="empty">Nenhum certificado vencido ou próximo do vencimento.</div>`}</div></div><div class="card certificate-owner-panel"><div class="professional-section-heading"><div><small>COBERTURA</small><h3>Situação por colaborador</h3></div><span>${owners.length} pessoa(s)</span></div><div class="certificate-owner-list">${ownerCoverage || `<div class="empty">Nenhum colaborador vinculado.</div>`}</div></div></section>
+      <div class="section-title professional-record-title"><span>Todos os certificados</span><small>${enriched.length} registro(s)</small></div><div class="card table-wrap desktop-record-table professional-table"><table class="data-table"><thead><tr><th>Certificado</th><th>Colaborador</th><th>Validade</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows || `<tr><td colspan="5" class="empty">Nenhum certificado disponível.</td></tr>`}</tbody></table></div><div class="mobile-record-list">${mobile || `<div class="card empty">Nenhum certificado disponível.</div>`}</div>`;
   }
 
   function renderAlerts() {
     const manual = state.data.alerts || [];
     const automatic = state.data.systemAlerts || [];
-    const all = [...automatic, ...manual.map(item => ({ ...item, category:item.target||"Comunicado", automatic:false }))]
+    const messages = state.data.messages || [];
+    const all = [...automatic.map(item=>({ ...item, automatic:true })), ...manual.map(item => ({ ...item, category:item.target||"Comunicado", automatic:false }))]
       .sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0));
-    const critical=all.filter(item=>isCriticalAlert(item.level));
-    const grouped=[...new Set(all.map(x=>x.category||"Sistema"))];
-    const cards=all.slice(0,80).map(item=>`<div class="alert-center-card ${statusClass(item.level)}"><div class="alert-center-top"><span>${esc(item.category||"Sistema")}</span>${badge(item.level)}</div><h3>${esc(item.title)}</h3><p>${esc(item.message||"")}</p><footer><span>${dateTime(item.created_at)}</span>${item.action_page&&moduleAllowed(item.action_page)?`<button class="btn small secondary" data-alert-page="${esc(item.action_page)}">Abrir módulo</button>`:""}</footer></div>`).join("");
-    const messages=state.data.messages.map(item=>`<div class="chat-message"><strong>${esc(item.sender_name)}</strong><p>${esc(item.message)}</p><small>${dateTime(item.created_at)}</small></div>`).join("");
-    $("#page-alerts").innerHTML=header("Central de alertas", "Avisos automáticos, comunicados e comunicação da equipe.", hasRole(["supervisor","lider","qhse","logistica"])?`<button class="btn primary" data-action="new-alert">+ Criar comunicado</button>`:"")+
-      `<div class="grid four alert-kpis"><div class="card"><span>Total ativo</span><strong>${all.length}</strong></div><div class="card"><span>Críticos/altos</span><strong>${critical.length}</strong></div><div class="card"><span>Categorias</span><strong>${grouped.length}</strong></div><div class="card"><span>Pendentes offline</span><strong>${offlineQueue().length}</strong></div></div>
-       <div class="alert-center-layout"><div><div class="alert-filter-row">${grouped.map(category=>`<span>${esc(category)} <strong>${all.filter(x=>(x.category||"Sistema")===category).length}</strong></span>`).join("")}</div><div class="alert-center-grid">${cards||`<div class="empty">Nenhum alerta ativo.</div>`}</div></div>
-       <div class="card chat-panel"><h3>Chat interno</h3><div class="chat-list">${messages||`<div class="empty">Sem mensagens.</div>`}</div>${role()!=="tv"?`<form id="chatForm" class="chat-form"><input name="message" required placeholder="Mensagem para a equipe"><button class="btn primary">Enviar</button></form>`:""}</div></div>`;
+    const critical = all.filter(item=>isCriticalAlert(item.level));
+    const grouped = [...new Set(all.map(x=>x.category||"Sistema"))];
+    const recent = all.filter(item => { const age=Date.now()-new Date(item.created_at||0).getTime(); return Number.isFinite(age) && age <= 24*60*60*1000; });
+    const automaticCount = all.filter(item=>item.automatic).length;
+    const priorityCards = critical.slice(0,6).map(item=>`<article class="alert-priority-card ${statusClass(item.level)}"><span>${uiIcon("alert")}</span><div><strong>${esc(item.title)}</strong><small>${esc(item.category||"Sistema")} • ${dateTime(item.created_at)}</small><p>${esc(item.message||"")}</p></div>${item.action_page&&moduleAllowed(item.action_page)?`<button class="btn small secondary" data-alert-page="${esc(item.action_page)}">Abrir</button>`:""}</article>`).join("");
+    const cards=all.slice(0,80).map(item=>`<article class="alert-center-card ${statusClass(item.level)}"><div class="alert-center-top"><span>${esc(item.category||"Sistema")}</span>${badge(item.level)}</div><h3>${esc(item.title)}</h3><p>${esc(item.message||"")}</p><footer><span>${item.automatic ? "Automático" : "Comunicado"} • ${dateTime(item.created_at)}</span>${item.action_page&&moduleAllowed(item.action_page)?`<button class="btn small secondary" data-alert-page="${esc(item.action_page)}">Abrir módulo</button>`:""}</footer></article>`).join("");
+    const chatMessages=messages.slice(-100).map(item=>`<div class="chat-message"><div class="chat-avatar">${esc(String(item.sender_name||"U").trim().slice(0,1).toUpperCase())}</div><div><strong>${esc(item.sender_name)}</strong><p>${esc(item.message)}</p><small>${dateTime(item.created_at)}</small></div></div>`).join("");
+    $("#page-alerts").innerHTML=header("Alertas e comunicação", "Prioridades operacionais, avisos automáticos e comunicação da equipe.", hasRole(["supervisor","lider","qhse","logistica"])?`<button class="btn primary" data-action="new-alert">+ Criar comunicado</button>`:"")+
+      `<section class="alert-professional-kpis">${statCard("Alertas ativos", fmt.format(all.length), "avisos disponíveis", uiIcon("bell"), `${recent.length} nas últimas 24h`, "blue")}${statCard("Críticos e altos", fmt.format(critical.length), "exigem acompanhamento", uiIcon("alert"), critical.length ? "Prioridade operacional" : "Sem criticidade", "red")}${statCard("Automáticos", fmt.format(automaticCount), "gerados pelo sistema", uiIcon("settings"), `${grouped.length} categoria(s)`, "purple")}${statCard("Mensagens", fmt.format(messages.length), "no chat da equipe", uiIcon("users"), `${offlineQueue().length} pendente(s) offline`, "green")}</section>
+      <section class="alert-priority-layout"><div class="card alert-priority-panel"><div class="professional-section-heading"><div><small>PRIORIDADE</small><h3>Pontos que exigem atenção</h3></div><span>${critical.length} crítico(s)</span></div><div class="alert-priority-list">${priorityCards || `<div class="empty">Nenhum alerta crítico ou alto.</div>`}</div></div><div class="card alert-category-panel"><div class="professional-section-heading"><div><small>DISTRIBUIÇÃO</small><h3>Alertas por categoria</h3></div></div><div class="alert-category-list">${grouped.map(category=>{ const count=all.filter(x=>(x.category||"Sistema")===category).length; const pct=all.length?Math.round(count/all.length*100):0; return `<div><span><strong>${esc(category)}</strong><small>${count} alerta(s)</small></span><div class="mini-progress"><i style="width:${pct}%"></i></div><b>${pct}%</b></div>`; }).join("") || `<div class="empty">Nenhuma categoria disponível.</div>`}</div></div></section>
+      <section class="alert-center-layout professional-alert-layout"><div><div class="professional-section-heading alert-section-heading"><div><small>CENTRAL</small><h3>Todos os alertas</h3></div><span>${all.length} registro(s)</span></div><div class="alert-filter-row">${grouped.map(category=>`<span>${esc(category)} <strong>${all.filter(x=>(x.category||"Sistema")===category).length}</strong></span>`).join("")}</div><div class="alert-center-grid">${cards||`<div class="empty">Nenhum alerta ativo.</div>`}</div></div>
+      <aside class="card chat-panel professional-chat-panel"><div class="chat-panel-head"><div><small>COMUNICAÇÃO</small><h3>Chat interno</h3></div><span>${messages.length}</span></div><div class="chat-list">${chatMessages||`<div class="empty">Sem mensagens.</div>`}</div>${role()!=="tv"?`<form id="chatForm" class="chat-form"><input name="message" required placeholder="Mensagem para a equipe"><button class="btn primary">Enviar</button></form>`:""}</aside></section>`;
   }
 
   function defaultHandoverSelection(now = new Date()) {

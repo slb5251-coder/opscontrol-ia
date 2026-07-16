@@ -12,7 +12,7 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const APP_VERSION = "20260716-responsive-all-screens-1";
+  const APP_VERSION = "20260716-tv-light-fullfit-1";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -2028,11 +2028,31 @@
   }
 
   function tvTankTile(tank) {
-    return industrialEquipmentCard(tank, {
-      tv:true,
-      interactive:false,
-      visualKey:`tv:${tank.id}`
-    });
+    const capacity = Number(tank.capacity || 0);
+    const volume = Number(tank.volume || 0);
+    const percentage = capacity > 0 ? Math.max(0, Math.min(100, volume / capacity * 100)) : 0;
+    const status = tankEffectiveStatus(tank);
+    const unit = tank.unit || (isSiloAsset(tank) ? "ton" : "bbl");
+    const product = tank.product || "Vazio";
+    const client = tank.client || "Sem cliente";
+    const isSilo = isSiloAsset(tank);
+    return `<article class="tv-equipment-tile ${isSilo ? "tv-equipment-silo" : "tv-equipment-tank"}">
+      <div class="tv-equipment-head">
+        <div><strong>${esc(tank.name)}</strong><small>${esc(tank.phase || "")}</small></div>
+        <span class="equipment-status-tag ${tankStatusClass(status)}">${esc(status)}</span>
+      </div>
+      <div class="tv-equipment-body">
+        <div class="tv-equipment-visual ${isSilo ? "is-silo" : "is-tank"}">
+          <div class="tv-equipment-fill ${productFamilyClass(product)}" style="height:${percentage}%"></div>
+          <b>${fmt.format(percentage)}%</b>
+        </div>
+        <div class="tv-equipment-info">
+          <span>Produto</span><strong title="${esc(product)}">${esc(product)}</strong>
+          <span>Cliente</span><strong title="${esc(client)}">${esc(client)}</strong>
+          <span>Volume</span><strong>${fmt.format(volume)} / ${fmt.format(capacity)} ${esc(unit)}</strong>
+        </div>
+      </div>
+    </article>`;
   }
 
   function tvOperationTile(operation) {
@@ -2081,7 +2101,9 @@
     const section = silo ? "Silos de granéis" : "Tanques e Mix Tanks";
     const gridClass = silo ? "tv-silo-grid tv-plant-grid" : "tv-tank-grid tv-plant-grid";
 
-    return `<div class="tv-inventory-slide tv-dedicated-plant-slide">
+    const phaseClass = phase === "Phase #1" ? "tv-phase-1" : "tv-phase-2";
+    const typeClass = silo ? "tv-bulk-slide" : "tv-fluid-slide";
+    return `<div class="tv-inventory-slide tv-dedicated-plant-slide ${phaseClass} ${typeClass}">
       <div class="tv-panel-title large">
         <div>
           <small>SLIDE ${slideNumber} DE 7</small>

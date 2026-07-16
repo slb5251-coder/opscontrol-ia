@@ -7,7 +7,7 @@
   <title>OpsControl IA Pro</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="app.css?v=20260716-monitor-high-contrast-1">
+  <link rel="stylesheet" href="app.css?v=20260716-v2-interface-1407-restored-1">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -40,8 +40,9 @@
       <div class="topbar-left">
         <button id="menuBtn" class="icon-btn mobile-only" aria-label="Abrir menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16"></path><path d="M4 12h16"></path><path d="M4 17h16"></path></svg></button>
         <button id="sidebarCollapseBtn" class="icon-btn desktop-sidebar-toggle" aria-label="Recolher menu" title="Recolher menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 6l-6 6 6 6"></path></svg></button>
-        <div class="topbar-page-copy"><strong id="topbarPageTitle">Painel</strong><small id="topbarPageSubtitle">Visão Geral</small></div>
-        <div class="mobile-page-copy"><strong id="mobilePageTitle">Painel</strong><small id="mobilePageSubtitle">Visão Geral</small></div>
+        <div class="brand v2-topbar-brand"><span class="brand-mark">OC</span><div><strong>OpsControl IA</strong><small>V2</small></div></div>
+        <div class="topbar-page-copy v2-page-copy"><strong id="topbarPageTitle">Dashboard</strong><small id="topbarPageSubtitle">Visão geral</small></div>
+        <div class="mobile-page-copy"><strong id="mobilePageTitle">Dashboard</strong><small id="mobilePageSubtitle">Visão geral</small></div>
       </div>
       <div class="topbar-right">
         <div class="topbar-datetime"><strong id="shellTime">--:--</strong><span id="shellDate">--/--/----</span></div>
@@ -71,25 +72,25 @@
         </div>
         <nav class="industrial-sidebar-nav">
           <div class="sidebar-nav-label">OPERAÇÃO</div>
-          <button class="nav-item active" data-page="dashboard"><span class="nav-icon">▦</span><span class="nav-label">Painel</span></button>
+          <button class="nav-item active" data-page="dashboard"><span class="nav-icon">⌂</span><span class="nav-label">Dashboard</span></button>
           <button class="nav-item" data-page="operations"><span class="nav-icon">⚓</span><span class="nav-label">Operações</span></button>
-          <button class="nav-item" data-page="tanks"><span class="nav-icon">◫</span><span class="nav-label">Tanques e Silos</span></button>
-          <button class="nav-item" data-page="trucks"><span class="nav-icon">▱</span><span class="nav-label">Carretas</span></button>
-          <button class="nav-item" data-page="maintenance"><span class="nav-icon">⌁</span><span class="nav-label">Manutenção</span></button>
-          <button class="nav-item" data-page="qhse"><span class="nav-icon">◇</span><span class="nav-label">QHSE</span></button>
+          <button class="nav-item" data-page="tanks"><span class="nav-icon">◉</span><span class="nav-label">Tanques e Silos</span></button>
+          <button class="nav-item" data-page="trucks"><span class="nav-icon">▣</span><span class="nav-label">Carretas</span></button>
+          <button class="nav-item" data-page="maintenance"><span class="nav-icon">⚙</span><span class="nav-label">Manutenção</span></button>
+          <button class="nav-item" data-page="qhse"><span class="nav-icon">✓</span><span class="nav-label">QHSE</span></button>
           <button class="nav-item" data-page="reports"><span class="nav-icon">▥</span><span class="nav-label">Relatórios</span></button>
           <button class="nav-item" data-page="audit"><span class="nav-icon">↺</span><span class="nav-label">Histórico</span></button>
           <button class="nav-item" data-page="users"><span class="nav-icon">♙</span><span class="nav-label">Usuários</span></button>
-          <button class="nav-item" data-page="settings"><span class="nav-icon">⚙</span><span class="nav-label">Configurações</span></button>
+          <button class="nav-item" data-page="settings"><span class="nav-icon">⚒</span><span class="nav-label">Configurações</span></button>
           <div class="sidebar-nav-label additional">MÓDULOS ADICIONAIS</div>
           <button class="nav-item secondary-module" data-page="tv"><span class="nav-icon">▣</span><span class="nav-label">Painel TV</span></button>
           <button class="nav-item secondary-module" data-page="quality"><span class="nav-icon">✓</span><span class="nav-label">Qualidade dos Dados</span></button>
           <button class="nav-item secondary-module" data-page="sanitation"><span class="nav-icon">≋</span><span class="nav-label">Saneamento</span></button>
-          <button class="nav-item secondary-module" data-page="fluids"><span class="nav-icon">◉</span><span class="nav-label">Fluidos e Granéis</span></button>
+          <button class="nav-item secondary-module" data-page="fluids"><span class="nav-icon">◆</span><span class="nav-label">Fluidos e Granéis</span></button>
           <button class="nav-item secondary-module" data-page="chemical-catalog"><span class="nav-icon">▤</span><span class="nav-label">Catálogo Químico</span></button>
           <button class="nav-item secondary-module" data-page="chemicals"><span class="nav-icon">◈</span><span class="nav-label">Inventário Químico</span></button>
-          <button class="nav-item secondary-module" data-page="certificates"><span class="nav-icon">▧</span><span class="nav-label">Certificados</span></button>
-          <button class="nav-item secondary-module" data-page="alerts"><span class="nav-icon">◌</span><span class="nav-label">Alertas e Chat</span></button>
+          <button class="nav-item secondary-module" data-page="certificates"><span class="nav-icon">▤</span><span class="nav-label">Certificados</span></button>
+          <button class="nav-item secondary-module" data-page="alerts"><span class="nav-icon">!</span><span class="nav-label">Alertas e Chat</span></button>
         </nav>
         <div class="sidebar-footer">
           <div class="sidebar-general-status">
@@ -188,8 +189,8 @@
   </div>
 
   <div id="toastContainer" class="toast-container"></div>
-  <script src="js/config.js?v=20260716-monitor-high-contrast-1"></script>
-  <script src="vendor/qrcode.js?v=20260716-monitor-high-contrast-1"></script>
-  <script src="js/app.js?v=20260716-monitor-high-contrast-1"></script>
+  <script src="js/config.js?v=20260716-v2-interface-1407-restored-1"></script>
+  <script src="vendor/qrcode.js?v=20260716-v2-interface-1407-restored-1"></script>
+  <script src="js/app.js?v=20260716-v2-interface-1407-restored-1"></script>
 </body>
 </html>

@@ -12,7 +12,7 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const APP_VERSION = "20260716-monitor-high-contrast-1";
+  const APP_VERSION = "20260716-v2-interface-1407-restored-1";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -2049,69 +2049,145 @@
     </div>`;
   }
 
-  function tvOverviewSlide() {
-    const d = state.data;
-    const active = d.operations.filter(op => !["Concluída", "Cancelada"].includes(op.status));
-    const totalBbl = d.tanks.filter(t => t.unit === "bbl").reduce((sum, t) => sum + Number(t.volume || 0), 0);
-    const totalTon = d.tanks.filter(t => t.unit === "ton").reduce((sum, t) => sum + Number(t.volume || 0), 0);
-    const critical = [...d.systemAlerts, ...d.alerts.filter(x => !x.read)]
+  function tvActiveOperations() {
+    return state.data.operations
+      .filter(operation => !["Concluída", "Cancelada"].includes(operation.status))
+      .sort((a, b) => new Date(a.start_time || a.created_at || 0) - new Date(b.start_time || b.created_at || 0));
+  }
+
+  function tvCriticalAlerts() {
+    return [...state.data.systemAlerts, ...state.data.alerts.filter(item => !item.read)]
       .filter(item => isCriticalAlert(item.level))
-      .slice(0, 6);
-
-    return `<div class="tv-overview">
-      <div class="tv-kpi-row">
-        <div><span>Etapa 1</span><strong>Operações</strong></div>
-        <div><span>Operações ativas</span><strong>${active.length}</strong></div>
-        <div><span>Fluidos armazenados</span><strong>${fmt.format(totalBbl)} bbl</strong></div>
-        <div><span>Granéis armazenados</span><strong>${fmt.format(totalTon)} ton</strong></div>
-        <div><span>Alertas críticos</span><strong>${critical.length}</strong></div>
-      </div>
-      <div class="tv-overview-body">
-        <div class="tv-operations-panel">
-          <div class="tv-panel-title"><h2>1° Operação</h2><span>${active.length} operação(ões) em andamento</span></div>
-          <div class="tv-operation-grid">${active.length ? active.slice(0, 8).map(tvOperationTile).join("") : `<div class="tv-empty-state">Nenhuma operação em andamento no momento.</div>`}</div>
-        </div>
-        <div class="tv-alerts-panel">
-          <div class="tv-panel-title"><h2>Atenção operacional</h2><span>Atualização automática</span></div>
-          <div class="tv-alert-list">${critical.length ? critical.map(item => `<div class="tv-alert-item"><div>${badge(item.level)}</div><strong>${esc(item.title)}</strong><p>${esc(item.message || "")}</p></div>`).join("") : `<div class="tv-empty-state compact">Nenhum alerta crítico.</div>`}</div>
-        </div>
-      </div>
-    </div>`;
+      .sort((a, b) => new Date(b.created_at || 0) - new Date(a.created_at || 0));
   }
 
-  function tvTanksSlide(phase, stepLabel) {
-    const tanks = state.data.tanks
-      .filter(item => item.phase === phase && !isSiloAsset(item))
+  function tvPhaseAssets(phase, silo) {
+    return state.data.tanks
+      .filter(item => item.phase === phase && isSiloAsset(item) === silo)
       .sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
-    const occupied = tanks.filter(item => Number(item.volume || 0) > 0).length;
-    return `<div class="tv-inventory-slide">
-      <div class="tv-panel-title large"><div><h2>${esc(stepLabel)} — Tanques ${esc(phase)}</h2><span>${occupied} de ${tanks.length} tanques / mix tanks com produto</span></div><strong>${state.data.profile.department || "B-Port LMP"}</strong></div>
+  }
+
+  function tvPlantSlide(phase, silo, slideNumber) {
+    const assets = tvPhaseAssets(phase, silo);
+    const occupied = assets.filter(item => Number(item.volume || 0) > 0).length;
+    const alerts = assets.filter(item => {
+      const status = tankEffectiveStatus(item);
+      const pct = Number(item.capacity || 0) > 0 ? Number(item.volume || 0) / Number(item.capacity) * 100 : 0;
+      return ["Bloqueado", "Em manutenção"].includes(status) || pct < 10 || pct > 90;
+    }).length;
+    const total = assets.reduce((sum, item) => sum + Number(item.volume || 0), 0);
+    const unit = silo ? "ton" : "bbl";
+    const title = silo ? `Planta de Granéis ${phase}` : `Planta de Fluidos ${phase}`;
+    const section = silo ? "Silos de granéis" : "Tanques e Mix Tanks";
+    const gridClass = silo ? "tv-silo-grid tv-plant-grid" : "tv-tank-grid tv-plant-grid";
+
+    return `<div class="tv-inventory-slide tv-dedicated-plant-slide">
+      <div class="tv-panel-title large">
+        <div>
+          <small>SLIDE ${slideNumber} DE 7</small>
+          <h2>${esc(title)}</h2>
+          <span>${occupied} de ${assets.length} equipamentos com produto</span>
+        </div>
+        <strong>${state.data.profile.department || "B-Port LMP"}</strong>
+      </div>
+      <div class="tv-plant-kpis">
+        <div><span>Equipamentos</span><strong>${assets.length}</strong></div>
+        <div><span>Com produto</span><strong>${occupied}</strong></div>
+        <div><span>Volume total</span><strong>${fmt.format(total)} ${unit}</strong></div>
+        <div><span>Alertas</span><strong>${alerts}</strong></div>
+      </div>
       <div class="tv-inventory-section">
-        <div class="tv-section-label">Tanques e Mix Tanks</div>
-        <div class="tv-tank-grid">${tanks.length ? tanks.map(tvTankTile).join("") : `<div class="tv-empty-state">Nenhum tanque cadastrado para ${esc(phase)}.</div>`}</div>
+        <div class="tv-section-label">${section}</div>
+        <div class="${gridClass}">${assets.length ? assets.map(tvTankTile).join("") : `<div class="tv-empty-state">Nenhum equipamento cadastrado nesta área.</div>`}</div>
       </div>
     </div>`;
   }
 
-  function tvSilosSlide() {
-    const phase1 = state.data.tanks
-      .filter(item => item.phase === "Phase #1" && isSiloAsset(item))
-      .sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
-    const phase2 = state.data.tanks
-      .filter(item => item.phase === "Phase #2" && isSiloAsset(item))
-      .sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
-    const total = [...phase1, ...phase2];
-    const occupied = total.filter(item => Number(item.volume || 0) > 0).length;
-    return `<div class="tv-inventory-slide">
-      <div class="tv-panel-title large"><div><h2>4° Silos Phase #1 + Phase #2</h2><span>${occupied} de ${total.length} silos com produto</span></div><strong>${state.data.profile.department || "B-Port LMP"}</strong></div>
-      <div class="tv-inventory-section silos">
-        <div class="tv-section-label">Phase #1 — Silos</div>
-        <div class="tv-silo-grid">${phase1.length ? phase1.map(tvTankTile).join("") : `<div class="tv-empty-state compact">Nenhum silo cadastrado na Phase #1.</div>`}</div>
+  function tvOperationsSlide() {
+    const active = tvActiveOperations();
+    const planned = active.reduce((sum, item) => sum + Number(item.planned || 0), 0);
+    const executed = active.reduce((sum, item) => sum + Number(item.executed || 0), 0);
+    const occurrences = active.filter(item => item.occurrence).length;
+
+    return `<div class="tv-overview tv-operations-only-slide">
+      <div class="tv-panel-title large">
+        <div><small>SLIDE 5 DE 7</small><h2>Operações em execução</h2><span>${active.length} operação(ões) ativa(s)</span></div>
+        <strong>Atualização automática</strong>
       </div>
-      <div class="tv-inventory-section silos">
-        <div class="tv-section-label">Phase #2 — Silos</div>
-        <div class="tv-silo-grid">${phase2.length ? phase2.map(tvTankTile).join("") : `<div class="tv-empty-state compact">Nenhum silo cadastrado na Phase #2.</div>`}</div>
+      <div class="tv-plant-kpis">
+        <div><span>Operações ativas</span><strong>${active.length}</strong></div>
+        <div><span>Planejado</span><strong>${fmt.format(planned)}</strong></div>
+        <div><span>Executado</span><strong>${fmt.format(executed)}</strong></div>
+        <div><span>Ocorrências</span><strong>${occurrences}</strong></div>
       </div>
+      <div class="tv-operation-grid tv-operation-grid-wide">${active.length ? active.slice(0, 8).map(tvOperationTile).join("") : `<div class="tv-empty-state">Nenhuma operação em andamento no momento.</div>`}</div>
+    </div>`;
+  }
+
+  function tvDashboardSlide() {
+    const tanks = state.data.tanks.filter(item => !isSiloAsset(item));
+    const silos = state.data.tanks.filter(item => isSiloAsset(item));
+    const totalBbl = tanks.reduce((sum, item) => sum + Number(item.volume || 0), 0);
+    const totalTon = silos.reduce((sum, item) => sum + Number(item.volume || 0), 0);
+    const active = tvActiveOperations();
+    const alerts = tvCriticalAlerts();
+    const todayTrucks = state.data.trucks.filter(item => recordDateKey(item.date || item.created_at) === localDateKey());
+    const occupiedTanks = tanks.filter(item => Number(item.volume || 0) > 0).length;
+    const occupiedSilos = silos.filter(item => Number(item.volume || 0) > 0).length;
+
+    return `<div class="tv-dashboard-slide">
+      <div class="tv-panel-title large">
+        <div><small>SLIDE 6 DE 7</small><h2>Dashboard Operacional</h2><span>Resumo geral da planta</span></div>
+        <strong>B-Port LMP</strong>
+      </div>
+      <div class="tv-dashboard-kpi-grid">
+        <div><span>Fluidos armazenados</span><strong>${fmt.format(totalBbl)} bbl</strong><small>${occupiedTanks}/${tanks.length} equipamentos ocupados</small></div>
+        <div><span>Granéis armazenados</span><strong>${fmt.format(totalTon)} ton</strong><small>${occupiedSilos}/${silos.length} silos ocupados</small></div>
+        <div><span>Operações ativas</span><strong>${active.length}</strong><small>Em execução neste momento</small></div>
+        <div><span>Carretas hoje</span><strong>${todayTrucks.length}</strong><small>Registros do dia</small></div>
+        <div><span>Alertas críticos</span><strong>${alerts.length}</strong><small>Necessitam atenção</small></div>
+        <div><span>Última sincronização</span><strong>${state.lastSync ? state.lastSync.toLocaleTimeString("pt-BR") : "-"}</strong><small>Dados em tempo real</small></div>
+      </div>
+      <div class="tv-dashboard-bottom">
+        <div class="tv-dashboard-status">
+          <h3>Status dos equipamentos</h3>
+          ${["Operacional","Disponível","Em fabricação","Recebendo","Bombeando","Em manutenção","Bloqueado","Vazio"].map(status => {
+            const count = state.data.tanks.filter(item => tankEffectiveStatus(item) === status || (status === "Recebendo" && tankEffectiveStatus(item) === "Recebendo produto")).length;
+            return `<div><span class="tv-status-dot status-${normalizeSearch(status).replace(/\s+/g,"-")}"></span><strong>${status}</strong><b>${count}</b></div>`;
+          }).join("")}
+        </div>
+        <div class="tv-dashboard-recent">
+          <h3>Operações mais recentes</h3>
+          ${active.slice(0, 5).map(operation => `<div><strong>${esc(operation.activity)}</strong><span>${esc(operation.client)} • ${esc(operation.vessel)}</span><b>${esc(operation.status)}</b></div>`).join("") || `<div class="tv-empty-state compact">Nenhuma operação ativa.</div>`}
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function tvAlertsSlide() {
+    const alerts = tvCriticalAlerts();
+    const equipmentAlerts = state.data.tanks.map(item => {
+      const status = tankEffectiveStatus(item);
+      const pct = Number(item.capacity || 0) > 0 ? Number(item.volume || 0) / Number(item.capacity) * 100 : 0;
+      if (["Bloqueado", "Em manutenção"].includes(status)) {
+        return { level:"Crítico", title:`${item.name} — ${status}`, message:`${item.product || "Sem produto"} • ${fmt.format(item.volume)} ${item.unit}` };
+      }
+      if (pct > 90) return { level:"Alto", title:`${item.name} acima de 90%`, message:`${fmt.format(pct)}% • ${fmt.format(item.volume)} / ${fmt.format(item.capacity)} ${item.unit}` };
+      if (Number(item.volume || 0) > 0 && pct < 10) return { level:"Alto", title:`${item.name} abaixo de 10%`, message:`${fmt.format(pct)}% • ${fmt.format(item.volume)} / ${fmt.format(item.capacity)} ${item.unit}` };
+      return null;
+    }).filter(Boolean);
+    const combined = [...equipmentAlerts, ...alerts].slice(0, 12);
+
+    return `<div class="tv-alerts-full-slide">
+      <div class="tv-panel-title large">
+        <div><small>SLIDE 7 DE 7</small><h2>Alertas e atenção operacional</h2><span>${combined.length} ocorrência(s) em destaque</span></div>
+        <strong>Prioridade operacional</strong>
+      </div>
+      <div class="tv-alert-grid-full">${combined.length ? combined.map(item => `<article class="tv-alert-card-full">
+        <div>${badge(item.level || "Alto")}</div>
+        <strong>${esc(item.title || "Alerta")}</strong>
+        <p>${esc(item.message || "")}</p>
+      </article>`).join("") : `<div class="tv-all-clear"><span>✓</span><strong>Nenhum alerta crítico neste momento.</strong><small>A planta está sem ocorrências prioritárias.</small></div>`}</div>
     </div>`;
   }
 
@@ -2125,7 +2201,8 @@
   }
 
   function changeTvSlide(step = 1) {
-    state.tv.slide = (state.tv.slide + step + 4) % 4;
+    const totalSlides = 7;
+    state.tv.slide = (state.tv.slide + step + totalSlides) % totalSlides;
     renderTv();
   }
 
@@ -2151,26 +2228,38 @@
   function renderTv() {
     const page = $("#page-tv");
     if (!page || !state.data) return;
-    const totalSlides = 4;
-    const slide = ((state.tv.slide % totalSlides) + totalSlides) % totalSlides;
-    const labels = ["1. Operações", "2. Tanques Phase #1", "3. Tanques Phase #2", "4. Silos Phases #1 e #2"];
-    const content = slide === 0
-      ? tvOverviewSlide()
-      : slide === 1
-        ? tvTanksSlide("Phase #1", "2° Etapa")
-        : slide === 2
-          ? tvTanksSlide("Phase #2", "3° Etapa")
-          : tvSilosSlide();
+    const totalSlides = 7;
+    const slide = ((Number(state.tv.slide || 0) % totalSlides) + totalSlides) % totalSlides;
+    state.tv.slide = slide;
+    const labels = [
+      "Fluidos P#1",
+      "Granéis P#1",
+      "Fluidos P#2",
+      "Granéis P#2",
+      "Operações",
+      "Dashboard",
+      "Alertas"
+    ];
+    const slides = [
+      () => tvPlantSlide("Phase #1", false, 1),
+      () => tvPlantSlide("Phase #1", true, 2),
+      () => tvPlantSlide("Phase #2", false, 3),
+      () => tvPlantSlide("Phase #2", true, 4),
+      tvOperationsSlide,
+      tvDashboardSlide,
+      tvAlertsSlide
+    ];
+    const content = slides[slide]();
 
     page.innerHTML = `<div class="tv-screen">
       <div class="tv-topbar">
         <div class="tv-brand"><span>OC</span><div><strong>OpsControl IA</strong><small>Painel Operacional — B-Port LMP</small></div></div>
-        <div class="tv-top-status"><span class="live-dot"></span><strong>Dados em tempo real</strong><small>Última sincronização: ${state.lastSync ? state.lastSync.toLocaleTimeString("pt-BR") : "-"}</small></div>
+        <div class="tv-top-status"><span class="live-dot"></span><strong>Dados em tempo real</strong><small>Troca automática a cada ${Math.round(state.tv.intervalMs / 1000)} segundos</small></div>
         <div class="tv-clock"><strong id="tvClock">--:--:--</strong><span id="tvDate">--</span></div>
       </div>
       <div class="tv-content">${content}</div>
       <div class="tv-footer">
-        <div class="tv-dots">${labels.map((label, index) => `<button class="${index === slide ? "active" : ""}" data-tv-slide="${index}"><span></span>${label}</button>`).join("")}</div>
+        <div class="tv-dots">${labels.map((label, index) => `<button class="${index === slide ? "active" : ""}" data-tv-slide="${index}"><span></span>${index + 1}. ${label}</button>`).join("")}</div>
         <div class="tv-controls no-print">
           <button class="btn secondary" data-action="tv-prev">‹ Anterior</button>
           <button class="btn secondary" data-action="tv-toggle">${state.tv.paused ? "▶ Retomar" : "Ⅱ Pausar"}</button>
@@ -2182,8 +2271,6 @@
     updateTvClock();
     setTimeout(() => animateIndustrialEquipmentLevels(page), 0);
   }
-
-
 
   function dashboardRoleHome(d, activeOps) {
     const currentRole = role();
@@ -6434,6 +6521,7 @@
     if (button.hasAttribute("data-tv-slide")) {
       state.tv.slide = Number(button.dataset.tvSlide || 0);
       renderTv();
+      startTvMode();
       return;
     }
 

@@ -12,7 +12,7 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const APP_VERSION = "20260716-industrial-complete-ui-v3-1";
+  const APP_VERSION = "20260716-reference-tank-shape-light-theme-1";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -3338,19 +3338,48 @@
     const level=equipmentLevelState(tank), key=equipmentProductKey(tank);
     const visualKey=options.visualKey || `${options.demo?"demo":"real"}:${tank.id}`;
     const start=state.visual.tankLevels.has(visualKey)?Number(state.visual.tankLevels.get(visualKey)||0):0;
-    return `<div class="technical-equipment ${silo?"technical-silo":mix?"technical-mix":"technical-tank"}">
-      <div class="equipment-nameplate">${esc(tank.name)}</div>
-      ${equipmentStatus(tank)==="Recebendo"?`<span class="equipment-flow flow-in">↓ ENTRADA</span>`:""}
-      ${equipmentStatus(tank)==="Bombeando"?`<span class="equipment-flow flow-out">→ SAÍDA</span>`:""}
-      <div class="equipment-metal-top">${mix?`<i class="mix-indicator"></i>`:""}<b></b></div>
-      <div class="equipment-metal-body">
-        <div class="equipment-panel-lines"></div>
-        <div class="equipment-window">
-          <div class="equipment-material material-${key}" data-industrial-level data-level-key="${esc(visualKey)}" data-level-target="${level.pct.toFixed(3)}" style="height:${start}%"></div>
-          <span class="equipment-percent">${fmt.format(level.pct)}%</span>
+    const status=equipmentStatus(tank);
+    const scale=[100,75,50,25,0].map(value=>`<span style="bottom:${value}%">${value}%</span>`).join("");
+    const material=`<div class="reference-material material-${key}" data-industrial-level data-level-key="${esc(visualKey)}" data-level-target="${level.pct.toFixed(3)}" style="height:${start}%"><i></i></div>`;
+    const flow=status==="Recebendo"
+      ? `<span class="reference-flow flow-in">↓ RECEBENDO</span>`
+      : status==="Bombeando"
+        ? `<span class="reference-flow flow-out">↑ BOMBEANDO</span>`
+        : "";
+
+    if (silo) {
+      return `<div class="reference-equipment reference-silo">
+        <div class="reference-scale">${scale}</div>
+        ${flow}
+        <div class="reference-silo-roof"><b></b></div>
+        <div class="reference-silo-cylinder">
+          <div class="reference-metal-bands"></div>
+          <div class="reference-view-window">
+            ${material}
+            <span class="reference-logo">slb</span>
+          </div>
+        </div>
+        <div class="reference-silo-cone">
+          <div class="reference-cone-material material-${key}" style="height:${Math.min(100,level.pct*1.5)}%"></div>
+        </div>
+        <div class="reference-silo-outlet"></div>
+        <div class="reference-silo-legs"><i></i><i></i></div>
+      </div>`;
+    }
+
+    return `<div class="reference-equipment ${mix?"reference-mix":"reference-tank"}">
+      <div class="reference-scale">${scale}</div>
+      ${flow}
+      <div class="reference-tank-cap">${mix?`<i class="reference-mix-marker"></i>`:""}<b></b></div>
+      <div class="reference-tank-cylinder">
+        <div class="reference-metal-bands"></div>
+        <div class="reference-view-window">
+          ${material}
+          <span class="reference-logo">slb</span>
         </div>
       </div>
-      ${silo?`<div class="silo-cone"><div class="equipment-material material-${key}" style="height:${Math.min(100,level.pct*1.45)}%"></div></div><div class="silo-discharge"></div><div class="silo-supports"><i></i><i></i></div>`:`<div class="tank-base"><i></i><i></i></div>`}
+      <div class="reference-tank-ring"></div>
+      <div class="reference-tank-feet"><i></i><i></i></div>
     </div>`;
   }
 
@@ -3359,9 +3388,9 @@
     const sg=equipmentSpecificGravity(tank); const silo=isSiloAsset(tank);
     return `<article class="equipment-card-v3 level-${level.key} ${silo?"silo":"fluid"}" data-equipment-card data-tank-card data-tank-id="${esc(tank.id)}" data-demo="${demo?"true":"false"}">
       <div class="equipment-card-head"><div><small>${esc(tank.phase||"-")}</small><h3>${esc(tank.name)}</h3></div>${equipmentStatusTag(status)}</div>
-      <div class="equipment-card-main">
+      <div class="equipment-card-main reference-card-main">
         ${technicalEquipmentVisual(tank,{demo,visualKey:`${demo?"demo":"real"}:${tank.id}`})}
-        <div class="equipment-card-info">
+        <div class="equipment-card-info reference-card-info">
           <div class="equipment-product"><span>${esc(equipmentProductLabel(tank))}</span><strong>${esc(equipmentDescription(tank))}</strong><small>Cliente: ${esc(tank.client||"A definir")}</small></div>
           <div class="equipment-volume"><strong>${fmt.format(Number(tank.volume||0))}</strong><span>/ ${fmt.format(Number(tank.capacity||0))} ${esc(tank.unit)}</span><b>${fmt.format(level.pct)}%</b></div>
           <div class="equipment-card-metrics">
@@ -5664,8 +5693,14 @@
   }
 
   function applyTheme(theme) {
-    document.documentElement.dataset.theme = theme;
-    localStorage.setItem(THEME_KEY, theme);
+    const value = theme === "light" ? "light" : "dark";
+    document.documentElement.dataset.theme = value;
+    localStorage.setItem(THEME_KEY, value);
+    const button = $("#themeToggleBtn");
+    if (button) {
+      button.setAttribute("aria-label", value === "dark" ? "Ativar tema claro" : "Ativar tema escuro");
+      button.title = value === "dark" ? "Ativar tema claro" : "Ativar tema escuro";
+    }
   }
 
   function smartAnswer(question) {

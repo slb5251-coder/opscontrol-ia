@@ -1067,3 +1067,153 @@ body.sidebar-collapsed .shell{grid-template-columns:76px 1fr}body.sidebar-collap
 @media(max-width:820px){.desktop-sidebar-toggle,.topbar-page-copy,.topbar-datetime,#syncBadge{display:none!important}.shell{display:block}.sidebar{top:0;height:100dvh}.main-content{padding:12px 10px 88px}.tanks-page-heading{display:grid}.tanks-heading-actions{align-items:stretch}.tanks-heading-actions>.btn{flex:1}.tank-source-switch{width:100%;overflow:auto}.tank-source-switch button{flex:0 0 auto}.tank-source-switch span{display:none}.tanks-page-filters{grid-template-columns:1fr 1fr;position:static}.tanks-search{grid-column:1/-1}.equipment-grid-v3{grid-template-columns:repeat(2,minmax(0,1fr))}.equipment-card-main{grid-template-columns:87px 1fr}.technical-equipment{transform:scale(.84);transform-origin:center top;margin-bottom:-22px}.equipment-card-metrics{grid-template-columns:1fr}.equipment-card-metrics span:last-child{grid-column:auto}.equipment-card-update{grid-template-columns:1fr}.equipment-list-row{grid-template-columns:62px 1fr auto}.equipment-list-row>div:nth-child(n+3):not(:last-of-type){display:none}.equipment-detail-kpis{grid-template-columns:repeat(2,1fr)}.equipment-linked-operations{grid-template-columns:1fr}.movement-form-summary{grid-template-columns:1fr}.industrial-users-grid{grid-template-columns:1fr}}
 @media(max-width:560px){.equipment-grid-v3{grid-template-columns:1fr}.tanks-page-filters{grid-template-columns:1fr}.tanks-page-filters .tanks-search{grid-column:auto}.tank-page-summary{grid-template-columns:1fr 1fr}.equipment-card-main{grid-template-columns:105px 1fr}.technical-equipment{transform:none;margin-bottom:0}.equipment-card-actions .btn{flex:1}.equipment-detail-hero{grid-template-columns:1fr;text-align:center}.equipment-detail-hero .technical-equipment{margin:auto}.equipment-detail-kpis{grid-template-columns:1fr 1fr}.modal.equipment-drawer .modal-card{width:100vw}.tanks-page-footer>div:last-child{display:grid}}
 @media(prefers-reduced-motion:reduce){.equipment-material{transition-duration:.01ms!important}.equipment-card-v3.level-critical-low:after,.equipment-card-v3.level-critical-high:after,.equipment-card-v3.level-maximum:after{animation:none!important}}
+
+
+/* ==========================================================
+   TANQUES E SILOS NO FORMATO DA REFERÊNCIA
+   ========================================================== */
+.theme-toggle-btn{font-size:16px}
+.theme-dark-icon{display:none}
+:root[data-theme="light"] .theme-light-icon{display:none}
+:root[data-theme="light"] .theme-dark-icon{display:inline}
+.reference-card-main{grid-template-columns:145px minmax(0,1fr)!important;align-items:center}
+.reference-equipment{position:relative;width:135px;height:250px;display:block;margin:auto}
+.reference-scale{position:absolute;left:0;top:42px;width:31px;height:177px;z-index:12;border-right:1px solid currentColor;color:#8FA2B6}
+.reference-scale span{position:absolute;right:5px;transform:translateY(50%);font-size:6px;font-weight:800}
+.reference-scale span:after{content:"";position:absolute;left:21px;top:50%;width:6px;border-top:1px solid currentColor}
+.reference-flow{position:absolute;right:-4px;top:18px;z-index:20;padding:4px 6px;border-radius:6px;font-size:6px;font-weight:950;letter-spacing:.04em}
+.reference-flow.flow-in{background:#0B3851;color:#72D5FF}
+.reference-flow.flow-out{background:#4A240F;color:#FFAF75}
+.reference-tank-cap{position:absolute;left:44px;top:18px;width:72px;height:31px;z-index:7;background:linear-gradient(90deg,#667582 0%,#D7DEE3 19%,#8D9AA5 48%,#EDF1F4 76%,#5A6976 100%);clip-path:polygon(8% 100%,0 66%,11% 29%,39% 8%,50% 0,61% 8%,89% 29%,100% 66%,92% 100%);filter:drop-shadow(0 4px 3px #0004)}
+.reference-tank-cap b,.reference-silo-roof b{position:absolute;left:29px;top:-8px;width:15px;height:10px;border:2px solid #52606C;border-bottom:0;border-radius:3px 3px 0 0;background:linear-gradient(90deg,#7A8792,#D6DDE2,#65737F)}
+.reference-mix-marker{position:absolute;left:34px;top:-15px;width:6px;height:18px;background:#75838F;border-radius:2px}
+.reference-mix-marker:after{content:"";position:absolute;left:-5px;top:-4px;width:16px;height:5px;border-radius:3px;background:#B9C2C9}
+.reference-tank-cylinder{position:absolute;left:44px;top:45px;width:72px;height:177px;padding:4px;border:2px solid #4D5D6B;border-radius:3px 3px 14px 14px;background:linear-gradient(90deg,#596976 0%,#C9D1D7 17%,#7E8C98 44%,#E7ECEF 69%,#576673 100%);box-shadow:inset 0 0 12px #0005,0 10px 18px #0003}
+.reference-view-window{position:relative;overflow:hidden;width:100%;height:100%;border-radius:1px 1px 10px 10px;background:linear-gradient(90deg,#172432,#263747 48%,#121D28);box-shadow:inset 0 0 0 1px #B6C1CA55}
+.reference-view-window:after{content:"";position:absolute;inset:0;z-index:7;background:linear-gradient(90deg,#fff2,transparent 24%,transparent 68%,#0004);pointer-events:none}
+.reference-metal-bands{position:absolute;inset:3px 1px 3px;z-index:9;background:repeating-linear-gradient(to bottom,transparent 0 40px,#42515D77 40px 41px);pointer-events:none}
+.reference-material{position:absolute;left:0;right:0;bottom:0;height:0;z-index:3;transition:height 1s cubic-bezier(.22,.78,.22,1);will-change:height}
+.reference-material i{position:absolute;left:0;right:0;top:0;height:3px;background:#ffffff3b;box-shadow:0 1px 5px #fff3}
+.reference-logo{position:absolute;left:50%;top:32%;z-index:10;transform:translate(-50%,-50%);font-size:16px;font-weight:950;font-family:Arial,sans-serif;color:#0B3DC3;text-transform:lowercase;text-shadow:0 1px 0 #fff8}
+.reference-tank-ring{position:absolute;left:41px;top:216px;width:78px;height:8px;border-radius:50%;background:linear-gradient(#D5DCE1,#52616D);border:1px solid #44525E;z-index:11}
+.reference-tank-feet{position:absolute;left:53px;top:222px;width:52px;display:flex;justify-content:space-between}
+.reference-tank-feet i{width:6px;height:15px;background:linear-gradient(90deg,#4D5C68,#ADB7BF,#45535F)}
+.reference-mix .reference-tank-cylinder{left:50px;top:70px;width:63px;height:150px}
+.reference-mix .reference-tank-cap{left:50px;top:46px;width:63px;height:28px}
+.reference-mix .reference-tank-ring{left:47px;top:215px;width:69px}
+.reference-mix .reference-tank-feet{left:56px;top:221px;width:50px}
+.reference-mix .reference-scale{top:72px;height:145px}
+
+/* Silo no mesmo padrão da imagem */
+.reference-silo-roof{position:absolute;left:41px;top:18px;width:79px;height:34px;z-index:8;background:linear-gradient(90deg,#657480,#D5DDE2 20%,#8997A2 50%,#ECF0F2 76%,#566571);clip-path:polygon(10% 100%,0 68%,12% 25%,50% 0,88% 25%,100% 68%,90% 100%)}
+.reference-silo-cylinder{position:absolute;left:41px;top:49px;width:79px;height:142px;padding:4px;border:2px solid #4D5D69;border-radius:2px;background:linear-gradient(90deg,#5A6975,#CDD5DB 18%,#808E99 48%,#E5EAED 74%,#576572);box-shadow:inset 0 0 10px #0005,0 9px 16px #0003}
+.reference-silo-cone{position:absolute;left:42px;top:188px;width:77px;height:42px;overflow:hidden;background:linear-gradient(90deg,#5B6A76,#C8D0D6 22%,#7B8994 51%,#E2E7EA 77%,#52616E);clip-path:polygon(0 0,100% 0,61% 100%,39% 100%);z-index:6}
+.reference-cone-material{position:absolute;left:5px;right:5px;bottom:5px;clip-path:inherit;opacity:.86}
+.reference-silo-outlet{position:absolute;left:75px;top:226px;width:11px;height:13px;background:linear-gradient(90deg,#52616D,#AAB4BC,#475662);z-index:7}
+.reference-silo-legs{position:absolute;left:48px;top:194px;width:66px;height:48px;display:flex;justify-content:space-between;z-index:5}
+.reference-silo-legs i{width:4px;height:48px;background:#75838E;box-shadow:1px 0 #B7C0C7}
+.reference-silo .reference-scale{top:48px;height:181px}
+.reference-silo .reference-logo{top:26%}
+
+/* Material granulado sem movimento */
+.reference-silo .reference-material.material-barite,
+.reference-silo .reference-material.material-bentonite,
+.reference-silo .reference-material.material-calcite,
+.reference-silo .reference-material.material-cement,
+.reference-silo .reference-material.material-kcl,
+.reference-silo .reference-material.material-bulk{
+  background-image:radial-gradient(circle at 3px 3px,#ffffff38 0 1px,transparent 1.4px);
+  background-size:7px 7px;
+}
+.reference-silo .reference-material i{display:none}
+
+/* Informações ao lado, como na referência */
+.reference-card-info .equipment-product span{font-size:10px}
+.reference-card-info .equipment-product strong{font-size:10px;margin-top:8px}
+.reference-card-info .equipment-product small{font-size:8px;margin-top:10px}
+.reference-card-info .equipment-volume{display:block;padding:0;margin-top:13px;background:transparent}
+.reference-card-info .equipment-volume strong{font-size:16px}
+.reference-card-info .equipment-volume span{font-size:9px;margin-left:3px}
+.reference-card-info .equipment-volume b{display:block;margin-top:8px;font-size:24px;color:#168BFF}
+.reference-card-info .equipment-card-metrics{margin-top:12px}
+.reference-card-info .equipment-card-metrics span{background:transparent;border:0;padding:2px 0}
+.reference-card-info .equipment-card-metrics strong{font-size:8px}
+.equipment-card-v3{min-height:350px}
+.equipment-card-v3 .equipment-card-update{margin-top:auto}
+
+/* Tema claro completo */
+:root[data-theme="light"]{
+  --bg:#EEF3F8;--card:#FFFFFF;--card-2:#F5F8FB;--navy:#FFFFFF;--text:#122033;--muted:#60758B;--line:#D5E0EA;
+  --blue:#087AE8;--blue-soft:#E4F1FD;--green:#17A34A;--green-soft:#E7F7EC;--amber:#B78600;--amber-soft:#FFF7D6;
+  --red:#D9363E;--red-soft:#FFE9EA;--shadow:0 12px 30px rgba(38,64,88,.10);
+  color-scheme:light;
+}
+:root[data-theme="light"] body,
+:root[data-theme="light"] .app-view,
+:root[data-theme="light"] .main-content{background:#EEF3F8;color:#122033}
+:root[data-theme="light"] .topbar.industrial-topbar,
+:root[data-theme="light"] .sidebar{background:#FFFFFF;border-color:#D8E2EB;color:#122033}
+:root[data-theme="light"] .sidebar-brand,
+:root[data-theme="light"] .sidebar-nav-label.additional{border-color:#E1E8EF}
+:root[data-theme="light"] .nav-item{color:#536A80}
+:root[data-theme="light"] .nav-item:hover,
+:root[data-theme="light"] .nav-item.active{background:#E6F1FC;color:#0A5FB8}
+:root[data-theme="light"] .nav-icon{background:#F0F5F9!important;color:#607890!important}
+:root[data-theme="light"] .nav-item.active .nav-icon{background:#D5EAFE!important;color:#087AE8!important}
+:root[data-theme="light"] .sidebar-general-status,
+:root[data-theme="light"] .plant-card,
+:root[data-theme="light"] .tank-source-switch,
+:root[data-theme="light"] .tanks-page-filters,
+:root[data-theme="light"] .tanks-page-footer,
+:root[data-theme="light"] .view-switch{background:#F8FAFC;border-color:#D5E0EA}
+:root[data-theme="light"] .topbar-page-copy strong,
+:root[data-theme="light"] .topbar-datetime strong,
+:root[data-theme="light"] .user-chip strong,
+:root[data-theme="light"] .sidebar-brand-copy strong{color:#122033}
+:root[data-theme="light"] .user-chip,
+:root[data-theme="light"] .card,
+:root[data-theme="light"] .modal-card,
+:root[data-theme="light"] .equipment-card-v3,
+:root[data-theme="light"] .tank-page-summary span,
+:root[data-theme="light"] .equipment-list-row{background:#FFFFFF;border-color:#D5E0EA;color:#122033;box-shadow:0 8px 22px rgba(38,64,88,.07)}
+:root[data-theme="light"] .modal-header{background:#FFFFFF;border-color:#D5E0EA}
+:root[data-theme="light"] input,
+:root[data-theme="light"] select,
+:root[data-theme="light"] textarea,
+:root[data-theme="light"] .tanks-search{background:#FFFFFF;border-color:#C8D6E2;color:#122033}
+:root[data-theme="light"] .equipment-card-head h3,
+:root[data-theme="light"] .equipment-product strong,
+:root[data-theme="light"] .equipment-volume strong,
+:root[data-theme="light"] .equipment-card-metrics strong,
+:root[data-theme="light"] .equipment-card-update b,
+:root[data-theme="light"] .equipment-section-head h2,
+:root[data-theme="light"] .tanks-page-heading h1{color:#122033}
+:root[data-theme="light"] .equipment-product small,
+:root[data-theme="light"] .equipment-card-update span,
+:root[data-theme="light"] .equipment-card-metrics span,
+:root[data-theme="light"] .tanks-page-heading p{color:#60758B}
+:root[data-theme="light"] .reference-scale{color:#60758B}
+:root[data-theme="light"] .equipment-card-v3.level-maintenance{background:#FFF5F5}
+:root[data-theme="light"] .equipment-card-v3.level-blocked{background:#FBF4FF}
+:root[data-theme="light"] .equipment-volume{background:#F4F8FB}
+:root[data-theme="light"] .btn.secondary{background:#F3F7FA;color:#2E506E;border-color:#CAD8E4}
+:root[data-theme="light"] .info-box{background:#EAF5FF;color:#24557E;border-color:#BEDCF5}
+:root[data-theme="light"] .status-badge.neutral{background:#F0F4F7;color:#526A80;border-color:#D4DFE8}
+:root[data-theme="light"] .theme-toggle-btn{color:#B47900}
+
+/* Proporções responsivas */
+@media(max-width:1250px){
+  .reference-card-main{grid-template-columns:125px minmax(0,1fr)!important}
+  .reference-equipment{transform:scale(.90);transform-origin:center}
+}
+@media(max-width:820px){
+  .reference-card-main{grid-template-columns:125px minmax(0,1fr)!important}
+  .reference-equipment{transform:scale(.88);transform-origin:center}
+}
+@media(max-width:560px){
+  .reference-card-main{grid-template-columns:145px minmax(0,1fr)!important}
+  .reference-equipment{transform:none}
+}
+@media(prefers-reduced-motion:reduce){
+  .reference-material{transition-duration:.01ms!important}
+}

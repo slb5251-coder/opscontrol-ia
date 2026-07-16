@@ -7,7 +7,7 @@
   <title>OpsControl IA Pro</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="app.css?v=20260716-industrial-complete-ui-v3-1">
+  <link rel="stylesheet" href="app.css?v=20260716-reference-tank-shape-light-theme-1">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -47,6 +47,9 @@
         <div class="topbar-datetime"><strong id="shellTime">--:--</strong><span id="shellDate">--/--/----</span></div>
         <button id="globalSearchBtn" class="icon-btn" aria-label="Busca geral" title="Busca geral"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg></button>
         <span id="syncBadge" class="status-badge neutral">Conectando...</span>
+        <button id="themeToggleBtn" class="icon-btn theme-toggle-btn" data-action="toggle-theme" aria-label="Alternar tema" title="Alternar tema">
+          <span class="theme-light-icon">☀</span><span class="theme-dark-icon">☾</span>
+        </button>
         <button id="notificationsBtn" class="icon-btn" aria-label="Notificações"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 7h18s-3 0-3-7"></path><path d="M10.5 20a1.5 1.5 0 0 0 3 0"></path></svg><span id="alertCount" class="count-badge">0</span></button>
         <button class="user-chip" aria-label="Abrir perfil"><span id="userInitials">US</span><div><strong id="userName">Usuário</strong><small id="userRole">Perfil</small></div><b>⌄</b></button>
       </div>
@@ -185,8 +188,8 @@
   </div>
 
   <div id="toastContainer" class="toast-container"></div>
-  <script src="js/config.js?v=20260716-industrial-complete-ui-v3-1"></script>
-  <script src="vendor/qrcode.js?v=20260716-industrial-complete-ui-v3-1"></script>
-  <script src="js/app.js?v=20260716-industrial-complete-ui-v3-1"></script>
+  <script src="js/config.js?v=20260716-reference-tank-shape-light-theme-1"></script>
+  <script src="vendor/qrcode.js?v=20260716-reference-tank-shape-light-theme-1"></script>
+  <script src="js/app.js?v=20260716-reference-tank-shape-light-theme-1"></script>
 </body>
 </html>

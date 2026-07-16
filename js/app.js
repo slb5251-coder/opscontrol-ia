@@ -12,7 +12,7 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const APP_VERSION = "20260716-v33-2-operacoes-profissional-1";
+  const APP_VERSION = "20260716-v33-3-tanques-silos-profissional-1";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -2764,30 +2764,58 @@
   }
 
   function renderTanks() {
+    const all = state.data.tanks || [];
+    const occupied = all.filter(item => Number(item.volume || 0) > 0).length;
+    const maintenance = all.filter(item => String(item.status || "").toLowerCase().includes("manuten")).length;
+    const totalVolume = all.reduce((sum,item)=>sum+Number(item.volume||0),0);
+    const totalCapacity = all.reduce((sum,item)=>sum+Number(item.capacity||0),0);
+    const pct = totalCapacity > 0 ? totalVolume / totalCapacity * 100 : 0;
+    const products = [...new Set(all.map(item=>item.product).filter(Boolean))].sort();
+    const statuses = [...new Set(all.map(item=>item.status).filter(Boolean))].sort();
     $("#page-tanks").innerHTML =
-      header("Tanques e silos", "Volumetria, transferências, produto, lote, status e histórico.",
+      header("Tanques e silos", "Controle operacional de volumetria, produto, lote, disponibilidade e histórico.",
         `<button class="btn secondary" data-page-link="fluids">Fluidos e Granéis</button><button class="btn secondary" data-export="tanks">Exportar CSV</button>${hasRole(["supervisor", "lider", "operador", "logistica"]) ? `<button class="btn primary" data-action="new-tank-transfer">Transferir entre tanques</button>` : ""}`) +
-      `<div class="info-box tank-catalog-info"><strong>Produtos vinculados:</strong> cadastre primeiro em Fluidos e Granéis e depois selecione no tanque ou silo.</div>` +
+      `<section class="tank-command-center">
+        <div class="tank-kpi"><span>Equipamentos</span><strong>${all.length}</strong><small>${occupied} com volume</small></div>
+        <div class="tank-kpi"><span>Ocupação geral</span><strong>${fmt.format(pct)}%</strong><small>${fmt.format(totalVolume)} de ${fmt.format(totalCapacity)}</small></div>
+        <div class="tank-kpi"><span>Disponíveis</span><strong>${all.filter(item=>String(item.status||'').toLowerCase().includes('dispon')).length}</strong><small>Prontos para operação</small></div>
+        <div class="tank-kpi"><span>Em manutenção</span><strong>${maintenance}</strong><small>Requerem atenção</small></div>
+      </section>
+      <section class="tank-filter-bar">
+        <div class="tank-filter-search"><label>Buscar equipamento</label><input data-tank-filter="search" placeholder="Nome, produto, lote ou cliente"></div>
+        <div><label>Fase</label><select data-tank-filter="phase"><option value="">Todas</option><option>Phase #1</option><option>Phase #2</option></select></div>
+        <div><label>Tipo</label><select data-tank-filter="kind"><option value="">Todos</option><option value="tank">Tanques</option><option value="silo">Silos</option></select></div>
+        <div><label>Produto</label><select data-tank-filter="product"><option value="">Todos</option>${products.map(x=>`<option>${esc(x)}</option>`).join('')}</select></div>
+        <div><label>Status</label><select data-tank-filter="status"><option value="">Todos</option>${statuses.map(x=>`<option>${esc(x)}</option>`).join('')}</select></div>
+        <button class="btn secondary" type="button" data-action="clear-tank-filters">Limpar</button>
+      </section>
+      <div class="tank-filter-result" data-tank-filter-result>${all.length} equipamento(s)</div>` +
       ["Phase #1", "Phase #2"].map(phase => {
-        const phaseItems = state.data.tanks
-          .filter(item => item.phase === phase)
-          .sort((a, b) => a.order - b.order);
+        const phaseItems = all.filter(item => item.phase === phase).sort((a,b)=>a.order-b.order);
         const tanks = phaseItems.filter(item => String(item.kind).toLowerCase() !== "silo");
         const silos = phaseItems.filter(item => String(item.kind).toLowerCase() === "silo");
-
-        return `<section class="tancagem-phase-block">
+        return `<section class="tancagem-phase-block" data-tank-phase-section="${esc(phase)}">
           <div class="phase-heading"><div><span>ÁREA OPERACIONAL</span><h2>${phase}</h2></div><small>${tanks.length} tanque(s) • ${silos.length} silo(s)</small></div>
-          <div class="asset-group tank-asset-group">
-            <div class="asset-group-heading"><div class="asset-group-icon tank-group-icon">TK</div><div><h3>Tanques e Mix Tanks</h3><p>Fluidos, salmouras e produtos líquidos.</p></div></div>
-            <div class="grid tank-grid compact-tank-grid">${tanks.map(tankCard).join("") || `<div class="empty asset-empty">Nenhum tanque nesta fase.</div>`}</div>
-          </div>
-          <div class="asset-group silo-asset-group">
-            <div class="asset-group-heading"><div class="asset-group-icon silo-group-icon">SL</div><div><h3>Silos de Granéis</h3><p>Barita, bentonita, calcita e outros granéis.</p></div></div>
-            <div class="grid tank-grid compact-tank-grid silo-grid">${silos.map(tankCard).join("") || `<div class="empty asset-empty">Nenhum silo nesta fase.</div>`}</div>
-          </div>
+          <div class="asset-group tank-asset-group" data-tank-kind-group="tank"><div class="asset-group-heading"><div class="asset-group-icon tank-group-icon">TK</div><div><h3>Tanques e Mix Tanks</h3><p>Fluidos, salmouras e produtos líquidos.</p></div></div><div class="grid tank-grid compact-tank-grid">${tanks.map(tankCard).join("") || `<div class="empty asset-empty">Nenhum tanque nesta fase.</div>`}</div></div>
+          <div class="asset-group silo-asset-group" data-tank-kind-group="silo"><div class="asset-group-heading"><div class="asset-group-icon silo-group-icon">SL</div><div><h3>Silos de Granéis</h3><p>Barita, bentonita, calcita e outros granéis.</p></div></div><div class="grid tank-grid compact-tank-grid silo-grid">${silos.map(tankCard).join("") || `<div class="empty asset-empty">Nenhum silo nesta fase.</div>`}</div></div>
         </section>`;
       }).join("");
   }
+
+  function applyTankFilters() {
+    const page = $("#page-tanks"); if (!page) return;
+    const value = key => (page.querySelector(`[data-tank-filter="${key}"]`)?.value || "").trim().toLowerCase();
+    const search=value('search'), phase=value('phase'), kind=value('kind'), product=value('product'), status=value('status');
+    let visible=0;
+    page.querySelectorAll('[data-tank-search]').forEach(card=>{
+      const ok=(!search||card.dataset.tankSearch.includes(search))&&(!phase||card.dataset.tankPhase===phase)&&(!kind||card.dataset.tankKind===kind)&&(!product||card.dataset.tankProduct===product)&&(!status||card.dataset.tankStatus===status);
+      card.hidden=!ok; if(ok) visible++;
+    });
+    page.querySelectorAll('[data-tank-kind-group]').forEach(group=>{group.hidden=![...group.querySelectorAll('[data-tank-search]')].some(card=>!card.hidden)});
+    page.querySelectorAll('[data-tank-phase-section]').forEach(section=>{section.hidden=![...section.querySelectorAll('[data-tank-search]')].some(card=>!card.hidden)});
+    const result=page.querySelector('[data-tank-filter-result]'); if(result) result.textContent=`${visible} equipamento(s) exibido(s)`;
+  }
+
 
   function tankCard(tank) {
     const volume = Number(tank.volume || 0);
@@ -2801,7 +2829,7 @@
     const productType = productClass(tank.product, tank.kind, volume);
     const volumeState = volume > 0 ? "has-volume" : "no-volume";
 
-    return `<div class="card tank-card compact-tank-card ${silo ? "silo-card" : "fluid-tank-card"} tank-bg-${productType} ${volumeState}">
+    return `<div class="card tank-card compact-tank-card ${silo ? "silo-card" : "fluid-tank-card"} tank-bg-${productType} ${volumeState}" data-tank-search="${esc(`${tank.name} ${tank.product||""} ${tank.lot||""} ${tank.client||""}`.toLowerCase())}" data-tank-phase="${esc(String(tank.phase||"").toLowerCase())}" data-tank-kind="${silo?"silo":"tank"}" data-tank-product="${esc(String(tank.product||"").toLowerCase())}" data-tank-status="${esc(String(tank.status||"").toLowerCase())}">
       <div class="tank-top">
         <div>
           <h3>${esc(tank.name)}</h3>
@@ -2810,7 +2838,7 @@
         ${badge(tank.status)}
       </div>
 
-      <div class="compact-tank-product">
+      <div class="tank-card-body"><div class="tank-mini-visual ${silo ? "is-silo" : "is-tank"}"><span style="height:${visualPct.toFixed(2)}%"></span><b>${fmt.format(pct)}%</b></div><div class="tank-card-details"><div class="compact-tank-product">
         <strong>${esc(tank.product || (volume > 0 ? "Produto não informado" : "Sem produto"))}</strong>
         <span>Lote: ${esc(tank.lot || "-")}${volume > 0 && !tank.product ? ` • volume registrado` : ""}</span>
         <span>Densidade: ${tank.density !== null && tank.density !== undefined ? `${fmt.format(tank.density)} ${esc(tank.densityUnit || (silo ? "t/m³" : "ppg"))}` : "não informada"}</span>
@@ -2835,7 +2863,7 @@
         <span>${fmt.format(Math.max(0, capacity - volume))} ${esc(tank.unit)} livres</span>
       </div>
 
-      <div class="tank-update-meta">
+      </div></div><div class="tank-update-meta">
         <span>Atualizado por: ${esc(updater)}</span>
         <span>${dateTime(tank.updated_at)}</span>
       </div>
@@ -5818,6 +5846,12 @@
 
     if (button.dataset.newOrderEquipment) return openModal("Nova ordem de serviço", maintenanceOrderForm({}, button.dataset.newOrderEquipment), "MANUTENÇÃO");
 
+    if (button.dataset.action === "clear-tank-filters") {
+      document.querySelectorAll("#page-tanks [data-tank-filter]").forEach(field => field.value = "");
+      applyTankFilters();
+      return;
+    }
+
     if (button.dataset.editOrder) {
       const order = state.data.maintenanceOrders.find(x => x.id === button.dataset.editOrder);
       return openModal("Editar ordem de serviço", maintenanceOrderForm(order), "MANUTENÇÃO");
@@ -5851,6 +5885,7 @@
   });
 
   document.addEventListener("change", async event => {
+    if (event.target.matches("[data-tank-filter]")) applyTankFilters();
     const changedForm = event.target.closest("#modalBody form");
     if (changedForm) scheduleDraftSave(changedForm);
     if (event.target.closest("#truckForm") && event.target.name === "truck_type") syncTruckForm(event.target.closest("#truckForm"), true);
@@ -5887,6 +5922,7 @@
   });
 
   document.addEventListener("input", event => {
+    if (event.target.matches("[data-tank-filter]")) applyTankFilters();
     if (event.target.closest("#operationForm")) updateOperationReview(event.target.closest("#operationForm"));
     if (event.target.id === "globalSearchInput") {
       state.searchQuery = event.target.value;

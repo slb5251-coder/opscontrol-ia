@@ -12,7 +12,7 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const APP_VERSION = "20260716-reference-tank-shape-light-theme-1";
+  const APP_VERSION = "20260716-tv-steps-operations-phase1-phase2-silos-1";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -1818,7 +1818,7 @@
       button.classList.toggle("hidden", !moduleAllowed(button.dataset.page));
     });
 
-    applyTheme(localStorage.getItem(THEME_KEY) || "dark");
+    applyTheme(localStorage.getItem(THEME_KEY) || "light");
     updateConnectionBadge();
     renderAll();
 
@@ -2060,6 +2060,7 @@
 
     return `<div class="tv-overview">
       <div class="tv-kpi-row">
+        <div><span>Etapa 1</span><strong>Operações</strong></div>
         <div><span>Operações ativas</span><strong>${active.length}</strong></div>
         <div><span>Fluidos armazenados</span><strong>${fmt.format(totalBbl)} bbl</strong></div>
         <div><span>Granéis armazenados</span><strong>${fmt.format(totalTon)} ton</strong></div>
@@ -2067,8 +2068,8 @@
       </div>
       <div class="tv-overview-body">
         <div class="tv-operations-panel">
-          <div class="tv-panel-title"><h2>Operações em andamento</h2><span>${active.length} operação(ões)</span></div>
-          <div class="tv-operation-grid">${active.length ? active.slice(0, 6).map(tvOperationTile).join("") : `<div class="tv-empty-state">Nenhuma operação em andamento no momento.</div>`}</div>
+          <div class="tv-panel-title"><h2>1° Operação</h2><span>${active.length} operação(ões) em andamento</span></div>
+          <div class="tv-operation-grid">${active.length ? active.slice(0, 8).map(tvOperationTile).join("") : `<div class="tv-empty-state">Nenhuma operação em andamento no momento.</div>`}</div>
         </div>
         <div class="tv-alerts-panel">
           <div class="tv-panel-title"><h2>Atenção operacional</h2><span>Atualização automática</span></div>
@@ -2078,22 +2079,38 @@
     </div>`;
   }
 
-  function tvInventorySlide(phase) {
-    const assets = state.data.tanks
-      .filter(item => item.phase === phase)
+  function tvTanksSlide(phase, stepLabel) {
+    const tanks = state.data.tanks
+      .filter(item => item.phase === phase && !isSiloAsset(item))
       .sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
-    const tanks = assets.filter(item => !isSiloAsset(item));
-    const silos = assets.filter(item => isSiloAsset(item));
-    const occupied = assets.filter(item => Number(item.volume || 0) > 0).length;
+    const occupied = tanks.filter(item => Number(item.volume || 0) > 0).length;
     return `<div class="tv-inventory-slide">
-      <div class="tv-panel-title large"><div><h2>${esc(phase)} — Inventário de tancagem</h2><span>${occupied} de ${assets.length} equipamentos com produto</span></div><strong>${state.data.profile.department || "B-Port LMP"}</strong></div>
+      <div class="tv-panel-title large"><div><h2>${esc(stepLabel)} — Tanques ${esc(phase)}</h2><span>${occupied} de ${tanks.length} tanques / mix tanks com produto</span></div><strong>${state.data.profile.department || "B-Port LMP"}</strong></div>
       <div class="tv-inventory-section">
         <div class="tv-section-label">Tanques e Mix Tanks</div>
-        <div class="tv-tank-grid">${tanks.map(tvTankTile).join("")}</div>
+        <div class="tv-tank-grid">${tanks.length ? tanks.map(tvTankTile).join("") : `<div class="tv-empty-state">Nenhum tanque cadastrado para ${esc(phase)}.</div>`}</div>
+      </div>
+    </div>`;
+  }
+
+  function tvSilosSlide() {
+    const phase1 = state.data.tanks
+      .filter(item => item.phase === "Phase #1" && isSiloAsset(item))
+      .sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
+    const phase2 = state.data.tanks
+      .filter(item => item.phase === "Phase #2" && isSiloAsset(item))
+      .sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
+    const total = [...phase1, ...phase2];
+    const occupied = total.filter(item => Number(item.volume || 0) > 0).length;
+    return `<div class="tv-inventory-slide">
+      <div class="tv-panel-title large"><div><h2>4° Silos Phase #1 + Phase #2</h2><span>${occupied} de ${total.length} silos com produto</span></div><strong>${state.data.profile.department || "B-Port LMP"}</strong></div>
+      <div class="tv-inventory-section silos">
+        <div class="tv-section-label">Phase #1 — Silos</div>
+        <div class="tv-silo-grid">${phase1.length ? phase1.map(tvTankTile).join("") : `<div class="tv-empty-state compact">Nenhum silo cadastrado na Phase #1.</div>`}</div>
       </div>
       <div class="tv-inventory-section silos">
-        <div class="tv-section-label">Silos de granéis</div>
-        <div class="tv-silo-grid">${silos.map(tvTankTile).join("")}</div>
+        <div class="tv-section-label">Phase #2 — Silos</div>
+        <div class="tv-silo-grid">${phase2.length ? phase2.map(tvTankTile).join("") : `<div class="tv-empty-state compact">Nenhum silo cadastrado na Phase #2.</div>`}</div>
       </div>
     </div>`;
   }
@@ -2108,7 +2125,7 @@
   }
 
   function changeTvSlide(step = 1) {
-    state.tv.slide = (state.tv.slide + step + 3) % 3;
+    state.tv.slide = (state.tv.slide + step + 4) % 4;
     renderTv();
   }
 
@@ -2134,9 +2151,16 @@
   function renderTv() {
     const page = $("#page-tv");
     if (!page || !state.data) return;
-    const slide = state.tv.slide % 3;
-    const labels = ["Operações", "Phase #1", "Phase #2"];
-    const content = slide === 0 ? tvOverviewSlide() : tvInventorySlide(slide === 1 ? "Phase #1" : "Phase #2");
+    const totalSlides = 4;
+    const slide = ((state.tv.slide % totalSlides) + totalSlides) % totalSlides;
+    const labels = ["1. Operações", "2. Tanques Phase #1", "3. Tanques Phase #2", "4. Silos Phases #1 e #2"];
+    const content = slide === 0
+      ? tvOverviewSlide()
+      : slide === 1
+        ? tvTanksSlide("Phase #1", "2° Etapa")
+        : slide === 2
+          ? tvTanksSlide("Phase #2", "3° Etapa")
+          : tvSilosSlide();
 
     page.innerHTML = `<div class="tv-screen">
       <div class="tv-topbar">

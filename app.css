@@ -1017,3 +1017,13 @@ body.kiosk-mode .pull-refresh-indicator{display:none!important}
   .industrial-level-fill{transition-duration:.01ms!important}
   .industrial-flow-indicator b{animation:none!important}
 }
+
+
+/* Edição estrutural liberada para Administrador e Supervisor */
+.structure-capacity-editor{padding:11px;border:1px solid #b8cdea;border-radius:13px;background:#f5f9ff}
+.structure-capacity-editor>label{display:block}.structure-capacity-tools{display:flex;gap:7px;flex-wrap:wrap;margin-top:8px}
+.structure-capacity-tools .btn{min-height:34px}.structure-card-button{border-color:#7f65c7!important;color:#6243ad!important;background:#f3efff!important}
+.structure-edit-notice{border-left:4px solid #7254bd}.structure-edit-notice strong,.structure-edit-notice span{display:block}.structure-edit-notice span{margin-top:4px}
+:root[data-theme="dark"] .structure-capacity-editor{background:#10213a;border-color:#355c89}
+:root[data-theme="dark"] .structure-card-button{background:#231b3a!important;color:#d8c9ff!important;border-color:#725ca9!important}
+@media(max-width:520px){.structure-capacity-tools{display:grid;grid-template-columns:1fr}.structure-capacity-tools .btn{width:100%}}

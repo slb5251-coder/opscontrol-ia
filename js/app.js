@@ -12,7 +12,7 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const APP_VERSION = "20260716-industrial-tank-panel-1";
+  const APP_VERSION = "20260716-tank-structure-edit-v5-1";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -119,22 +119,33 @@
 
   function confirmTankUpdate(form) {
     const product = state.data.fluids.find(item => item.id === form.elements.fluid_type_id?.value);
-    const tankName = form.dataset.tankName || "Equipamento";
-    const volume = form.elements.volume?.value || "0";
-    const unit = state.data.tanks.find(item => item.id === form.dataset.tankId)?.unit || "";
+    const structural = form.dataset.adminFull === "true";
+    const currentTank = state.data.tanks.find(item => item.id === form.dataset.tankId);
+    const originalName = form.dataset.tankName || "Equipamento";
+    const finalName = structural ? (form.elements.name?.value?.trim() || originalName) : originalName;
+    const unit = structural ? (form.elements.unit?.value || (String(form.elements.kind?.value).toLowerCase() === "silo" ? "ton" : "bbl")) : (currentTank?.unit || "");
+    const rows = [
+      { label: "Equipamento", value: finalName },
+      { label: "Cliente", value: form.elements.client?.value || "A definir" },
+      { label: "Produto", value: product?.name || "Sem produto" },
+      { label: "Volume", value: `${form.elements.volume?.value || "0"} ${unit}` },
+      { label: "Lote", value: form.elements.lot?.value || "-" },
+      { label: "Status", value: form.elements.status?.value || "-" }
+    ];
+    if (structural) {
+      rows.splice(1, 0,
+        { label: "Nome anterior", value: originalName },
+        { label: "Fase / tipo", value: `${form.elements.phase?.value || "-"} • ${form.elements.kind?.value || "-"}` },
+        { label: "Capacidade", value: `${form.elements.capacity?.value || "0"} ${unit}` },
+        { label: "Densidade", value: `${form.elements.density?.value || "-"} ${form.elements.density_unit?.value || ""}`.trim() }
+      );
+    }
     return openActionConfirmation({
-      eyebrow: "TANCAGEM",
-      title: `Confirmar atualização de ${tankName}`,
-      message: "Confira os dados antes de enviar ao Supabase.",
-      confirmLabel: `Confirmar em ${tankName}`,
-      rows: [
-        { label: "Equipamento", value: tankName },
-        { label: "Cliente", value: form.elements.client?.value || "A definir" },
-        { label: "Produto", value: product?.name || "Sem produto" },
-        { label: "Volume", value: `${volume} ${unit}` },
-        { label: "Lote", value: form.elements.lot?.value || "-" },
-        { label: "Status", value: form.elements.status?.value || "-" }
-      ]
+      eyebrow: structural ? "EDIÇÃO ESTRUTURAL" : "TANCAGEM",
+      title: structural ? `Confirmar estrutura de ${finalName}` : `Confirmar atualização de ${finalName}`,
+      message: structural ? "Nome, capacidade e densidade serão alterados no equipamento selecionado." : "Confira os dados antes de enviar ao Supabase.",
+      confirmLabel: structural ? `Salvar estrutura de ${finalName}` : `Confirmar em ${finalName}`,
+      rows
     });
   }
 
@@ -771,6 +782,10 @@
 
   function hasRole(roles) {
     return isAdmin() || roles.includes(role());
+  }
+
+  function canEditTankStructure() {
+    return hasRole(["supervisor"]);
   }
 
   function canManageFluidCatalog() {
@@ -2798,21 +2813,29 @@
     return Number(fallback || 0);
   }
 
-  function syncOfficialTankCapacity(form) {
+  function syncOfficialTankCapacity(form, applySuggestion = false) {
     if (!form) return;
     const name = form.elements.name?.value || form.dataset.tankName || "";
     const phase = form.elements.phase?.value || "";
     const kind = form.elements.kind?.value || form.dataset.tankKind || "";
-    if (String(kind).toLowerCase() === "silo") return syncSiloCapacityPreview(form);
-    const capacity = officialTankCapacityBy(name, phase, kind, Number(form.elements.capacity?.value || 0));
-    if (form.elements.capacity) form.elements.capacity.value = capacity;
-    if (form.elements.unit) form.elements.unit.value = "bbl";
-    const display = form.querySelector("[data-official-capacity-display]");
-    if (display) display.value = `${fmt.format(capacity)} bbl`;
+    const silo = String(kind).toLowerCase() === "silo";
+    if (form.elements.unit) form.elements.unit.value = silo ? "ton" : "bbl";
+    const suggested = officialTankCapacityBy(name, phase, kind, Number(form.elements.capacity?.value || 0));
     const help = form.querySelector("[data-official-capacity-help]");
-    if (help) help.textContent = ["M-01","M-02","M-03","M-04"].includes(String(name).toUpperCase().trim())
-      ? "Mix Tank com capacidade oficial de 500 bbl."
-      : `${phase || "Fase"} com capacidade oficial de ${fmt.format(capacity)} bbl.`;
+    const button = form.querySelector('[data-action="apply-official-capacity"]');
+    if (button) button.classList.toggle("hidden", silo);
+    if (help) {
+      help.textContent = silo
+        ? "Nos silos, a capacidade máxima em toneladas pode ser informada manualmente ou calculada usando volume físico × densidade."
+        : ["M-01","M-02","M-03","M-04"].includes(String(name).toUpperCase().trim())
+          ? `Sugestão padrão: 500 bbl para ${name || "Mix Tank"}.`
+          : `Sugestão padrão: ${fmt.format(suggested)} bbl para ${phase || "a fase selecionada"}.`;
+    }
+    if (applySuggestion && !silo && form.elements.capacity) {
+      form.elements.capacity.value = String(suggested).replace(".", ",");
+      toast(`Capacidade sugerida de ${fmt.format(suggested)} bbl aplicada.`, "success");
+    }
+    syncSiloCapacityPreview(form);
   }
 
   function tankActiveOperation(tank) {
@@ -3008,6 +3031,7 @@
 
       ${interactive ? `<div class="industrial-card-actions">
         ${hasRole(["supervisor", "lider", "operador", "logistica"]) && !demoMode ? `<button class="btn small primary" data-edit-tank="${tank.id}">Atualizar</button>` : ""}
+        ${canEditTankStructure() && !demoMode ? `<button class="btn small secondary structure-card-button" data-edit-tank-structure="${tank.id}">Editar estrutura</button>` : ""}
         <button class="btn small secondary" data-industrial-details="${tank.id}" data-demo="${demoMode ? "true" : "false"}">Detalhes e histórico</button>
         ${!demoMode ? `<button class="btn small secondary desktop-industrial-action" data-tank-history="${tank.id}">Histórico</button><button class="btn small secondary desktop-industrial-action" data-asset-qr="tank:${tank.id}">QR</button>` : ""}
       </div>` : ""}
@@ -3349,49 +3373,36 @@
 
   function syncSiloCapacityPreview(form) {
     if (!form) return;
-
     const kind = form.elements.kind?.value || form.dataset.tankKind || "";
     const isSilo = isSiloAsset(kind);
     form.dataset.tankKind = kind;
-
-    const fixedWrap = form.querySelector("[data-fixed-capacity-wrap]");
-    const siloWraps = [...form.querySelectorAll("[data-silo-capacity-wrap]")];
-    const unitWrap = form.querySelector("[data-unit-wrap]");
+    [...form.querySelectorAll("[data-silo-capacity-wrap]")].forEach(element => element.classList.toggle("hidden", !isSilo));
     const preview = form.querySelector("[data-silo-capacity-preview]");
-
-    fixedWrap?.classList.toggle("hidden", isSilo);
-    siloWraps.forEach(element => element.classList.toggle("hidden", !isSilo));
-    unitWrap?.classList.toggle("hidden", isSilo);
-
+    const suggestedField = form.elements.operational_capacity;
+    const capacityLabel = form.querySelector("[data-capacity-label]");
+    if (capacityLabel) capacityLabel.textContent = isSilo ? "Capacidade máxima (ton) *" : "Capacidade máxima (bbl) *";
+    if (form.elements.unit) form.elements.unit.value = isSilo ? "ton" : "bbl";
     if (!isSilo) {
       preview?.classList.add("hidden");
       return;
     }
-
     const physical = parseOptionalDecimal(form.elements.physical_capacity_m3?.value);
     const density = parseOptionalDecimal(form.elements.density?.value);
-    const capacity = siloOperationalCapacity(physical, density);
+    const suggested = siloOperationalCapacity(physical, density);
     const currentVolume = parseOptionalDecimal(form.elements.volume?.value) ?? 0;
-    const operationalField = form.elements.operational_capacity;
-
     if (form.elements.density_unit) form.elements.density_unit.value = "t/m³";
-    if (operationalField) operationalField.value = capacity === null ? "" : fmt.format(capacity);
-
+    if (suggestedField) suggestedField.value = suggested === null ? "" : fmt.format(suggested);
     if (!preview) return;
     preview.classList.remove("hidden");
-
-    if (capacity === null) {
-      preview.innerHTML = `<strong>Capacidade operacional do silo</strong><span>Selecione um granel com densidade em t/m³.</span>`;
+    if (suggested === null) {
+      preview.classList.remove("silo-capacity-danger");
+      preview.innerHTML = `<strong>Cálculo auxiliar do silo</strong><span>Informe volume físico e densidade para obter uma sugestão. A capacidade máxima continua editável.</span>`;
       return;
     }
-
-    const free = Math.max(0, capacity - currentVolume);
-    const exceeded = currentVolume > capacity;
+    const configured = parseOptionalDecimal(form.elements.capacity?.value) ?? 0;
+    const exceeded = currentVolume > configured;
     preview.classList.toggle("silo-capacity-danger", exceeded);
-    preview.innerHTML = `
-      <strong>${fmt.format(capacity)} ton de capacidade operacional</strong>
-      <span>${fmt.format(physical)} m³ × ${fmt.format(density)} t/m³</span>
-      <span>${exceeded ? `Saldo atual excede a nova capacidade em ${fmt.format(currentVolume-capacity)} ton.` : `${fmt.format(free)} ton disponíveis.`}</span>`;
+    preview.innerHTML = `<strong>Sugestão calculada: ${fmt.format(suggested)} ton</strong><span>${fmt.format(physical)} m³ × ${fmt.format(density)} t/m³</span><span>Capacidade informada: ${fmt.format(configured)} ton${exceeded ? ` • volume atual excede em ${fmt.format(currentVolume-configured)} ton` : ""}</span>`;
   }
 
   function syncTankCatalogFields(form) {
@@ -3424,7 +3435,7 @@
   }
 
   function tankForm(tank, editStructure = false) {
-    const admin = isAdmin() && editStructure;
+    const admin = canEditTankStructure() && editStructure;
     const editToken = crypto.randomUUID();
     const silo = isSiloAsset(tank);
     const linkedFluid = (state.data.fluids || []).find(item => item.id === tank.fluidTypeId);
@@ -3456,24 +3467,29 @@
           <div><label>Fase *</label><select name="phase">${["Phase #1", "Phase #2"].map(x => `<option ${tank.phase === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
           <div><label>Tipo *</label><select name="kind" data-tank-kind-select>${["Tanque", "Mix Tank", "Silo"].map(x => `<option ${tank.kind === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
           <div><label>Ordem de exibição</label><input name="display_order" type="number" min="0" step="1" value="${tank.order ?? 0}"></div>
-          <div data-fixed-capacity-wrap class="${silo ? "hidden" : ""}">
-            <label>Capacidade oficial</label>
-            <input data-official-capacity-display value="${fmt.format(officialCapacity)} bbl" disabled>
-            <input type="hidden" name="capacity" value="${officialCapacity}">
-            <small class="field-help" data-official-capacity-help>${["M-01","M-02","M-03","M-04"].includes(String(tank.name).toUpperCase()) ? "Mix Tank com capacidade oficial de 500 bbl." : `${esc(tank.phase)} com capacidade oficial de ${fmt.format(officialCapacity)} bbl.`}</small>
+          <div class="wide structure-capacity-editor">
+            <label data-capacity-label>${silo ? "Capacidade máxima (ton) *" : "Capacidade máxima (bbl) *"}</label>
+            <input name="capacity" type="text" inputmode="decimal" required value="${String(tank.capacity).replace(".", ",")}">
+            <small class="field-help" data-official-capacity-help>${silo ? "Capacidade manual em toneladas. O cálculo por densidade é apenas uma sugestão." : `Sugestão padrão: ${fmt.format(officialCapacity)} bbl.`}</small>
+            <div class="structure-capacity-tools">
+              <button type="button" class="btn small secondary ${silo ? "hidden" : ""}" data-action="apply-official-capacity">Aplicar capacidade sugerida</button>
+              <button type="button" class="btn small secondary ${silo ? "" : "hidden"}" data-action="apply-calculated-silo-capacity">Usar cálculo m³ × densidade</button>
+            </div>
           </div>
           <div data-silo-capacity-wrap class="${silo ? "" : "hidden"}">
-            <label>Volume físico do silo (m³) *</label>
-            <input name="physical_capacity_m3" type="text" inputmode="decimal" value="${String(physicalCapacity).replace(".", ",")}">
+            <label>Volume físico do silo (m³)</label>
+            <input name="physical_capacity_m3" type="text" inputmode="decimal" value="${physicalCapacity ? String(physicalCapacity).replace(".", ",") : ""}">
+            <small class="field-help">Campo auxiliar para cálculo; a capacidade máxima acima pode ser ajustada manualmente.</small>
           </div>
-          <div data-unit-wrap class="${silo ? "hidden" : ""}">
+          <div>
             <label>Unidade</label>
-            <input value="bbl" disabled>
-            <input type="hidden" name="unit" value="bbl">
+            <input value="${silo ? "ton" : "bbl"}" disabled data-structure-unit-display>
+            <input type="hidden" name="unit" value="${silo ? "ton" : "bbl"}">
           </div>
           <div data-silo-capacity-wrap class="${silo ? "" : "hidden"}">
-            <label>Capacidade operacional (ton)</label>
+            <label>Capacidade calculada pela densidade</label>
             <input name="operational_capacity" value="${fmt.format(calculatedCapacity)}" disabled>
+            <small class="field-help">Sugestão automática, sem substituir o valor informado até você confirmar.</small>
           </div>
         ` : `
           <div><label>Tanque ou silo</label><input value="${esc(tank.name)}" disabled></div>
@@ -3540,7 +3556,7 @@
 
         <div class="wide"><label>Lote</label><input name="lot" value="${esc(tank.lot)}"></div>
         ${admin
-          ? `<div class="wide admin-edit-notice structure-edit-notice"><strong>Edição estrutural</strong><span>Este modo altera nome, fase, tipo, capacidade, ordem e conteúdo. Use apenas para modificar a estrutura do equipamento.</span></div>`
+          ? `<div class="wide admin-edit-notice structure-edit-notice"><strong>Edição estrutural — Administrador/Supervisor</strong><span>Nome, capacidade, densidade, fase, tipo, ordem e conteúdo podem ser alterados. A capacidade padrão é apenas uma sugestão.</span></div>`
           : `<div class="wide info-box content-update-notice"><strong>Atualização operacional segura</strong><span>Cliente, produto, lote, volume e status serão alterados. Densidade e capacidade serão calculadas pelo cadastro oficial; nome e estrutura não serão enviados.</span></div>`}
       </div>
 
@@ -4820,6 +4836,9 @@
     if (raw.toLowerCase().includes("alterado depois que o formulário foi aberto")) {
       return "Este tanque foi atualizado por outra pessoa. Feche a janela, atualize a página e abra novamente.";
     }
+    if (raw.toLowerCase().includes("administrador ou supervisor")) {
+      return "Somente Administrador ou Supervisor pode alterar nome, capacidade e densidade.";
+    }
     return raw;
   }
 
@@ -4888,7 +4907,7 @@
       throw new Error("Selecione Petrobras, PRIO, Equinor ou A definir.");
     }
 
-    const adminFull = form.dataset.adminFull === "true" && isAdmin();
+    const adminFull = form.dataset.adminFull === "true" && canEditTankStructure();
     const newKind = adminFull ? payload.kind : tank.kind;
     const silo = isSiloAsset(newKind);
     const newVolume = parseTankVolume(payload.volume);
@@ -4903,11 +4922,9 @@
     const newDensityUnit = newDensity === null
       ? null
       : (silo ? "t/m³" : (adminFull ? payload.density_unit : selectedFluid?.densityUnit || "ppg"));
-    const fixedCapacity = !silo
-      ? (adminFull ? parseTankVolume(payload.capacity) : Number(tank.capacity || 0))
-      : null;
+    const enteredCapacity = adminFull ? parseTankVolume(payload.capacity) : Number(tank.capacity || 0);
     const calculatedSiloCapacity = silo ? siloOperationalCapacity(physicalCapacityM3, newDensity) : null;
-    const newCapacity = silo ? (calculatedSiloCapacity ?? Number(tank.capacity || 0)) : fixedCapacity;
+    const newCapacity = enteredCapacity;
 
     if (adminFull) {
       const requestedName = String(payload.name || "").trim();
@@ -4957,14 +4974,14 @@
       // O modo operacional usa uma função que não recebe nome, fase, tipo,
       // capacidade ou densidade. Isso elimina conflitos de nome e garante
       // que o produto seja derivado exclusivamente pelo ID do catálogo.
-      const rpcName = adminFull ? "admin_update_tank_product_capacity_v4" : "update_tank_content_v5";
+      const rpcName = adminFull ? "admin_update_tank_structure_v5" : "update_tank_content_v5";
       const rpcPayload = adminFull ? {
         p_tank_id: targetTankId,
         p_client: selectedClient,
         p_name: payload.name?.trim(),
         p_phase: payload.phase,
         p_kind: payload.kind,
-        p_capacity: silo ? Number(tank.capacity || 0) : newCapacity,
+        p_capacity: newCapacity,
         p_physical_capacity_m3: physicalCapacityM3,
         p_unit: silo ? "ton" : payload.unit,
         p_display_order: Number(payload.display_order || 0),
@@ -4991,8 +5008,9 @@
       if (error) throw error;
 
       const rpcRow = Array.isArray(data) ? data[0] : data;
+      const expectedSavedName = adminFull ? String(payload.name || targetTankName).trim() : targetTankName;
       if (!rpcRow?.id) throw new Error("O Supabase não confirmou a atualização.");
-      if (rpcRow.id !== targetTankId || normalizeSearch(rpcRow.name) !== normalizeSearch(targetTankName)) {
+      if (rpcRow.id !== targetTankId || normalizeSearch(rpcRow.name) !== normalizeSearch(expectedSavedName)) {
         throw new Error("O Supabase retornou outro equipamento. A confirmação foi rejeitada.");
       }
 
@@ -5005,7 +5023,7 @@
 
       if (confirmError) throw confirmError;
       if (!serverRow) throw new Error("Não foi possível reler o tanque atualizado.");
-      if (serverRow.id !== targetTankId || normalizeSearch(serverRow.name) !== normalizeSearch(targetTankName)) {
+      if (serverRow.id !== targetTankId || normalizeSearch(serverRow.name) !== normalizeSearch(expectedSavedName)) {
         throw new Error("A releitura retornou outro equipamento. A atualização não foi confirmada.");
       }
 
@@ -6012,6 +6030,20 @@
     }
 
 
+    if (action === "apply-official-capacity") {
+      syncOfficialTankCapacity(button.closest("form"), true);
+      return;
+    }
+    if (action === "apply-calculated-silo-capacity") {
+      const form = button.closest("form");
+      const calculated = parseOptionalDecimal(form?.elements?.operational_capacity?.value);
+      if (!Number.isFinite(calculated) || calculated <= 0) return toast("Informe volume físico e densidade para calcular a capacidade.", "error");
+      form.elements.capacity.value = String(calculated).replace(".", ",");
+      syncSiloCapacityPreview(form);
+      toast(`Capacidade calculada de ${fmt.format(calculated)} ton aplicada.`, "success");
+      return;
+    }
+
     if (action === "show-industrial-demo") {
       [...state.visual.tankLevels.keys()].filter(key => String(key).startsWith("demo:")).forEach(key => state.visual.tankLevels.delete(key));
       openModal("Demonstração — Painel industrial", industrialDemoPanel(), "DADOS FICTÍCIOS");
@@ -6295,7 +6327,7 @@
     }
 
     if (button.dataset.editTankStructure) {
-      if (!isAdmin()) return toast("Somente o administrador pode editar a estrutura.", "error");
+      if (!canEditTankStructure()) return toast("Somente Administrador ou Supervisor pode editar a estrutura.", "error");
       const tank = state.data.tanks.find(x => x.id === button.dataset.editTankStructure);
       if (!tank) return toast("O equipamento selecionado não foi encontrado. Atualize a página.", "error");
       return openModal(`Editar estrutura — ${tank.name}`, tankForm(tank, true), "ADMINISTRAÇÃO");
@@ -6384,7 +6416,7 @@
     if (event.target.closest("#operationForm") && event.target.matches("[data-allocation-tank]")) updateOperationAllocationSummary(event.target.closest("#operationForm"));
     if (event.target.closest("#tankTransferForm")) updateTransferPreview(event.target.closest("#tankTransferForm"));
     if (event.target.closest("#tankForm") && event.target.name === "fluid_type_id") syncTankCatalogFields(event.target.closest("#tankForm"));
-    if (event.target.closest("#tankForm") && ["name", "phase", "kind"].includes(event.target.name)) syncOfficialTankCapacity(event.target.closest("#tankForm"));
+    if (event.target.closest("#tankForm") && ["name", "phase", "kind"].includes(event.target.name)) syncOfficialTankCapacity(event.target.closest("#tankForm"), false);
     if (event.target.closest("#tankForm") && event.target.name === "kind") syncSiloCapacityPreview(event.target.closest("#tankForm"));
     if (event.target.closest('#genericForm[data-kind="fluid"]') && event.target.name === "type") syncFluidDensityUnit(event.target.closest("form"));
     if (event.target.closest('#genericForm[data-kind="certificate"]') && event.target.name === "user_id") {

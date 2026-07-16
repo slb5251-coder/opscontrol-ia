@@ -1,11 +1,11 @@
-const CACHE="opscontrol-20260716-v33-base-visual-1";
+const CACHE="opscontrol-20260716-v33-1-dashboard-profissional-1";
 const FILES=[
   "./",
   "./index.html",
-  "./app.css?v=20260716-v33-base-visual-1",
-  "./v33.css?v=20260716-v33-base-visual-1",
-  "./js/config.js?v=20260716-v33-base-visual-1",
-  "./js/app.js?v=20260716-v33-base-visual-1",
+  "./app.css?v=20260716-v33-1-dashboard-profissional-1",
+  "./v33.css?v=20260716-v33-1-dashboard-profissional-1",
+  "./js/config.js?v=20260716-v33-1-dashboard-profissional-1",
+  "./js/app.js?v=20260716-v33-1-dashboard-profissional-1",
   "./manifest.json",
   "./assets/icon.svg","./vendor/qrcode.js"
 ];

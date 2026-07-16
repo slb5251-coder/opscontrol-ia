@@ -1884,9 +1884,9 @@
     renderMobileShell();
   }
 
-  function statCard(title, value, unit, icon, detail = "") {
-    return `<div class="card stat-card pro-stat">
-      <div><small>${title}</small><h2>${value}</h2><span class="muted">${unit}</span>${detail ? `<em>${detail}</em>` : ""}</div>
+  function statCard(title, value, unit, icon, detail = "", tone = "blue") {
+    return `<div class="card stat-card pro-stat tone-${esc(tone)}">
+      <div><small>${esc(title)}</small><h2>${esc(value)}</h2><span class="muted">${esc(unit)}</span>${detail ? `<em>${esc(detail)}</em>` : ""}</div>
       <span class="stat-icon">${icon}</span>
     </div>`;
   }
@@ -2095,8 +2095,8 @@
       ];
       actions = [
         create("new-operation", "Registrar operação", "Início, volume, paralisação ou conclusão", uiIcon("anchor")),
-        action("tanks", "Consultar tancagem", "Saldo, produto e lote", "TK"),
-        action("reports", "Passagem do turno", "Checklist e pendências", "PS")
+        action("tanks", "Consultar tancagem", "Saldo, produto e lote", uiIcon("layers")),
+        action("reports", "Passagem do turno", "Checklist e pendências", uiIcon("file"))
       ];
     } else if (currentRole === "lider") {
       title = "Painel do líder de turno";
@@ -2108,8 +2108,8 @@
       ];
       actions = [
         create("new-operation", "Nova operação", "Programar e distribuir tancagem", uiIcon("anchor")),
-        action("reports", "Preparar passagem", "Checklist, atividades e pendências", "PS"),
-        action("quality", "Conferir lançamentos", "Inconsistências antes do fechamento", "DQ")
+        action("reports", "Preparar passagem", "Checklist, atividades e pendências", uiIcon("file")),
+        action("quality", "Conferir lançamentos", "Inconsistências antes do fechamento", uiIcon("shield"))
       ];
     } else if (currentRole === "logistica") {
       title = "Painel da logística";
@@ -2120,9 +2120,9 @@
         ["Pendências", openPendings.length, "reports"]
       ];
       actions = [
-        create("new-truck", "Movimentar carreta", "Entrada, saída, NF e lote", "CR"),
-        action("chemicals", "Inventário químico", "Saldo, validade e FEFO", "QI"),
-        action("quality", "Conferir documentos", "NF, lote e rastreabilidade", "DQ")
+        create("new-truck", "Movimentar carreta", "Entrada, saída, NF e lote", uiIcon("truck")),
+        action("chemicals", "Inventário químico", "Saldo, validade e FEFO", uiIcon("flask")),
+        action("quality", "Conferir documentos", "NF, lote e rastreabilidade", uiIcon("shield"))
       ];
     } else if (currentRole === "mecanico") {
       title = "Painel da manutenção";
@@ -2133,9 +2133,9 @@
         ["Pendências do turno", openPendings.filter(x => x.category === "Manutenção").length, "reports"]
       ];
       actions = [
-        create("new-maintenance-order", "Abrir ordem de serviço", "Registrar falha ou preventiva", "OS"),
-        action("maintenance", "Ver equipamentos", "Horímetro e programação", "EQ"),
-        action("reports", "Pendências recebidas", "Itens do turno anterior", "PS")
+        create("new-maintenance-order", "Abrir ordem de serviço", "Registrar falha ou preventiva", uiIcon("wrench")),
+        action("maintenance", "Ver equipamentos", "Horímetro e programação", uiIcon("gauge")),
+        action("reports", "Pendências recebidas", "Itens do turno anterior", uiIcon("file"))
       ];
     } else if (currentRole === "qhse") {
       title = "Painel QHSE";
@@ -2146,9 +2146,9 @@
         ["Qualidade dos dados", qualityCount, "quality"]
       ];
       actions = [
-        create("new-qhse", "Novo registro QHSE", "Risco, inspeção, DDS ou ocorrência", "QS"),
-        action("qhse", "Acompanhar ações", "Responsáveis e prazos", "AC"),
-        action("quality", "Ver conformidade", "Campos obrigatórios e documentos", "DQ")
+        create("new-qhse", "Novo registro QHSE", "Risco, inspeção, DDS ou ocorrência", uiIcon("shield")),
+        action("qhse", "Acompanhar ações", "Responsáveis e prazos", uiIcon("check")),
+        action("quality", "Ver conformidade", "Campos obrigatórios e documentos", uiIcon("shield"))
       ];
     } else {
       title = currentRole === "supervisor" ? "Painel da supervisão" : "Visão administrativa";
@@ -2159,9 +2159,9 @@
         ["Inconsistências", dataQualityIssues().length, "quality"]
       ];
       actions = [
-        action("quality", "Qualidade e conciliação", "Validar dados antes do fechamento", "DQ"),
-        action("reports", "Relatórios gerenciais", "Indicadores e passagem", "RG"),
-        action("audit", "Auditoria", "Quem alterou e quando", "AU")
+        action("quality", "Qualidade e conciliação", "Validar dados antes do fechamento", uiIcon("shield")),
+        action("reports", "Relatórios gerenciais", "Indicadores e passagem", uiIcon("file")),
+        action("audit", "Auditoria", "Quem alterou e quando", uiIcon("database"))
       ];
     }
 
@@ -2198,7 +2198,7 @@
     const activeOps = operations.filter(x => !["Concluída", "Cancelada"].includes(x.status));
     const today = localDateKey();
     const todayOps = d.operations.filter(x => recordDateKey(x.start_at || x.created_at) === today).length;
-    const todayTrucks = d.trucks.filter(x => recordDateKey(x.date) === today).length;
+    const todayTrucks = d.trucks.filter(x => recordDateKey(x.date || x.created_at) === today).length;
     const periodOps = operations.length;
     const periodTrucks = trucks.length;
 
@@ -2210,7 +2210,7 @@
     const pendingQhse = d.actionItems.filter(x => x.status !== "Concluído").length
       + d.qhse.filter(x => x.status !== "Concluído").length;
     const downtime = operations.reduce((sum, op) => sum + Number(op.paused_minutes || 0), 0);
-    const lowChemicals = d.chemicals.filter(x => x.quantity <= x.minimum).length;
+    const lowChemicals = d.chemicals.filter(x => Number(x.quantity || 0) <= Number(x.minimum || 0)).length;
     const expiringChemicals = d.chemicals.filter(x => {
       const days = daysUntil(x.expiry_date);
       return days !== null && days >= 0 && days <= 60;
@@ -2218,8 +2218,8 @@
     const criticalAlerts = d.systemAlerts.filter(x => isCriticalAlert(x.level)).length
       + d.alerts.filter(x => !x.read && isCriticalAlert(x.level)).length;
 
-    const byClient = aggregateOperationVolume(operations, "client").slice(0, 7);
-    const products = aggregateOperationVolume(operations, "product").slice(0, 7);
+    const byClient = aggregateOperationVolume(operations, "client").slice(0, 6);
+    const products = aggregateOperationVolume(operations, "product").slice(0, 6);
     const maxClient = Math.max(...byClient.map(x => x.value), 1);
 
     const clients = [...new Set(d.operations.map(x => x.client).filter(Boolean))].sort();
@@ -2234,77 +2234,176 @@
     ]);
 
     const occupiedAssets = d.tanks.filter(x => Number(x.volume || 0) > 0).length;
-    const blockedAssets = d.tanks.filter(x => x.status === "Bloqueado").length;
-    const periodLabel = filtersActive ? "no filtro selecionado" : "hoje";
+    const blockedAssets = d.tanks.filter(x => String(x.status || "").toLowerCase() === "bloqueado").length;
     const operationCount = filtersActive ? periodOps : todayOps;
     const truckCount = filtersActive ? periodTrucks : todayTrucks;
+    const periodLabel = filtersActive ? "no período selecionado" : "registradas hoje";
+
+    const phaseSummary = phase => {
+      const assets = d.tanks.filter(x => x.phase === phase);
+      const occupied = assets.filter(x => Number(x.volume || 0) > 0).length;
+      const blocked = assets.filter(x => String(x.status || "").toLowerCase() === "bloqueado").length;
+      const silos = assets.filter(isSiloAsset).length;
+      const tanks = Math.max(0, assets.length - silos);
+      const utilization = assets.length ? occupied / assets.length * 100 : 0;
+      return { phase, total: assets.length, occupied, blocked, silos, tanks, utilization };
+    };
+    const phase1 = phaseSummary("Phase #1");
+    const phase2 = phaseSummary("Phase #2");
+
+    const attentionItems = [
+      criticalAlerts > 0 ? { tone: "critical", value: criticalAlerts, title: "Alertas críticos", detail: "Alertas automáticos ou ainda não lidos", page: "alerts", icon: "alert" } : null,
+      blockedAssets > 0 ? { tone: "warning", value: blockedAssets, title: "Equipamentos bloqueados", detail: "Tanques ou silos indisponíveis para operação", page: "tanks", icon: "lock" } : null,
+      pendingQhse > 0 ? { tone: "warning", value: pendingQhse, title: "Pendências QHSE", detail: "Registros e itens de ação ainda abertos", page: "qhse", icon: "shield" } : null,
+      lowChemicals > 0 ? { tone: "warning", value: lowChemicals, title: "Estoque químico baixo", detail: "Produtos no mínimo ou abaixo do mínimo", page: "chemicals", icon: "flask" } : null,
+      expiring.length > 0 ? { tone: "info", value: expiring.length, title: "Certificados a vencer", detail: "Vencimento previsto nos próximos 60 dias", page: "certificates", icon: "file" } : null,
+      expiringChemicals > 0 ? { tone: "info", value: expiringChemicals, title: "Lotes próximos do vencimento", detail: "Validade prevista nos próximos 60 dias", page: "chemicals", icon: "hourglass" } : null
+    ].filter(Boolean).slice(0, 5);
+
+    const activityDate = value => {
+      if (!value) return "-";
+      const raw = String(value);
+      return raw.length <= 10 ? dateOnly(raw) : dateTime(raw);
+    };
+    const recentActivity = [
+      ...d.operations.map(item => ({
+        date: item.updated_at || item.start_at || item.created_at,
+        page: "operations", icon: "anchor", tone: "blue",
+        title: `${item.client || "Cliente não informado"} • ${item.vessel || "Embarcação não informada"}`,
+        detail: `${item.activity || "Operação"} — ${item.product || "Produto não informado"}`
+      })),
+      ...d.trucks.map(item => ({
+        date: item.updated_at || item.created_at || item.date,
+        page: "trucks", icon: "truck", tone: "green",
+        title: item.plate || item.invoice || "Movimentação de carreta",
+        detail: `${item.movement || "Movimentação"} — ${item.product || item.truckType || "Carga"}`
+      })),
+      ...d.qhse.map(item => ({
+        date: item.updated_at || item.created_at || item.date,
+        page: "qhse", icon: "shield", tone: "amber",
+        title: item.title || item.type || "Registro QHSE",
+        detail: `${item.severity || "Sem severidade"} — ${item.status || "Sem status"}`
+      })),
+      ...d.maintenanceOrders.map(item => {
+        const equipment = d.equipment.find(eq => eq.id === item.equipment_id);
+        return {
+          date: item.closed_at || item.opened_at,
+          page: "maintenance", icon: "wrench", tone: "red",
+          title: item.title || "Ordem de manutenção",
+          detail: `${equipment?.name || "Equipamento"} — ${item.status || "Sem status"}`
+        };
+      })
+    ].filter(item => item.date)
+      .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      .slice(0, 7);
+
+    const phaseCard = item => `<div class="dashboard-phase-card">
+      <div class="dashboard-phase-head"><div><small>ÁREA OPERACIONAL</small><strong>${esc(item.phase)}</strong></div><span>${fmt.format(item.utilization)}%</span></div>
+      <div class="dashboard-phase-progress"><span style="width:${Math.min(100, Math.max(0, item.utilization))}%"></span></div>
+      <div class="dashboard-phase-data"><div><strong>${item.occupied}/${item.total}</strong><small>com produto</small></div><div><strong>${item.tanks}</strong><small>tanques</small></div><div><strong>${item.silos}</strong><small>silos</small></div><div><strong>${item.blocked}</strong><small>bloqueados</small></div></div>
+    </div>`;
 
     $("#page-dashboard").innerHTML =
-      header(MOBILE_PAGE_META.dashboard[0], "Informações priorizadas conforme o seu cargo.",
+      header(MOBILE_PAGE_META.dashboard[0], "Visão consolidada da operação, tancagem e pontos de atenção.",
         `<button class="btn secondary" data-export="operations">Exportar CSV</button>
-         <button class="btn secondary" data-action="refresh">${uiIcon("refresh", "ui-icon btn-icon")} Atualizar agora</button>
+         <button class="btn secondary" data-action="refresh">${uiIcon("refresh", "ui-icon btn-icon")} Atualizar</button>
          <button class="btn primary" data-action="new-operation">+ Nova operação</button>`) +
+      `<div class="dashboard-v331">
+        ${dashboardRoleHome(d, activeOps)}
 
-      dashboardRoleHome(d, activeOps) +
-      `<div class="dashboard-sync-strip">
-        <div><span class="live-dot"></span><strong>Atualização automática ativa</strong><small>Verificação em tempo real e a cada 60 segundos</small></div>
-        <div><span>Última sincronização</span><strong>${state.lastSync ? dateTime(state.lastSync) : "-"}</strong></div>
-        <div><span>Última alteração operacional</span><strong>${latestChange ? dateTime(latestChange) : "-"}</strong></div>
-      </div>
+        <section class="dashboard-command-bar" aria-label="Status de sincronização">
+          <div class="dashboard-command-live"><span class="live-dot"></span><div><strong>Operação sincronizada</strong><small>Tempo real ativo e verificação automática a cada 60 segundos</small></div></div>
+          <div><small>Última sincronização</small><strong>${state.lastSync ? dateTime(state.lastSync) : "-"}</strong></div>
+          <div><small>Última alteração</small><strong>${latestChange ? dateTime(latestChange) : "-"}</strong></div>
+          <div><small>Ocupação da planta</small><strong>${occupiedAssets} de ${d.tanks.length} equipamentos</strong></div>
+        </section>
 
-      <div class="card dashboard-filters no-print">
-        <div><label>Data inicial</label><input id="filterStart" type="date" value="${esc(state.filters.start)}"></div>
-        <div><label>Data final</label><input id="filterEnd" type="date" value="${esc(state.filters.end)}"></div>
-        <div><label>Cliente</label><select id="filterClient"><option value="">Todos</option>${clients.map(x => `<option ${state.filters.client === x ? "selected" : ""}>${esc(x)}</option>`).join("")}</select></div>
-        <div><label>Produto</label><select id="filterProduct"><option value="">Todos</option>${productNames.map(x => `<option ${state.filters.product === x ? "selected" : ""}>${esc(x)}</option>`).join("")}</select></div>
-        <div class="filter-actions"><button class="btn primary" data-action="apply-dashboard-filters">Aplicar</button><button class="btn secondary" data-action="clear-dashboard-filters">Limpar</button></div>
-      </div>
-      ${filtersActive ? `<div class="dashboard-filter-notice">Os filtros afetam operações, carretas, tempo parado e rankings. A tancagem sempre mostra o saldo atual da planta.</div>` : ""}
+        <section class="card dashboard-filter-panel no-print">
+          <div class="dashboard-filter-heading"><div><small>PERÍODO E ESCOPO</small><h3>Filtros do dashboard</h3><p>Operações, carretas, rankings e tempo parado seguem o período selecionado.</p></div>${filtersActive ? `<span class="dashboard-filter-active">Filtro ativo</span>` : ""}</div>
+          <div class="dashboard-filter-grid">
+            <div><label>Data inicial</label><input id="filterStart" type="date" value="${esc(state.filters.start)}"></div>
+            <div><label>Data final</label><input id="filterEnd" type="date" value="${esc(state.filters.end)}"></div>
+            <div><label>Cliente</label><select id="filterClient"><option value="">Todos</option>${clients.map(x => `<option ${state.filters.client === x ? "selected" : ""}>${esc(x)}</option>`).join("")}</select></div>
+            <div><label>Produto</label><select id="filterProduct"><option value="">Todos</option>${productNames.map(x => `<option ${state.filters.product === x ? "selected" : ""}>${esc(x)}</option>`).join("")}</select></div>
+            <div class="filter-actions"><button class="btn primary" data-action="apply-dashboard-filters">Aplicar filtros</button><button class="btn secondary" data-action="clear-dashboard-filters">Limpar</button></div>
+          </div>
+        </section>
+        ${filtersActive ? `<div class="dashboard-filter-notice">A tancagem continua exibindo o saldo atual da planta. Os demais indicadores seguem o filtro aplicado.</div>` : ""}
 
-      <div class="grid four dashboard-primary-stats" style="margin-top:14px">
-        ${statCard(filtersActive ? "Operações no filtro" : "Operações hoje", fmt.format(operationCount), periodLabel, uiIcon("anchor"), activeOps.length ? `${activeOps.length} em andamento` : "Nenhuma em andamento")}
-        ${statCard(filtersActive ? "Carretas no filtro" : "Carretas hoje", fmt.format(truckCount), periodLabel, uiIcon("truck"))}
-        ${statCard("Manutenções abertas", fmt.format(openMaintenance), "ordens pendentes", uiIcon("wrench"))}
-        ${statCard("Alertas críticos", fmt.format(criticalAlerts), "automáticos e não lidos", uiIcon("alert"))}
-      </div>
+        <section class="dashboard-kpi-grid" aria-label="Indicadores principais">
+          ${statCard(filtersActive ? "Operações no filtro" : "Operações hoje", fmt.format(operationCount), periodLabel, uiIcon("anchor"), activeOps.length ? `${activeOps.length} em andamento` : "Nenhuma em andamento", "blue")}
+          ${statCard("Operações ativas", fmt.format(activeOps.length), "em acompanhamento", uiIcon("gauge"), activeOps.length ? "Monitorar execução e vazão" : "Planta sem operação ativa", "indigo")}
+          ${statCard(filtersActive ? "Carretas no filtro" : "Carretas hoje", fmt.format(truckCount), periodLabel, uiIcon("truck"), "Entradas e saídas registradas", "green")}
+          ${statCard("Equipamentos ocupados", fmt.format(occupiedAssets), `de ${d.tanks.length} tanques e silos`, uiIcon("layers"), `${blockedAssets} bloqueado(s)`, "cyan")}
+          ${statCard("Manutenções abertas", fmt.format(openMaintenance), "ordens pendentes", uiIcon("wrench"), "Corretivas e preventivas", "amber")}
+          ${statCard("Alertas críticos", fmt.format(criticalAlerts), "automáticos e não lidos", uiIcon("alert"), criticalAlerts ? "Requerem atenção" : "Nenhuma criticidade", "red")}
+        </section>
 
-      <div class="section-title">Tancagem atual</div>
-      <div class="grid five dashboard-storage-grid">
-        ${storageCard("WBM", wbm.volume, wbm.capacity, "bbl", uiIcon("droplet"), "wbm")}
-        ${storageCard("Brine", brine.volume, brine.capacity, "bbl", uiIcon("droplet"), "brine")}
-        ${storageCard("SBM", sbm.volume, sbm.capacity, "bbl", uiIcon("droplet"), "sbm")}
-        ${storageCard("Olefina", olefin.volume, olefin.capacity, "bbl", uiIcon("droplet"), "olefin")}
-        ${storageCard("Granéis", bulk.volume, bulk.capacity, "ton", uiIcon("package"), "bulk")}
-      </div>
-      ${genericVolume > 0 ? `<div class="dashboard-data-warning">Existem ${fmt.format(genericVolume)} bbl com produto não classificado. Informe ou vincule o produto para incluir esse volume no card correto.</div>` : ""}
+        <div class="dashboard-main-grid">
+          <section class="card dashboard-operations-panel">
+            <div class="dashboard-section-heading"><div><small>ACOMPANHAMENTO EM TEMPO REAL</small><h3>Operações em andamento</h3><p>${activeOps.length} operação(ões) ativa(s) ${filtersActive ? "no filtro selecionado" : "neste momento"}.</p></div><button class="btn small secondary" data-page-link="operations">Ver todas</button></div>
+            <div class="dashboard-operation-list">${activeOps.length ? activeOps.slice(0, 6).map(op => {
+              const pct = op.planned ? Math.min(100, Math.max(0, Math.round(Number(op.executed || 0) / Number(op.planned || 1) * 100))) : 0;
+              return `<article class="dashboard-operation-card">
+                <div class="dashboard-operation-top"><div><small>${esc(op.client || "Cliente não informado")}</small><strong>${esc(op.vessel || "Embarcação não informada")}</strong><span>${esc(op.activity || "Operação")} • ${esc(op.product || "Produto não informado")}</span></div>${badge(op.status)}</div>
+                <div class="dashboard-operation-progress"><span style="width:${pct}%"></span></div>
+                <div class="dashboard-operation-metrics"><div><small>Executado</small><strong>${fmt.format(op.executed)} ${esc(op.unit)}</strong></div><div><small>Planejado</small><strong>${fmt.format(op.planned)} ${esc(op.unit)}</strong></div><div><small>Progresso</small><strong>${pct}%</strong></div><div><small>Vazão</small><strong>${fmt.format(operationFlow(op))} ${esc(op.unit)}/h</strong></div></div>
+                <div class="dashboard-operation-footer"><span>${op.start_at ? `Início: ${dateTime(op.start_at)}` : "Horário inicial não informado"}</span><div><button class="btn small secondary" data-operation-timeline="${op.id}">Timeline</button><button class="btn small primary" data-edit-operation="${op.id}">Abrir</button></div></div>
+              </article>`;
+            }).join("") : `<div class="dashboard-empty-state">${uiIcon("check")}<strong>Nenhuma operação ativa</strong><span>As novas operações aparecerão aqui automaticamente.</span></div>`}</div>
+          </section>
 
-      <div class="grid two" style="margin-top:14px">
-        <div class="card"><h3>Operações em andamento</h3><p>${activeOps.length} operação(ões) ativa(s) ${filtersActive ? "no filtro" : ""}</p>
-          ${activeOps.length ? activeOps.slice(0, 6).map(op => {
-            const pct = op.planned ? Math.min(100, Math.round(op.executed / op.planned * 100)) : 0;
-            return `<div class="operation-mini"><div class="kpi-row"><div><strong>${esc(op.client)} • ${esc(op.vessel)}</strong><span class="muted">${esc(op.activity)} — ${esc(op.product)}</span></div>${badge(op.status)}</div><div class="progress"><span style="width:${pct}%"></span></div><small>${fmt.format(op.executed)} / ${fmt.format(op.planned)} ${esc(op.unit)} • ${fmt.format(operationFlow(op))} ${esc(op.unit)}/h</small></div>`;
-          }).join("") : `<div class="empty">Nenhuma operação ativa.</div>`}
+          <aside class="dashboard-side-stack">
+            <section class="card dashboard-attention-panel">
+              <div class="dashboard-section-heading compact"><div><small>CENTRAL DE ATENÇÃO</small><h3>Pontos que exigem ação</h3></div><button class="btn small secondary" data-page-link="alerts">Alertas</button></div>
+              <div class="dashboard-attention-list">${attentionItems.length ? attentionItems.map(item => `<button class="dashboard-attention-item tone-${item.tone}" data-page-link="${item.page}"><span class="dashboard-attention-icon">${uiIcon(item.icon)}</span><div><strong>${esc(item.title)}</strong><small>${esc(item.detail)}</small></div><b>${fmt.format(item.value)}</b></button>`).join("") : `<div class="dashboard-empty-state compact">${uiIcon("check")}<strong>Sem pendências críticas</strong><span>Os principais controles estão dentro dos limites.</span></div>`}</div>
+            </section>
+
+            <section class="card dashboard-phase-panel">
+              <div class="dashboard-section-heading compact"><div><small>DISPONIBILIDADE POR ÁREA</small><h3>Ocupação das fases</h3></div><button class="btn small secondary" data-page-link="tanks">Tancagem</button></div>
+              <div class="dashboard-phase-list">${phaseCard(phase1)}${phaseCard(phase2)}</div>
+              <div class="dashboard-plant-metrics">
+                <div><span>QHSE pendente</span><strong>${pendingQhse}</strong></div>
+                <div><span>Tempo parado</span><strong>${fmt.format(downtime / 60)} h</strong></div>
+                <div><span>Certificados</span><strong>${expiring.length}</strong></div>
+                <div><span>Químicos baixos</span><strong>${lowChemicals}</strong></div>
+              </div>
+            </section>
+          </aside>
         </div>
 
-        <div class="card"><h3>Situação da planta</h3><div class="kpi-list" style="margin-top:15px">
-          <div class="kpi-row"><span>Equipamentos com produto</span><strong>${occupiedAssets} de ${d.tanks.length}</strong></div>
-          <div class="kpi-row"><span>Tanques/silos bloqueados</span><strong>${blockedAssets}</strong></div>
-          <div class="kpi-row"><span>Pendências QHSE</span><strong>${pendingQhse}</strong></div>
-          <div class="kpi-row"><span>Tempo parado ${filtersActive ? "no filtro" : "carregado"}</span><strong>${fmt.format(downtime / 60)} h</strong></div>
-          <div class="kpi-row"><span>Certificados a vencer</span><strong>${expiring.length}</strong></div>
-          <div class="kpi-row"><span>Químicos em baixo estoque</span><strong>${lowChemicals}</strong></div>
-          <div class="kpi-row"><span>Lotes químicos vencendo</span><strong>${expiringChemicals}</strong></div>
-        </div></div>
-      </div>
+        <section class="card dashboard-storage-overview">
+          <div class="dashboard-section-heading"><div><small>SALDO ATUAL DA PLANTA</small><h3>Tancagem por família de produto</h3><p>Volumes atuais, capacidade utilizada e espaço livre.</p></div><button class="btn small secondary" data-page-link="tanks">Abrir inventário</button></div>
+          <div class="dashboard-storage-grid">
+            ${storageCard("WBM", wbm.volume, wbm.capacity, "bbl", uiIcon("droplet"), "wbm")}
+            ${storageCard("Brine", brine.volume, brine.capacity, "bbl", uiIcon("droplet"), "brine")}
+            ${storageCard("SBM", sbm.volume, sbm.capacity, "bbl", uiIcon("droplet"), "sbm")}
+            ${storageCard("Olefina", olefin.volume, olefin.capacity, "bbl", uiIcon("droplet"), "olefin")}
+            ${storageCard("Granéis", bulk.volume, bulk.capacity, "ton", uiIcon("package"), "bulk")}
+          </div>
+          ${genericVolume > 0 ? `<div class="dashboard-data-warning">Existem ${fmt.format(genericVolume)} bbl com produto não classificado. Vincule o produto para incluir esse volume no indicador correto.</div>` : ""}
+        </section>
 
-      <div class="grid two" style="margin-top:14px">
-        <div class="card"><h3>Volume executado por cliente</h3><p>Valores separados por unidade para não misturar bbl e toneladas.</p><div class="bar-list">${byClient.length ? byClient.map(item => `<div class="bar-row"><div><span>${esc(item.label)} <em class="unit-chip">${esc(item.unit)}</em></span><strong>${fmt.format(item.value)}</strong></div><div class="bar-track"><span style="width:${item.value / maxClient * 100}%"></span></div></div>`).join("") : `<div class="empty">Sem operações no filtro.</div>`}</div></div>
-        <div class="card"><h3>Produtos mais movimentados</h3><p>Ranking por produto e unidade operacional.</p><div class="ranking-list">${products.length ? products.map((item, index) => `<div class="ranking-row"><span class="rank">${index + 1}</span><div><strong>${esc(item.label)}</strong><small>${fmt.format(item.value)} ${esc(item.unit)} movimentados</small></div></div>`).join("") : `<div class="empty">Sem movimentações no filtro.</div>`}</div></div>
-      </div>
+        <div class="dashboard-analysis-grid">
+          <section class="card dashboard-chart-card">
+            <div class="dashboard-section-heading compact"><div><small>PERFORMANCE</small><h3>Volume executado por cliente</h3><p>Valores mantidos por unidade operacional.</p></div></div>
+            <div class="bar-list">${byClient.length ? byClient.map(item => `<div class="bar-row"><div><span>${esc(item.label)} <em class="unit-chip">${esc(item.unit)}</em></span><strong>${fmt.format(item.value)}</strong></div><div class="bar-track"><span style="width:${Math.min(100, item.value / maxClient * 100)}%"></span></div></div>`).join("") : `<div class="empty">Sem operações no período.</div>`}</div>
+          </section>
 
-      <div class="card smart-query" style="margin-top:14px"><div><h3>Consulta inteligente</h3><p>Pergunte sobre volumes, clientes, carretas, tanques, químicos, certificados ou diesel.</p></div><div class="smart-input"><input id="smartQuestion" placeholder="Ex.: Quantos bbl de Brine temos?"><button class="btn primary" data-action="smart-query">Perguntar</button></div><div id="smartAnswer" class="smart-answer hidden"></div></div>`;
+          <section class="card dashboard-ranking-card">
+            <div class="dashboard-section-heading compact"><div><small>MOVIMENTAÇÃO</small><h3>Produtos mais movimentados</h3><p>Ranking pelo volume executado.</p></div></div>
+            <div class="ranking-list">${products.length ? products.map((item, index) => `<div class="ranking-row"><span class="rank">${index + 1}</span><div><strong>${esc(item.label)}</strong><small>${fmt.format(item.value)} ${esc(item.unit)} movimentados</small></div></div>`).join("") : `<div class="empty">Sem movimentações no período.</div>`}</div>
+          </section>
+
+          <section class="card dashboard-activity-panel">
+            <div class="dashboard-section-heading compact"><div><small>RASTREABILIDADE</small><h3>Atividades recentes</h3><p>Últimas atualizações dos módulos operacionais.</p></div><button class="btn small secondary" data-page-link="audit">Auditoria</button></div>
+            <div class="dashboard-activity-list">${recentActivity.length ? recentActivity.map(item => `<button class="dashboard-activity-item" data-page-link="${item.page}"><span class="dashboard-activity-icon tone-${item.tone}">${uiIcon(item.icon)}</span><div><strong>${esc(item.title)}</strong><small>${esc(item.detail)}</small></div><time>${activityDate(item.date)}</time></button>`).join("") : `<div class="empty">Nenhuma atividade recente.</div>`}</div>
+          </section>
+        </div>
+
+        <section class="card smart-query dashboard-smart-query"><div><small>ASSISTENTE OPERACIONAL</small><h3>Consulta inteligente</h3><p>Pergunte sobre volumes, clientes, carretas, tanques, químicos, certificados ou diesel.</p></div><div class="smart-input"><input id="smartQuestion" placeholder="Ex.: Quantos bbl de Brine temos?"><button class="btn primary" data-action="smart-query">Perguntar</button></div><div id="smartAnswer" class="smart-answer hidden"></div></section>
+      </div>`;
   }
-
 
 
   function dataQualityIssues() {

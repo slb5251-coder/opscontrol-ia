@@ -12,7 +12,7 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const APP_VERSION = "20260715-mobile-complete-splash-slb-1";
+  const APP_VERSION = "20260716-industrial-tank-panel-1";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -47,6 +47,9 @@
       pullRefreshing: false,
       tankFilters: { client: "Todos", view: "Todos", query: "" },
       tankSwipe: null
+    },
+    visual: {
+      tankLevels: new Map()
     },
     config: loadConfig()
   };
@@ -861,6 +864,9 @@
     syncChemicalPackagingFields($("#chemicalProductForm"));
     setOperationStep($("#operationForm"), 1);
     syncTruckForm($("#truckForm"));
+    syncTankCatalogFields($("#tankForm"));
+    syncOfficialTankCapacity($("#tankForm"));
+    syncSiloCapacityPreview($("#tankForm"));
     updateTransferPreview($("#tankTransferForm"));
     const modalForm = $("#modalBody form");
     if (modalForm?.id === "tankForm") clearLegacyTankDrafts();
@@ -1983,18 +1989,11 @@
   }
 
   function tvTankTile(tank) {
-    const volume = Number(tank.volume || 0);
-    const capacity = Number(tank.capacity || 0);
-    const pct = capacity > 0 ? Math.max(0, Math.min(100, volume / capacity * 100)) : 0;
-    const visualPct = volume > 0 ? Math.max(1.5, pct) : 0;
-    const tone = productClass(tank.product, tank.kind, volume);
-    return `<div class="tv-tank-tile ${tone} ${tank.status === "Bloqueado" ? "blocked" : ""}">
-      <div class="tv-tank-head"><strong>${esc(tank.name)}</strong><span>${esc(tank.status)}</span></div>
-      <div class="tv-tank-product">${esc(tank.product || (volume > 0 ? "Produto não informado" : "Vazio"))}</div>
-      <div class="tv-tank-volume"><strong>${fmt.format(volume)}</strong><span>/ ${fmt.format(capacity)} ${esc(tank.unit)}</span></div>
-      <div class="tv-tank-progress"><span style="width:${visualPct}%"></span></div>
-      <div class="tv-tank-foot"><span>${fmt.format(pct)}%</span><span>${tank.lot ? `Lote ${esc(tank.lot)}` : esc(tank.kind)}</span></div>
-    </div>`;
+    return industrialEquipmentCard(tank, {
+      tv:true,
+      interactive:false,
+      visualKey:`tv:${tank.id}`
+    });
   }
 
   function tvOperationTile(operation) {
@@ -2118,6 +2117,7 @@
       </div>
     </div>`;
     updateTvClock();
+    setTimeout(() => animateIndustrialEquipmentLevels(page), 0);
   }
 
 
@@ -2757,6 +2757,329 @@
   }
 
 
+
+  const TANK_OPERATIONAL_STATUSES = [
+    "Operacional",
+    "Disponível",
+    "Em fabricação",
+    "Recebendo produto",
+    "Bombeando",
+    "Reservado",
+    "Bloqueado",
+    "Em manutenção",
+    "Vazio"
+  ];
+
+  function normalizeTankOperationalStatus(status = "", volume = 0) {
+    const legacy = {
+      "Em uso": "Operacional",
+      "Liberado": "Disponível",
+      "Manutenção": "Em manutenção",
+      "Limpeza": "Em manutenção"
+    };
+    let value = legacy[status] || status || "Disponível";
+    if (Number(volume || 0) <= 0 && !["Bloqueado", "Em manutenção", "Reservado"].includes(value)) value = "Vazio";
+    if (Number(volume || 0) > 0 && value === "Vazio") value = "Disponível";
+    return TANK_OPERATIONAL_STATUSES.includes(value) ? value : "Disponível";
+  }
+
+  function tankStatusOptions(status, volume) {
+    const selected = normalizeTankOperationalStatus(status, volume);
+    return TANK_OPERATIONAL_STATUSES.map(value =>
+      `<option value="${value}" ${value === selected ? "selected" : ""}>${value}</option>`
+    ).join("");
+  }
+
+  function officialTankCapacityBy(name = "", phase = "", kind = "", fallback = 0) {
+    if (String(kind).toLowerCase() === "silo") return Number(fallback || 0);
+    if (["M-01", "M-02", "M-03", "M-04"].includes(String(name).toUpperCase().trim())) return 500;
+    if (phase === "Phase #1") return 1000;
+    if (phase === "Phase #2") return 1500;
+    return Number(fallback || 0);
+  }
+
+  function syncOfficialTankCapacity(form) {
+    if (!form) return;
+    const name = form.elements.name?.value || form.dataset.tankName || "";
+    const phase = form.elements.phase?.value || "";
+    const kind = form.elements.kind?.value || form.dataset.tankKind || "";
+    if (String(kind).toLowerCase() === "silo") return syncSiloCapacityPreview(form);
+    const capacity = officialTankCapacityBy(name, phase, kind, Number(form.elements.capacity?.value || 0));
+    if (form.elements.capacity) form.elements.capacity.value = capacity;
+    if (form.elements.unit) form.elements.unit.value = "bbl";
+    const display = form.querySelector("[data-official-capacity-display]");
+    if (display) display.value = `${fmt.format(capacity)} bbl`;
+    const help = form.querySelector("[data-official-capacity-help]");
+    if (help) help.textContent = ["M-01","M-02","M-03","M-04"].includes(String(name).toUpperCase().trim())
+      ? "Mix Tank com capacidade oficial de 500 bbl."
+      : `${phase || "Fase"} com capacidade oficial de ${fmt.format(capacity)} bbl.`;
+  }
+
+  function tankActiveOperation(tank) {
+    const allocations = state.data?.operationAllocations || [];
+    const operations = state.data?.operations || [];
+    for (const allocation of allocations.filter(item => item.tank_id === tank.id)) {
+      const operation = operations.find(item => item.id === allocation.operation_id);
+      if (!operation || ["Concluída", "Cancelada"].includes(operation.status)) continue;
+      return { operation, allocation };
+    }
+    const direct = operations.find(operation =>
+      !["Concluída", "Cancelada"].includes(operation.status)
+      && (operation.source_tank_id === tank.id || operation.destination_tank_id === tank.id)
+    );
+    if (!direct) return null;
+    return {
+      operation: direct,
+      allocation: {
+        direction: direct.source_tank_id === tank.id ? "source" : "destination"
+      }
+    };
+  }
+
+  function tankEffectiveStatus(tank) {
+    const live = tankActiveOperation(tank);
+    if (live) {
+      const activity = normalizeSearch(live.operation.activity || "");
+      if (live.allocation.direction === "source" || activity.includes("bombeio") || activity.includes("carregamento")) return "Bombeando";
+      if (activity.includes("fabricacao") || activity.includes("fabricação")) return "Em fabricação";
+      if (live.allocation.direction === "destination" || activity.includes("backload") || activity.includes("descarga")) return "Recebendo produto";
+    }
+    return normalizeTankOperationalStatus(tank.status, tank.volume);
+  }
+
+  function tankFluidFamily(tank) {
+    const linked = (state.data?.fluids || []).find(item => item.id === tank.fluidTypeId);
+    const explicitType = normalizeSearch(tank.fluidTypeLabel || "");
+    const linkedType = explicitType || normalizeSearch(linked?.type || "");
+    const fallback = productClass(tank.product, tank.kind, tank.volume);
+    if (isSiloAsset(tank)) {
+      return {
+        key: "bulk",
+        label: linked?.type || "Granel",
+        material: bulkMaterialClass(tank.product)
+      };
+    }
+    if (linkedType.includes("brine") || linkedType.includes("salmoura")) return { key: "brine", label: "Brine", material: "brine" };
+    if (linkedType.includes("sbm") || linkedType.includes("sintetico")) return { key: "sbm", label: "SBM", material: "sbm" };
+    if (linkedType.includes("olef")) return { key: "olefin", label: "Olefina", material: "olefin" };
+    if (linkedType.includes("wbm") || linkedType.includes("water")) return { key: "wbm", label: "WBM", material: "wbm" };
+    const labels = {
+      wbm: "WBM",
+      brine: "Brine",
+      sbm: "SBM",
+      olefin: "Olefina",
+      empty: "Vazio",
+      generic: linked?.type || "Fluido"
+    };
+    return { key: fallback, label: labels[fallback] || linked?.type || "Fluido", material: fallback };
+  }
+
+  function bulkMaterialClass(product = "") {
+    const value = normalizeSearch(product);
+    if (value.includes("barita")) return "barite";
+    if (value.includes("bentonita")) return "bentonite";
+    if (value.includes("calcita")) return "calcite";
+    if (value.includes("cimento")) return "cement";
+    return "bulk";
+  }
+
+  function tankLevelAlert(volume, capacity, status) {
+    const pct = Number(capacity || 0) > 0 ? Number(volume || 0) / Number(capacity || 0) * 100 : 0;
+    if (["Bloqueado", "Em manutenção"].includes(status)) return { key: "critical", label: status };
+    if (pct > 90) return { key: "high", label: "Nível alto" };
+    if (Number(volume || 0) > 0 && pct < 10) return { key: "low", label: "Nível baixo" };
+    return null;
+  }
+
+  function tankFlowIndicator(status) {
+    if (status === "Recebendo produto") return `<span class="industrial-flow-indicator incoming"><b>↓</b> Entrada</span>`;
+    if (status === "Bombeando") return `<span class="industrial-flow-indicator outgoing"><b>→</b> Saída</span>`;
+    if (status === "Em fabricação") return `<span class="industrial-flow-indicator manufacturing"><b>+</b> Fabricação</span>`;
+    return "";
+  }
+
+  function industrialStatusChip(status) {
+    return `<span class="industrial-status-chip status-${normalizeSearch(status).replace(/\s+/g, "-")}">${esc(status)}</span>`;
+  }
+
+  function industrialLevelStart(key, target, forceZero = false) {
+    if (forceZero) return 0;
+    return state.visual.tankLevels.has(key) ? Number(state.visual.tankLevels.get(key) || 0) : 0;
+  }
+
+  function industrialEquipmentFigure(tank, options = {}) {
+    const silo = isSiloAsset(tank);
+    const volume = Number(tank.volume || 0);
+    const capacity = Number(tank.capacity || 0);
+    const pct = capacity > 0 ? Math.max(0, Math.min(100, volume / capacity * 100)) : 0;
+    const family = tankFluidFamily(tank);
+    const status = tankEffectiveStatus(tank);
+    const danger = ["Bloqueado", "Em manutenção"].includes(status);
+    const key = options.visualKey || `${options.demo ? "demo" : options.tv ? "tv" : "real"}:${tank.id}`;
+    const start = industrialLevelStart(key, pct, options.forceZero === true);
+    const material = danger ? "danger" : family.material;
+
+    return `<div class="industrial-equipment-figure ${silo ? "industrial-silo-figure" : "industrial-tank-figure"} ${danger ? "danger" : ""}">
+      <div class="industrial-equipment-label">${esc(tank.name)}</div>
+      ${tankFlowIndicator(status)}
+      ${silo ? `
+        <div class="industrial-silo-frame">
+          <div class="industrial-silo-shell">
+            <div class="industrial-silo-inner">
+              <div class="industrial-level-fill material-${material} bulk-static-texture"
+                data-industrial-level data-level-key="${esc(key)}" data-level-target="${pct.toFixed(3)}"
+                style="height:${start.toFixed(3)}%"></div>
+              <span class="industrial-level-percent">${fmt.format(pct)}%</span>
+            </div>
+          </div>
+          <div class="industrial-silo-outlet"></div>
+          <div class="industrial-silo-legs"><i></i><i></i></div>
+        </div>
+      ` : `
+        <div class="industrial-tank-frame">
+          <div class="industrial-tank-neck"></div>
+          <div class="industrial-tank-shell">
+            <div class="industrial-tank-inner">
+              <div class="industrial-level-fill material-${material}"
+                data-industrial-level data-level-key="${esc(key)}" data-level-target="${pct.toFixed(3)}"
+                style="height:${start.toFixed(3)}%"></div>
+              <span class="industrial-level-percent">${fmt.format(pct)}%</span>
+              <span class="industrial-level-mark mark-75">75</span>
+              <span class="industrial-level-mark mark-50">50</span>
+              <span class="industrial-level-mark mark-25">25</span>
+            </div>
+          </div>
+          <div class="industrial-tank-feet"><i></i><i></i></div>
+        </div>
+      `}
+      <div class="industrial-figure-caption"><strong>${fmt.format(volume)}</strong><span>/ ${fmt.format(capacity)} ${esc(tank.unit)}</span></div>
+    </div>`;
+  }
+
+  function industrialEquipmentCard(tank, options = {}) {
+    const volume = Number(tank.volume || 0);
+    const capacity = Number(tank.capacity || 0);
+    const pct = capacity > 0 ? Math.max(0, Math.min(100, volume / capacity * 100)) : 0;
+    const family = tankFluidFamily(tank);
+    const status = tankEffectiveStatus(tank);
+    const alert = tankLevelAlert(volume, capacity, status);
+    const updater = state.data?.users?.find(user => user.id === tank.updated_by)?.name || tank.updatedByName || "Não informado";
+    const density = tank.density !== null && tank.density !== undefined
+      ? `${fmt.format(tank.density)} ${esc(tank.densityUnit || (isSiloAsset(tank) ? "t/m³" : "ppg"))}`
+      : "Não informada";
+    const search = [tank.name, tank.phase, tank.client, tank.product, tank.lot, status, family.label].filter(Boolean).join(" ");
+    const detailMode = options.detail === true;
+    const tvMode = options.tv === true;
+    const demoMode = options.demo === true;
+    const interactive = options.interactive !== false && !tvMode;
+
+    return `<article class="industrial-equipment-card ${isSiloAsset(tank) ? "silo" : "tank"} ${alert ? `alert-${alert.key}` : ""} ${detailMode ? "detail-mode" : ""} ${tvMode ? "tv-mode" : ""}"
+      data-industrial-equipment-card data-tank-card data-tank-id="${esc(tank.id)}"
+      data-demo="${demoMode ? "true" : "false"}" data-client="${esc(tank.client || "A definir")}"
+      data-phase="${esc(tank.phase)}" data-kind="${isSiloAsset(tank) ? "silo" : "tanque"}"
+      data-occupied="${volume > 0 ? "true" : "false"}" data-search="${esc(search)}">
+      <div class="industrial-card-top">
+        <div>
+          <small>${esc(tank.phase)}</small>
+          <h3>${esc(tank.name)}</h3>
+        </div>
+        ${industrialStatusChip(status)}
+      </div>
+
+      <div class="industrial-card-body">
+        ${industrialEquipmentFigure(tank, options)}
+        <div class="industrial-equipment-data">
+          <div class="industrial-product-title">
+            <span>${esc(family.label)}</span>
+            <strong>${esc(tank.product || "Sem produto")}</strong>
+          </div>
+          <div class="industrial-data-grid">
+            <span>Volume atual<strong>${fmt.format(volume)} ${esc(tank.unit)}</strong></span>
+            <span>Capacidade<strong>${fmt.format(capacity)} ${esc(tank.unit)}</strong></span>
+            <span>Ocupação<strong>${fmt.format(pct)}%</strong></span>
+            <span>Cliente<strong>${esc(tank.client || "A definir")}</strong></span>
+            <span>Densidade / peso<strong>${density}</strong></span>
+            <span>Lote<strong>${esc(tank.lot || "-")}</strong></span>
+          </div>
+          ${alert ? `<div class="industrial-level-alert ${alert.key}"><span>!</span><strong>${esc(alert.label)}</strong></div>` : ""}
+          ${!tvMode ? `<div class="industrial-update-meta"><span>${dateTime(tank.updated_at)}</span><strong>${esc(updater)}</strong></div>` : ""}
+        </div>
+      </div>
+
+      ${interactive ? `<div class="industrial-card-actions">
+        ${hasRole(["supervisor", "lider", "operador", "logistica"]) && !demoMode ? `<button class="btn small primary" data-edit-tank="${tank.id}">Atualizar</button>` : ""}
+        <button class="btn small secondary" data-industrial-details="${tank.id}" data-demo="${demoMode ? "true" : "false"}">Detalhes e histórico</button>
+        ${!demoMode ? `<button class="btn small secondary desktop-industrial-action" data-tank-history="${tank.id}">Histórico</button><button class="btn small secondary desktop-industrial-action" data-asset-qr="tank:${tank.id}">QR</button>` : ""}
+      </div>` : ""}
+      ${!tvMode ? `<small class="industrial-card-click-hint">Toque no cartão para abrir os detalhes.</small>` : ""}
+    </article>`;
+  }
+
+  function animateIndustrialEquipmentLevels(scope = document) {
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      $$("[data-industrial-level]", scope).forEach(element => {
+        const target = Math.max(0, Math.min(100, Number(element.dataset.levelTarget || 0)));
+        element.style.height = `${target}%`;
+        state.visual.tankLevels.set(element.dataset.levelKey, target);
+      });
+    }));
+  }
+
+  function industrialDemoTanks() {
+    const now = new Date().toISOString();
+    return [
+      { id:"demo-tk01", name:"TK-01", phase:"Phase #1", kind:"Tanque", capacity:1000, volume:750, unit:"bbl", product:"WBM", fluidTypeId:null, fluidTypeLabel:"WBM", density:9.2, densityUnit:"ppg", lot:"DEMO-WBM-01", status:"Operacional", client:"Petrobras", updated_at:now, updatedByName:"Demonstração" },
+      { id:"demo-tks05", name:"TK-S05", phase:"Phase #2", kind:"Tanque", capacity:1500, volume:870, unit:"bbl", product:"SBM", fluidTypeId:null, fluidTypeLabel:"SBM", density:9.6, densityUnit:"ppg", lot:"DEMO-SBM-05", status:"Bombeando", client:"PRIO", updated_at:now, updatedByName:"Demonstração" },
+      { id:"demo-m01", name:"M-01", phase:"Phase #1", kind:"Mix Tank", capacity:500, volume:180, unit:"bbl", product:"Brine", fluidTypeId:null, fluidTypeLabel:"Brine", density:9.9, densityUnit:"ppg", lot:"DEMO-BRINE-01", status:"Recebendo produto", client:"Equinor", updated_at:now, updatedByName:"Demonstração" },
+      { id:"demo-silo2", name:"Silo 2", phase:"Phase #1", kind:"Silo", capacity:120, volume:98.4, unit:"ton", product:"Barita", fluidTypeId:null, fluidTypeLabel:"Granel", density:2.162, densityUnit:"t/m³", lot:"DEMO-BARITA-02", status:"Operacional", client:"A definir", updated_at:now, updatedByName:"Demonstração" }
+    ];
+  }
+
+  function industrialDemoPanel() {
+    return `<div class="industrial-demo-notice"><strong>Demonstração funcional</strong><span>Os quatro cartões abaixo usam dados fictícios e o mesmo componente aplicado aos equipamentos reais.</span></div>
+      <div class="industrial-equipment-grid demo-grid">${industrialDemoTanks().map(item =>
+        industrialEquipmentCard(item, { demo:true, interactive:true, forceZero:true, visualKey:`demo:${item.id}` })
+      ).join("")}</div>`;
+  }
+
+  function tankVolumeAuditTable(tank) {
+    const rows = (state.data.tankHistory || [])
+      .filter(item => item.tank_id === tank.id)
+      .sort((a,b) => new Date(b.created_at) - new Date(a.created_at))
+      .slice(0, 30);
+    return `<div class="section-title">Histórico de volume</div>
+      <div class="table-wrap industrial-history-table"><table class="data-table">
+        <thead><tr><th>Data e hora</th><th>Movimento</th><th>Anterior</th><th>Movimentado</th><th>Final</th><th>Responsável</th></tr></thead>
+        <tbody>${rows.map(item => {
+          const user = state.data.users.find(user => user.id === item.changed_by)?.name || "Sistema";
+          const moved = item.moved_quantity !== null && item.moved_quantity !== undefined
+            ? Number(item.moved_quantity)
+            : Math.abs(Number(item.new_volume || 0) - Number(item.previous_volume || 0));
+          const direction = item.movement_direction || (Number(item.new_volume || 0) >= Number(item.previous_volume || 0) ? "Entrada" : "Saída");
+          return `<tr>
+            <td>${dateTime(item.created_at)}</td>
+            <td><strong>${esc(item.movement_type || direction || "Atualização")}</strong><small>${esc(direction)}</small></td>
+            <td>${fmt.format(Number(item.previous_volume || 0))} ${esc(tank.unit)}</td>
+            <td>${fmt.format(moved)} ${esc(tank.unit)}</td>
+            <td>${fmt.format(Number(item.new_volume || 0))} ${esc(tank.unit)}</td>
+            <td>${esc(user)}</td>
+          </tr>`;
+        }).join("") || `<tr><td colspan="6" class="empty">Nenhuma movimentação registrada.</td></tr>`}</tbody>
+      </table></div>`;
+  }
+
+  function industrialEquipmentDetails(tank, demo = false) {
+    const card = industrialEquipmentCard(tank, {
+      demo,
+      detail:true,
+      interactive:false,
+      forceZero:true,
+      visualKey:`detail:${demo ? "demo" : "real"}:${tank.id}`
+    });
+    if (demo) return `<div class="industrial-demo-notice"><strong>Dados fictícios</strong><span>Esta visualização existe apenas para demonstrar o componente.</span></div>${card}`;
+    return `<div class="industrial-detail-card-wrap">${card}</div>${tankVolumeAuditTable(tank)}${completeTankTimelineHtml(tank)}`;
+  }
+
   function tankMobileFilterBar() {
     const filters = state.mobile.tankFilters;
     const clientButtons = ["Todos", ...TANK_CLIENTS].map(value =>
@@ -2823,10 +3146,13 @@
 
   function renderTanks() {
     $("#page-tanks").innerHTML =
-      header("Tanques e silos", "Volumetria, cliente, produto, lote, status, transferências e histórico.",
-        `<button class="btn secondary" data-page-link="fluids">Fluidos e Granéis</button><button class="btn secondary" data-export="tanks">Exportar CSV</button>${hasRole(["supervisor", "lider", "operador", "logistica"]) ? `<button class="btn primary" data-action="new-tank-transfer">Transferir entre tanques</button>` : ""}`) +
+      header("Tanques e silos", "Painel industrial com nível real, cliente, produto, status e histórico.",
+        `<button class="btn secondary" data-action="show-industrial-demo">Ver demonstração</button><button class="btn secondary" data-page-link="fluids">Fluidos e Granéis</button><button class="btn secondary" data-export="tanks">Exportar CSV</button>${hasRole(["supervisor", "lider", "operador", "logistica"]) ? `<button class="btn primary" data-action="new-tank-transfer">Transferir entre tanques</button>` : ""}`) +
       `${tankMobileFilterBar()}
-      <div class="info-box tank-catalog-info"><strong>Produtos vinculados:</strong> cadastre primeiro em Fluidos e Granéis e depois selecione no tanque ou silo.</div>
+      <div class="industrial-panel-intro">
+        <div><strong>Painel industrial em tempo real</strong><span>O nível sobe e desce conforme o volume confirmado no Supabase. Não são usados efeitos giratórios ou ondas.</span></div>
+        <button class="btn small secondary" data-action="show-industrial-demo">Abrir demonstração com 4 equipamentos</button>
+      </div>
       <div class="tank-client-summary-strip">${TANK_CLIENTS.map(client => {
         const summary = tankClientSummary(client);
         return `<span class="tank-client-summary client-${tankClientClass(client)}"><strong>${esc(client)}</strong><small>${summary.occupied.length} com saldo • ${summary.items.length} total</small></span>`;
@@ -2837,88 +3163,29 @@
         const phaseItems = state.data.tanks
           .filter(item => item.phase === phase)
           .sort((a, b) => a.order - b.order);
-        const tanks = phaseItems.filter(item => String(item.kind).toLowerCase() !== "silo");
-        const silos = phaseItems.filter(item => String(item.kind).toLowerCase() === "silo");
+        const tanks = phaseItems.filter(item => !isSiloAsset(item));
+        const silos = phaseItems.filter(item => isSiloAsset(item));
 
-        return `<section class="tancagem-phase-block" data-tank-phase="${esc(phase)}">
+        return `<section class="tancagem-phase-block industrial-phase-block" data-tank-phase="${esc(phase)}">
           <div class="phase-heading"><div><span>ÁREA OPERACIONAL</span><h2>${phase}</h2></div><small>${tanks.length} tanque(s) • ${silos.length} silo(s)</small></div>
           <div class="asset-group tank-asset-group">
-            <div class="asset-group-heading"><div class="asset-group-icon tank-group-icon">TK</div><div><h3>Tanques e Mix Tanks</h3><p>Fluidos, salmouras e produtos líquidos.</p></div></div>
-            <div class="grid tank-grid compact-tank-grid">${tanks.map(tankCard).join("") || `<div class="empty asset-empty">Nenhum tanque nesta fase.</div>`}</div>
+            <div class="asset-group-heading"><div class="asset-group-icon tank-group-icon">TK</div><div><h3>Tanques e Mix Tanks</h3><p>Capacidade oficial: Phase #1 1.000 bbl, Phase #2 1.500 bbl e Mix Tanks 500 bbl.</p></div></div>
+            <div class="industrial-equipment-grid">${tanks.map(tank => industrialEquipmentCard(tank)).join("") || `<div class="empty asset-empty">Nenhum tanque nesta fase.</div>`}</div>
           </div>
           <div class="asset-group silo-asset-group">
-            <div class="asset-group-heading"><div class="asset-group-icon silo-group-icon">SL</div><div><h3>Silos de Granéis</h3><p>Barita, bentonita, calcita e outros granéis.</p></div></div>
-            <div class="grid tank-grid compact-tank-grid silo-grid">${silos.map(tankCard).join("") || `<div class="empty asset-empty">Nenhum silo nesta fase.</div>`}</div>
+            <div class="asset-group-heading"><div class="asset-group-icon silo-group-icon">SL</div><div><h3>Silos de Granéis</h3><p>Quantidade em toneladas conforme a capacidade operacional cadastrada.</p></div></div>
+            <div class="industrial-equipment-grid silo-grid">${silos.map(tank => industrialEquipmentCard(tank)).join("") || `<div class="empty asset-empty">Nenhum silo nesta fase.</div>`}</div>
           </div>
         </section>`;
       }).join("");
-    setTimeout(applyTankMobileFilters, 0);
+    setTimeout(() => {
+      applyTankMobileFilters();
+      animateIndustrialEquipmentLevels($("#page-tanks"));
+    }, 0);
   }
 
   function tankCard(tank) {
-    const volume = Number(tank.volume || 0);
-    const capacity = Number(tank.capacity || 0);
-    const silo = isSiloAsset(tank);
-    const physicalCapacity = silo ? defaultSiloPhysicalCapacity(tank) : null;
-    const pct = capacity > 0 ? Math.max(0, Math.min(100, (volume / capacity) * 100)) : 0;
-    const visualPct = volume > 0 ? Math.max(1.5, pct) : 0;
-    const updater = state.data.users.find(user => user.id === tank.updated_by)?.name || "Não informado";
-    const productType = productClass(tank.product, tank.kind, volume);
-    const volumeState = volume > 0 ? "has-volume" : "no-volume";
-    const search = [tank.name, tank.client, tank.product, tank.lot, tank.status, tank.phase, tank.kind].filter(Boolean).join(" ");
-
-    return `<article class="card tank-card compact-tank-card ${silo ? "silo-card" : "fluid-tank-card"} tank-bg-${productType} ${volumeState}"
-      data-tank-card data-tank-id="${tank.id}" data-client="${esc(tank.client || "A definir")}"
-      data-phase="${esc(tank.phase)}" data-kind="${silo ? "silo" : "tanque"}"
-      data-occupied="${volume > 0 ? "true" : "false"}" data-search="${esc(search)}">
-      <div class="tank-top">
-        <div>
-          <h3>${esc(tank.name)}</h3>
-          <div class="tank-title-tags"><span class="tag">${esc(tank.kind)}</span><span class="tank-client-badge client-${tankClientClass(tank.client)}">${esc(tank.client || "A definir")}</span></div>
-        </div>
-        ${badge(tank.status)}
-      </div>
-
-      <div class="tank-mobile-core">
-        <strong>${esc(tank.product || (volume > 0 ? "Produto não informado" : "Sem produto"))}</strong>
-        <span>${fmt.format(volume)} / ${fmt.format(capacity)} ${esc(tank.unit)}</span>
-      </div>
-
-      <div class="tank-progress ${productType} ${volumeState}" data-volume="${volume}" data-kind="${esc(tank.kind)}" role="progressbar"
-        aria-label="Ocupação de ${esc(tank.name)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct.toFixed(1)}">
-        <span style="width:${visualPct.toFixed(2)}%" title="${fmt.format(pct)}% ocupado"></span>
-      </div>
-      <div class="tank-progress-caption"><strong>${fmt.format(pct)}%</strong><span>${fmt.format(Math.max(0, capacity - volume))} ${esc(tank.unit)} livres</span></div>
-
-      <div class="tank-mobile-actions mobile-only-block">
-        ${hasRole(["supervisor", "lider", "operador", "logistica"]) ? `<button class="btn primary" data-edit-tank="${tank.id}">Atualizar</button>` : ""}
-        <button class="btn secondary" data-toggle-tank-card="${tank.id}">Ver detalhes</button>
-      </div>
-
-      <div class="tank-card-details">
-        <div class="compact-tank-product">
-          <span class="tank-client-line">Cliente: <strong>${esc(tank.client || "A definir")}</strong></span>
-          <strong>${esc(tank.product || (volume > 0 ? "Produto não informado" : "Sem produto"))}</strong>
-          <span>Lote: ${esc(tank.lot || "-")}${volume > 0 && !tank.product ? ` • volume registrado` : ""}</span>
-          <span>Densidade: ${tank.density !== null && tank.density !== undefined ? `${fmt.format(tank.density)} ${esc(tank.densityUnit || (silo ? "t/m³" : "ppg"))}` : "não informada"}</span>
-          ${silo ? `<span>Volume físico: ${fmt.format(physicalCapacity)} m³</span>` : ""}
-        </div>
-
-        <div class="tank-update-meta">
-          <span>Atualizado por: ${esc(updater)}</span>
-          <span>${dateTime(tank.updated_at)}</span>
-        </div>
-
-        <div class="row-actions">
-          ${hasRole(["supervisor", "lider", "operador", "logistica"]) ? `<button class="btn small primary desktop-tank-update" data-edit-tank="${tank.id}">Atualizar conteúdo</button>` : ""}
-          ${isAdmin() ? `<button class="btn small secondary admin-structure-btn" data-edit-tank-structure="${tank.id}">Editar estrutura</button>` : ""}
-          <button class="btn small secondary" data-tank-history="${tank.id}">Histórico</button>
-          <button class="btn small secondary" data-tank-movements="${tank.id}">Movimentações</button>
-          <button class="btn small secondary" data-asset-qr="tank:${tank.id}">QR Code</button>
-        </div>
-      </div>
-      <small class="tank-swipe-hint mobile-only-block">Deslize → atualizar • deslize ← histórico</small>
-    </article>`;
+    return industrialEquipmentCard(tank);
   }
 
   function tankHistoryVisual(tank, history) {
@@ -2943,14 +3210,20 @@
         && item.new_client !== null && item.new_client !== undefined
         && item.previous_client !== item.new_client;
       const productChanged = (item.previous_product || "") !== (item.new_product || "");
-      const title = clientChanged && !productChanged
-        ? `Cliente: ${item.previous_client || "A definir"} → ${item.new_client || "A definir"}`
-        : `Atualização: ${item.previous_product||"Vazio"} → ${item.new_product||"Vazio"}`;
+      const moved = item.moved_quantity !== null && item.moved_quantity !== undefined
+        ? Number(item.moved_quantity)
+        : Math.abs(Number(item.new_volume || 0)-Number(item.previous_volume || 0));
+      const movementType = item.movement_type || (Number(item.new_volume || 0)>Number(item.previous_volume || 0) ? "Entrada" : Number(item.new_volume || 0)<Number(item.previous_volume || 0) ? "Saída" : "Atualização");
+      const title = moved > 0
+        ? `${movementType}: ${fmt.format(moved)} ${tank.unit}`
+        : clientChanged && !productChanged
+          ? `Cliente: ${item.previous_client || "A definir"} → ${item.new_client || "A definir"}`
+          : `Atualização: ${item.previous_product||"Vazio"} → ${item.new_product||"Vazio"}`;
       const clientDetail = clientChanged ? `Cliente ${item.previous_client || "A definir"} → ${item.new_client || "A definir"}` : "";
       entries.push({
         time:item.created_at,
         title,
-        meta:`${user} • saldo ${fmt.format(item.previous_volume||0)} → ${fmt.format(item.new_volume||0)} ${tank.unit}`,
+        meta:`${user} • ${fmt.format(item.previous_volume||0)} → ${fmt.format(item.new_volume||0)} ${tank.unit}`,
         detail:[clientDetail,item.notes||`Lote ${item.previous_lot||"-"} → ${item.new_lot||"-"}`].filter(Boolean).join(" • ")
       });
     });
@@ -2960,7 +3233,17 @@
       const truck=state.data.trucks.find(entry=>entry.id===item.truckId);
       const source=state.data.tanks.find(x=>x.id===item.source_tank_id)?.name;
       const destination=state.data.tanks.find(x=>x.id===item.destination_tank_id)?.name;
-      entries.push({time:item.created_at,title:`${direction}: ${fmt.format(item.quantity)} ${item.unit}`,meta:`${item.movement_type} • ${item.product||"-"}`,detail:[source&&destination?`${source} → ${destination}`:"",operation?`${operation.client} / ${operation.vessel}${operation.ticketNumber?` • Ticket ${operation.ticketNumber}`:""}`:"",truck?`Carreta ${truck.plate||truck.invoice||truck.id}${truck.invoice?` • NF ${truck.invoice}`:""}`:"",item.reference||""].filter(Boolean).join(" • ")});
+      entries.push({
+        time:item.created_at,
+        title:`${esc(item.movement_type || direction)}: ${fmt.format(item.quantity)} ${item.unit}`,
+        meta:`${item.product||"-"} • ${direction}`,
+        detail:[
+          source&&destination?`${source} → ${destination}`:"",
+          operation?`${operation.client} / ${operation.vessel}${operation.ticketNumber?` • Ticket ${operation.ticketNumber}`:""}`:"",
+          truck?`Carreta ${truck.plate||truck.invoice||truck.id}${truck.invoice?` • NF ${truck.invoice}`:""}`:"",
+          item.reference||""
+        ].filter(Boolean).join(" • ")
+      });
     });
     return entries.sort((a,b)=>new Date(b.time)-new Date(a.time));
   }
@@ -3150,6 +3433,7 @@
     const currentDensityUnit = silo ? "t/m³" : (tank.densityUnit || linkedFluid?.densityUnit || defaultDensityUnit(linkedFluid?.type, tank.kind));
     const physicalCapacity = defaultSiloPhysicalCapacity(tank);
     const calculatedCapacity = siloOperationalCapacity(physicalCapacity, currentDensity) ?? tank.capacity;
+    const officialCapacity = officialTankCapacityBy(tank.name, tank.phase, tank.kind, tank.capacity);
 
     return `<form id="tankForm"
       data-id="${tank.id}"
@@ -3173,16 +3457,19 @@
           <div><label>Tipo *</label><select name="kind" data-tank-kind-select>${["Tanque", "Mix Tank", "Silo"].map(x => `<option ${tank.kind === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
           <div><label>Ordem de exibição</label><input name="display_order" type="number" min="0" step="1" value="${tank.order ?? 0}"></div>
           <div data-fixed-capacity-wrap class="${silo ? "hidden" : ""}">
-            <label>Capacidade fixa *</label>
-            <input name="capacity" type="text" inputmode="decimal" value="${String(tank.capacity).replace(".", ",")}">
+            <label>Capacidade oficial</label>
+            <input data-official-capacity-display value="${fmt.format(officialCapacity)} bbl" disabled>
+            <input type="hidden" name="capacity" value="${officialCapacity}">
+            <small class="field-help" data-official-capacity-help>${["M-01","M-02","M-03","M-04"].includes(String(tank.name).toUpperCase()) ? "Mix Tank com capacidade oficial de 500 bbl." : `${esc(tank.phase)} com capacidade oficial de ${fmt.format(officialCapacity)} bbl.`}</small>
           </div>
           <div data-silo-capacity-wrap class="${silo ? "" : "hidden"}">
             <label>Volume físico do silo (m³) *</label>
             <input name="physical_capacity_m3" type="text" inputmode="decimal" value="${String(physicalCapacity).replace(".", ",")}">
           </div>
           <div data-unit-wrap class="${silo ? "hidden" : ""}">
-            <label>Unidade *</label>
-            <select name="unit">${["bbl", "ton", "m³"].map(x => `<option ${tank.unit === x ? "selected" : ""}>${x}</option>`).join("")}</select>
+            <label>Unidade</label>
+            <input value="bbl" disabled>
+            <input type="hidden" name="unit" value="bbl">
           </div>
           <div data-silo-capacity-wrap class="${silo ? "" : "hidden"}">
             <label>Capacidade operacional (ton)</label>
@@ -3199,7 +3486,7 @@
         `}
 
         <div><label>Cliente *</label><select name="client" required>${tankClientOptions(tank.client || "A definir")}</select><small class="field-help">Cliente responsável pelo produto armazenado neste equipamento.</small></div>
-        <div><label>Status</label><select name="status">${["Disponível", "Liberado", "Em uso", "Bloqueado", "Limpeza", "Manutenção"].map(x => `<option ${tank.status === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
+        <div><label>Status operacional</label><select name="status">${tankStatusOptions(tank.status, tank.volume)}</select><small class="field-help">Bombeando e Recebendo produto exibem indicadores direcionais no cartão.</small></div>
         <div>
           <label>Volume atual (${esc(tank.unit)}) *</label>
           <input name="volume" type="text" inputmode="decimal" autocomplete="off" value="${String(tank.volume).replace(".", ",")}" required>
@@ -4670,7 +4957,7 @@
       // O modo operacional usa uma função que não recebe nome, fase, tipo,
       // capacidade ou densidade. Isso elimina conflitos de nome e garante
       // que o produto seja derivado exclusivamente pelo ID do catálogo.
-      const rpcName = adminFull ? "admin_update_tank_product_capacity_v3" : "update_tank_content_v5";
+      const rpcName = adminFull ? "admin_update_tank_product_capacity_v4" : "update_tank_content_v5";
       const rpcPayload = adminFull ? {
         p_tank_id: targetTankId,
         p_client: selectedClient,
@@ -5724,6 +6011,25 @@
       return;
     }
 
+
+    if (action === "show-industrial-demo") {
+      [...state.visual.tankLevels.keys()].filter(key => String(key).startsWith("demo:")).forEach(key => state.visual.tankLevels.delete(key));
+      openModal("Demonstração — Painel industrial", industrialDemoPanel(), "DADOS FICTÍCIOS");
+      setTimeout(() => animateIndustrialEquipmentLevels($("#modalBody")), 0);
+      return;
+    }
+
+    if (button.dataset.industrialDetails) {
+      const demo = button.dataset.demo === "true";
+      const tank = demo
+        ? industrialDemoTanks().find(item => item.id === button.dataset.industrialDetails)
+        : state.data.tanks.find(item => item.id === button.dataset.industrialDetails);
+      if (!tank) return toast("Equipamento não localizado.", "error");
+      openModal(`${tank.name} — detalhes e histórico`, industrialEquipmentDetails(tank, demo), demo ? "DADOS FICTÍCIOS" : "EQUIPAMENTO INDUSTRIAL");
+      setTimeout(() => animateIndustrialEquipmentLevels($("#modalBody")), 0);
+      return;
+    }
+
     if (action === "refresh-tank-products") {
       try {
         button.disabled = true;
@@ -6078,6 +6384,7 @@
     if (event.target.closest("#operationForm") && event.target.matches("[data-allocation-tank]")) updateOperationAllocationSummary(event.target.closest("#operationForm"));
     if (event.target.closest("#tankTransferForm")) updateTransferPreview(event.target.closest("#tankTransferForm"));
     if (event.target.closest("#tankForm") && event.target.name === "fluid_type_id") syncTankCatalogFields(event.target.closest("#tankForm"));
+    if (event.target.closest("#tankForm") && ["name", "phase", "kind"].includes(event.target.name)) syncOfficialTankCapacity(event.target.closest("#tankForm"));
     if (event.target.closest("#tankForm") && event.target.name === "kind") syncSiloCapacityPreview(event.target.closest("#tankForm"));
     if (event.target.closest('#genericForm[data-kind="fluid"]') && event.target.name === "type") syncFluidDensityUnit(event.target.closest("form"));
     if (event.target.closest('#genericForm[data-kind="certificate"]') && event.target.name === "user_id") {
@@ -6116,6 +6423,9 @@
     if (event.target.closest("#truckForm") && event.target.matches("[data-truck-item-quantity]")) updateTruckPlatformSummary(event.target.closest("#truckForm"));
     if (event.target.closest("#tankTransferForm") && event.target.name === "quantity") updateTransferPreview(event.target.closest("#tankTransferForm"));
     if (event.target.closest("#operationForm") && (event.target.name === "executed" || event.target.matches("[data-allocation-quantity]"))) updateOperationAllocationSummary(event.target.closest("#operationForm"));
+    if (event.target.closest("#tankForm") && event.target.name === "name") {
+      syncOfficialTankCapacity(event.target.closest("#tankForm"));
+    }
     if (event.target.closest("#tankForm") && ["density","physical_capacity_m3","volume"].includes(event.target.name)) {
       syncSiloCapacityPreview(event.target.closest("#tankForm"));
     }
@@ -6142,6 +6452,20 @@
   });
 
 
+
+
+  document.addEventListener("click", event => {
+    if (event.target.closest("button,a,input,select,textarea,label")) return;
+    const card = event.target.closest("[data-industrial-equipment-card]");
+    if (!card || card.classList.contains("tv-mode")) return;
+    const demo = card.dataset.demo === "true";
+    const tank = demo
+      ? industrialDemoTanks().find(item => item.id === card.dataset.tankId)
+      : state.data?.tanks?.find(item => item.id === card.dataset.tankId);
+    if (!tank) return;
+    openModal(`${tank.name} — detalhes e histórico`, industrialEquipmentDetails(tank, demo), demo ? "DADOS FICTÍCIOS" : "EQUIPAMENTO INDUSTRIAL");
+    setTimeout(() => animateIndustrialEquipmentLevels($("#modalBody")), 0);
+  });
 
   document.addEventListener("touchstart", event => {
     if (window.innerWidth > 820 || state.page !== "tanks") return;

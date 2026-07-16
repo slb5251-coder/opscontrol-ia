@@ -12,7 +12,7 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const APP_VERSION = "20260715-mobile-complete-splash-slb-1";
+  const APP_VERSION = "20260716-v33-base-visual-1";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -44,96 +44,10 @@
       pullReady: false,
       pullDistance: 0,
       pullStartY: 0,
-      pullRefreshing: false,
-      tankFilters: { client: "Todos", view: "Todos", query: "" },
-      tankSwipe: null
+      pullRefreshing: false
     },
     config: loadConfig()
   };
-
-
-  const SPLASH_MIN_MS = 1100;
-  const splashStartedAt = Date.now();
-  let actionConfirmResolver = null;
-  let saveProgressTimer = null;
-
-  function hideSplash() {
-    const splash = $("#splashView");
-    if (!splash) return;
-    const delay = Math.max(0, SPLASH_MIN_MS - (Date.now() - splashStartedAt));
-    setTimeout(() => {
-      splash.classList.add("leaving");
-      setTimeout(() => splash.remove(), 420);
-    }, delay);
-  }
-
-  async function bootApplication() {
-    try {
-      await restoreSession();
-    } finally {
-      hideSplash();
-    }
-  }
-
-  function showMobileSaveProgress(title, detail, stateName = "loading", autoHide = 0) {
-    const panel = $("#mobileSaveProgress");
-    if (!panel) return;
-    clearTimeout(saveProgressTimer);
-    panel.className = `mobile-save-progress ${stateName}`;
-    $("#mobileSaveProgressTitle").textContent = title;
-    $("#mobileSaveProgressDetail").textContent = detail;
-    if (autoHide > 0) {
-      saveProgressTimer = setTimeout(() => panel.classList.add("hidden"), autoHide);
-    }
-  }
-
-  function hideMobileSaveProgress() {
-    clearTimeout(saveProgressTimer);
-    $("#mobileSaveProgress")?.classList.add("hidden");
-  }
-
-  function openActionConfirmation({ title, message, rows = [], confirmLabel = "Confirmar", eyebrow = "CONFIRMAÇÃO" }) {
-    if (actionConfirmResolver) actionConfirmResolver(false);
-    $("#actionConfirmEyebrow").textContent = eyebrow;
-    $("#actionConfirmTitle").textContent = title;
-    $("#actionConfirmMessage").textContent = message || "";
-    $("#actionConfirmDetails").innerHTML = rows.map(row =>
-      `<div><span>${esc(row.label)}</span><strong>${esc(row.value)}</strong></div>`
-    ).join("");
-    $("#actionConfirmAccept").textContent = confirmLabel;
-    $("#actionConfirm").classList.remove("hidden");
-    document.body.classList.add("confirm-open");
-    return new Promise(resolve => { actionConfirmResolver = resolve; });
-  }
-
-  function resolveActionConfirmation(value) {
-    $("#actionConfirm")?.classList.add("hidden");
-    document.body.classList.remove("confirm-open");
-    const resolver = actionConfirmResolver;
-    actionConfirmResolver = null;
-    if (resolver) resolver(Boolean(value));
-  }
-
-  function confirmTankUpdate(form) {
-    const product = state.data.fluids.find(item => item.id === form.elements.fluid_type_id?.value);
-    const tankName = form.dataset.tankName || "Equipamento";
-    const volume = form.elements.volume?.value || "0";
-    const unit = state.data.tanks.find(item => item.id === form.dataset.tankId)?.unit || "";
-    return openActionConfirmation({
-      eyebrow: "TANCAGEM",
-      title: `Confirmar atualização de ${tankName}`,
-      message: "Confira os dados antes de enviar ao Supabase.",
-      confirmLabel: `Confirmar em ${tankName}`,
-      rows: [
-        { label: "Equipamento", value: tankName },
-        { label: "Cliente", value: form.elements.client?.value || "A definir" },
-        { label: "Produto", value: product?.name || "Sem produto" },
-        { label: "Volume", value: `${volume} ${unit}` },
-        { label: "Lote", value: form.elements.lot?.value || "-" },
-        { label: "Status", value: form.elements.status?.value || "-" }
-      ]
-    });
-  }
 
   function loadConfig() {
     const saved = JSON.parse(localStorage.getItem(CONFIG_KEY) || "{}");
@@ -150,6 +64,38 @@
     return String(value).replace(/[&<>"']/g, char => ({
       "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"
     }[char]));
+  }
+
+
+
+  const UI_ICONS = {
+    anchor: '<path d="M12 3v15"></path><path d="M8 7l4-4 4 4"></path><path d="M5 21h14"></path><path d="M4 17c2.5 0 3.5 1 5 1s2.5-1 4-1 2.5 1 4 1 2.5-1 3-1"></path>',
+    truck: '<path d="M3 6h11v9H3z"></path><path d="M14 9h3l4 4v2h-7z"></path><circle cx="7.5" cy="18" r="1.5"></circle><circle cx="17.5" cy="18" r="1.5"></circle>',
+    wrench: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.3 2.3-2-2z"></path>',
+    bell: '<path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 7h18s-3 0-3-7"></path><path d="M10.5 20a1.5 1.5 0 0 0 3 0"></path>',
+    droplet: '<path d="M12 3.2S6.5 9.1 6.5 14a5.5 5.5 0 0 0 11 0C17.5 9.1 12 3.2 12 3.2z"></path>',
+    package: '<path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5z"></path><path d="m4 7.5 8 4.5 8-4.5"></path><path d="M12 12v9"></path>',
+    gauge: '<path d="M4 18a8 8 0 1 1 16 0"></path><path d="M12 14l4-4"></path><path d="M6.5 14h.01"></path><path d="M17.5 14h.01"></path>',
+    alert: '<path d="M12 3 2.8 20h18.4L12 3z"></path><path d="M12 9v5"></path><path d="M12 17h.01"></path>',
+    refresh: '<path d="M20 11a8 8 0 1 0 2 5"></path><path d="M20 4v7h-7"></path>',
+    check: '<path d="m5 12 4 4L19 6"></path>',
+    lock: '<rect x="5" y="10" width="14" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path>',
+    paperclip: '<path d="m20.5 11.5-8.8 8.8a5 5 0 0 1-7.1-7.1l9.2-9.2a3.5 3.5 0 0 1 5 5l-9.2 9.2a2 2 0 1 1-2.8-2.8l8.5-8.5"></path>',
+    products: '<rect x="3" y="4" width="8" height="7" rx="1"></rect><rect x="13" y="4" width="8" height="7" rx="1"></rect><rect x="3" y="13" width="8" height="7" rx="1"></rect><rect x="13" y="13" width="8" height="7" rx="1"></rect>',
+    layers: '<path d="m12 3 9 5-9 5-9-5 9-5z"></path><path d="m3 12 9 5 9-5"></path><path d="m3 16 9 5 9-5"></path>',
+    hourglass: '<path d="M6 3h12"></path><path d="M6 21h12"></path><path d="M8 3c0 4 1 5 4 7-3 2-4 3-4 7"></path><path d="M16 3c0 4-1 5-4 7 3 2 4 3 4 7"></path>',
+    image: '<rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="9" cy="10" r="2"></circle><path d="m21 15-5-5L5 20"></path>',
+    file: '<path d="M7 3h7l4 4v14H7z"></path><path d="M14 3v5h5"></path><path d="M10 13h5"></path><path d="M10 17h5"></path>',
+    database: '<ellipse cx="12" cy="5" rx="8" ry="3"></ellipse><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"></path><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"></path>',
+    shield: '<path d="M12 3l7 3v5c0 4.5-3 8.7-7 10-4-1.3-7-5.5-7-10V6l7-3z"></path><path d="m8.5 12 2.2 2.2 4.8-5"></path>',
+    flask: '<path d="M10 2v7.5L5 18a3 3 0 0 0 2.6 4.5h8.8A3 3 0 0 0 19 18l-5-8.5V2"></path><path d="M8 2h8"></path><path d="M8.5 14h7"></path>',
+    monitor: '<rect x="3" y="4" width="18" height="13" rx="2"></rect><path d="M8 21h8"></path><path d="M12 17v4"></path>',
+    settings: '<circle cx="12" cy="12" r="3"></circle><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.4-2.5 1a8 8 0 0 0-1.7-1L14.4 3h-4.8l-.4 3.1a8 8 0 0 0-1.7 1L5 6.1 3 9.5 5 11a7 7 0 0 0 0 2l-2 1.5 2 3.4 2.5-1a8 8 0 0 0 1.7 1l.4 3.1h4.8l.4-3.1a8 8 0 0 0 1.7-1l2.5 1 2-3.4-2-1.5c.1-.3.1-.7.1-1z"></path>'
+  };
+
+  function uiIcon(name, className = "ui-icon") {
+    const paths = UI_ICONS[name] || UI_ICONS.database;
+    return `<svg class="${esc(className)}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
   }
 
   function uid(prefix = "id") {
@@ -280,8 +226,13 @@
   }
 
   function mobileModuleButton(page, label, description = "") {
+    const moduleIcons = {
+      fluids: "droplet", "chemical-catalog": "products", quality: "shield", sanitation: "database",
+      reports: "gauge", chemicals: "flask", trucks: "truck", qhse: "shield", maintenance: "wrench",
+      certificates: "file", alerts: "bell", audit: "check", settings: "settings", tv: "monitor"
+    };
     return `<button class="mobile-module-button" data-mobile-page="${page}">
-      <span class="mobile-module-icon">${esc(label.slice(0, 2).toUpperCase())}</span>
+      <span class="mobile-module-icon">${uiIcon(moduleIcons[page] || "database")}</span>
       <span><strong>${esc(label)}</strong><small>${esc(description)}</small></span>
       <b>›</b>
     </button>`;
@@ -330,29 +281,29 @@
 
     const quickActions = [];
     if (moduleAllowed("fluids") && canManageFluidCatalog()) {
-      quickActions.push(mobileQuickButton("new-fluid", "Cadastrar fluido", "Produto líquido para tanques e mix tanks", "💧"));
-      quickActions.push(mobileQuickButton("new-bulk", "Cadastrar granel", "Produto sólido para os silos", "◆"));
+      quickActions.push(mobileQuickButton("new-fluid", "Cadastrar fluido", "Produto líquido para tanques e mix tanks", uiIcon("droplet")));
+      quickActions.push(mobileQuickButton("new-bulk", "Cadastrar granel", "Produto sólido para os silos", uiIcon("package")));
     }
     if (moduleAllowed("chemical-catalog") && canManageChemicals()) {
-      quickActions.push(mobileQuickButton("new-chemical-product", "Cadastrar químico", "Nome e unidade no catálogo oficial", "▦"));
+      quickActions.push(mobileQuickButton("new-chemical-product", "Cadastrar químico", "Nome e unidade no catálogo oficial", uiIcon("products")));
     }
     if (moduleAllowed("operations") && hasRole(["supervisor", "lider", "operador"])) {
-      quickActions.push(mobileQuickButton("new-operation", "Nova operação", "Bombeio, fabricação, backload ou descarga", "⚓"));
+      quickActions.push(mobileQuickButton("new-operation", "Nova operação", "Bombeio, fabricação, backload ou descarga", uiIcon("anchor")));
     }
     if (moduleAllowed("trucks") && hasRole(["supervisor", "lider", "logistica"])) {
-      quickActions.push(mobileQuickButton("new-truck", "Movimentar carreta", "Entrada, saída, NF e produto", "🚛"));
+      quickActions.push(mobileQuickButton("new-truck", "Movimentar carreta", "Entrada, saída, NF e produto", uiIcon("truck")));
     }
     if (moduleAllowed("qhse") && hasRole(["supervisor", "lider", "operador", "qhse"])) {
-      quickActions.push(mobileQuickButton("new-qhse", "Novo registro QHSE", "DDS, APR, risco, inspeção ou ocorrência", "🛡"));
+      quickActions.push(mobileQuickButton("new-qhse", "Novo registro QHSE", "DDS, APR, risco, inspeção ou ocorrência", uiIcon("shield")));
     }
     if (moduleAllowed("maintenance") && hasRole(["supervisor", "lider", "mecanico"])) {
-      quickActions.push(mobileQuickButton("new-maintenance-order", "Abrir ordem de serviço", "Preventiva, corretiva ou inspeção", "🔧"));
+      quickActions.push(mobileQuickButton("new-maintenance-order", "Abrir ordem de serviço", "Preventiva, corretiva ou inspeção", uiIcon("wrench")));
     }
     if (moduleAllowed("chemicals") && canManageChemicals()) {
-      quickActions.push(mobileQuickButton("new-chemical", "Adicionar lote", "Quantidade, validade e localização", "◈"));
+      quickActions.push(mobileQuickButton("new-chemical", "Adicionar lote", "Quantidade, validade e localização", uiIcon("flask")));
     }
     if (moduleAllowed("alerts") && hasRole(["supervisor", "lider", "qhse", "logistica"])) {
-      quickActions.push(mobileQuickButton("new-alert", "Criar comunicado", "Aviso para a equipe", "🔔"));
+      quickActions.push(mobileQuickButton("new-alert", "Criar comunicado", "Aviso para a equipe", uiIcon("bell")));
     }
 
     const quick = $("#mobileQuickActions");
@@ -400,7 +351,7 @@
       haystack: normalizeSearch(`${title} ${subtitle} ${terms}`)
     });
 
-    (d.tanks || []).forEach(x => add("tank", x.id, "tanks", x.name, `${x.product || "Sem produto"} • ${x.client || "A definir"} • lote ${x.lot || "-"}`, `${x.phase} ${x.kind} ${x.status} ${x.client || "A definir"}`));
+    (d.tanks || []).forEach(x => add("tank", x.id, "tanks", x.name, `${x.product || "Sem produto"} • lote ${x.lot || "-"}`, `${x.phase} ${x.kind} ${x.status}`));
     (d.operations || []).forEach(x => add("operation", x.id, "operations", `${x.client} • ${x.vessel}`, `${x.activity} de ${x.product}`, `${x.service_order} ${x.ticketNumber} ${x.rig} ${x.well} ${x.lot} ${x.status}`));
     (d.trucks || []).forEach(x => {
       const itemTerms = (x.items || []).map(item => `${item.productName} ${item.quantity} ${item.unit}`).join(" ");
@@ -858,7 +809,6 @@
     $("#modal").classList.remove("hidden");
     document.body.classList.add("modal-open");
     syncOperationCatalogFields($("#operationForm"));
-    syncChemicalPackagingFields($("#chemicalProductForm"));
     setOperationStep($("#operationForm"), 1);
     syncTruckForm($("#truckForm"));
     updateTransferPreview($("#tankTransferForm"));
@@ -1094,17 +1044,13 @@
       return downloadCsv(`operacoes-${date}.csv`, ["Cliente", "Embarcação", "Sonda", "Poço", "Ticket", "OS", "Atividade", "Produto", "ID do produto", "Lote", "Planejado", "Executado", "Unidade", "Distribuição tanques/silos", "Status", "Início", "Término", "Parado (min)", "Tancagem"], rows);
     }
     if (kind === "tanks") {
-      const rows = state.data.tanks.map(t => [t.phase, t.name, t.kind, t.client || "A definir", t.product, t.lot, t.volume, t.capacity, t.unit, t.physicalCapacityM3 || "", t.status, t.updated_at]);
-      return downloadCsv(`tancagem-${date}.csv`, ["Fase", "Tanque/Silo", "Tipo", "Cliente", "Produto", "Lote", "Volume", "Capacidade", "Unidade", "Volume físico m³", "Status", "Atualização"], rows);
+      const rows = state.data.tanks.map(t => [t.phase, t.name, t.kind, t.product, t.lot, t.volume, t.capacity, t.unit, t.physicalCapacityM3 || "", t.status, t.updated_at]);
+      return downloadCsv(`tancagem-${date}.csv`, ["Fase", "Tanque/Silo", "Tipo", "Produto", "Lote", "Volume", "Capacidade", "Unidade", "Status", "Atualização"], rows);
     }
     if (kind === "chemicals") {
       const totals = new Map(groupedChemicalInventory().map(item => [item.id, item.total]));
-      const products = new Map(groupedChemicalInventory().map(item => [item.id, item]));
-      const rows = state.data.chemicals.map(c => {
-        const product = products.get(c.productId);
-        return [c.name, c.category, product?.packagingType || "Outros", totals.get(c.productId) || 0, c.lot || "Sem lote", c.quantity, c.unit, c.minimum, c.expiry_date, c.location, c.supplier, chemicalDisplayStatus(c)];
-      });
-      return downloadCsv(`inventario-quimico-${date}.csv`, ["Produto", "Categoria", "Tipo de embalagem", "Total do produto", "Lote", "Quantidade do lote", "Unidade", "Mínimo do lote", "Validade", "Localização", "Fornecedor", "Status"], rows);
+      const rows = state.data.chemicals.map(c => [c.name, c.category, totals.get(c.productId) || 0, c.lot || "Sem lote", c.quantity, c.unit, c.minimum, c.expiry_date, c.location, c.supplier, chemicalDisplayStatus(c)]);
+      return downloadCsv(`inventario-quimico-${date}.csv`, ["Produto", "Categoria", "Total do produto", "Lote", "Quantidade do lote", "Unidade", "Mínimo do lote", "Validade", "Localização", "Fornecedor", "Status"], rows);
     }
     if (kind === "trucks") {
       const rows = filteredTrucks().flatMap(t => t.truckType === "Plataforma" && t.items.length
@@ -1549,7 +1495,6 @@
           ? null : Number(x.physical_capacity_m3),
         fluidTypeId: x.current_fluid_type_id || null,
         product: x.current_product || "", lot: x.current_lot || "",
-        client: x.client || "A definir",
         density: x.current_density === null || x.current_density === undefined ? null : Number(x.current_density),
         densityUnit: x.current_density_unit || null,
         status: x.status, order: x.display_order,
@@ -1653,9 +1598,7 @@
         uploaded_by: x.uploaded_by, created_at: x.created_at
       })),
       chemicalProducts: (results[32].data || []).map(x => ({
-        id:x.id, name:x.name, category:x.category || "",
-        packagingType:x.packaging_type || "Outros",
-        unit:x.default_unit || "unidade",
+        id:x.id, name:x.name, category:x.category || "", unit:x.default_unit || "unidade",
         active:x.active !== false, notes:x.notes || "", created_by:x.created_by,
         created_at:x.created_at, updated_at:x.updated_at
       })),
@@ -2007,7 +1950,7 @@
       <div class="tv-operation-progress"><span style="width:${pct}%"></span></div>
       <div class="tv-operation-values"><strong>${fmt.format(operation.executed)} / ${fmt.format(operation.planned)} ${esc(operation.unit)}</strong><span>${fmt.format(operationFlow(operation))} ${esc(operation.unit)}/h</span></div>
       ${allocations.length ? `<div class="tv-operation-allocations">${allocations.map(item => `<span>${esc(item)}</span>`).join("")}</div>` : ""}
-      ${operation.occurrence ? `<div class="tv-operation-occurrence">⚠ ${esc(operation.occurrence)}</div>` : ""}
+      ${operation.occurrence ? `<div class="tv-operation-occurrence">${uiIcon("alert", "ui-icon ui-icon-inline")} ${esc(operation.occurrence)}</div>` : ""}
     </div>`;
   }
 
@@ -2151,7 +2094,7 @@
         ["Pendências", openPendings.length, "reports"]
       ];
       actions = [
-        create("new-operation", "Registrar operação", "Início, volume, paralisação ou conclusão", "⚓"),
+        create("new-operation", "Registrar operação", "Início, volume, paralisação ou conclusão", uiIcon("anchor")),
         action("tanks", "Consultar tancagem", "Saldo, produto e lote", "TK"),
         action("reports", "Passagem do turno", "Checklist e pendências", "PS")
       ];
@@ -2164,7 +2107,7 @@
         ["Qualidade dos dados", qualityCount, "quality"]
       ];
       actions = [
-        create("new-operation", "Nova operação", "Programar e distribuir tancagem", "⚓"),
+        create("new-operation", "Nova operação", "Programar e distribuir tancagem", uiIcon("anchor")),
         action("reports", "Preparar passagem", "Checklist, atividades e pendências", "PS"),
         action("quality", "Conferir lançamentos", "Inconsistências antes do fechamento", "DQ")
       ];
@@ -2226,87 +2169,6 @@
       <div class="role-home-heading"><div><small>MEU PAINEL</small><h2>${title}</h2><p>${subtitle}</p></div><button class="btn secondary" data-action="open-feedback">Dar feedback</button></div>
       <div class="role-home-metrics">${metrics.map(([label, value, page]) => `<button data-page-link="${page}"><span>${esc(label)}</span><strong>${esc(value)}</strong></button>`).join("")}</div>
       <div class="role-home-actions">${actions.join("")}</div>
-    </section>`;
-  }
-
-
-  const TANK_CLIENTS = ["Petrobras", "PRIO", "Equinor", "A definir"];
-
-  function tankClientOptions(selected = "A definir") {
-    return TANK_CLIENTS.map(client =>
-      `<option value="${client}" ${client === selected ? "selected" : ""}>${client}</option>`
-    ).join("");
-  }
-
-  function tankClientClass(client = "A definir") {
-    return normalizeSearch(client).replace(/\s+/g, "-") || "a-definir";
-  }
-
-  function tankClientSummary(client) {
-    const items = (state.data.tanks || []).filter(item => (item.client || "A definir") === client);
-    const occupied = items.filter(item => Number(item.volume || 0) > 0);
-    const fluidVolume = occupied
-      .filter(item => !isSiloAsset(item))
-      .reduce((sum, item) => sum + Number(item.volume || 0), 0);
-    const bulkVolume = occupied
-      .filter(item => isSiloAsset(item))
-      .reduce((sum, item) => sum + Number(item.volume || 0), 0);
-    return { client, items, occupied, fluidVolume, bulkVolume };
-  }
-
-  function dashboardTankClientCards() {
-    return TANK_CLIENTS.map(client => {
-      const summary = tankClientSummary(client);
-      return `<article class="card dashboard-client-tank-card client-${tankClientClass(client)}">
-        <div class="dashboard-client-tank-head">
-          <span>${esc(client)}</span>
-          <strong>${summary.occupied.length}/${summary.items.length}</strong>
-        </div>
-        <small>equipamentos com saldo / cadastrados</small>
-        <div class="dashboard-client-tank-values">
-          <span>Fluidos<strong>${fmt.format(summary.fluidVolume)} bbl</strong></span>
-          <span>Granéis<strong>${fmt.format(summary.bulkVolume)} ton</strong></span>
-        </div>
-        <button class="btn small secondary" data-page-link="tanks">Abrir tancagem</button>
-      </article>`;
-    }).join("");
-  }
-
-
-  function mobileDashboardPriority(d, activeOps) {
-    const alerts = [];
-    const undefinedClients = d.tanks.filter(item => Number(item.volume || 0) > 0 && (!item.client || item.client === "A definir")).length;
-    const lowProducts = groupedChemicalInventory().filter(item => ["Baixo estoque", "Sem estoque", "Vencido"].includes(item.inventoryStatus)).length;
-    const trucksWithoutInvoice = d.trucks.filter(item => recordDateKey(item.date) === localDateKey() && !item.invoice).length;
-    const closing = currentClosing(localDateKey(), ensureHandoverSelection().shift);
-    const unreadCritical = d.alerts.filter(item => !item.read && isCriticalAlert(item.level)).length
-      + d.systemAlerts.filter(item => isCriticalAlert(item.level)).length;
-
-    if (unreadCritical) alerts.push({ icon: "⚠", text: `${unreadCritical} alerta(s) crítico(s)`, page: "alerts", tone: "critical" });
-    if (undefinedClients) alerts.push({ icon: "◫", text: `${undefinedClients} tanque(s) com cliente A definir`, page: "tanks", tone: "warning" });
-    if (lowProducts) alerts.push({ icon: "◈", text: `${lowProducts} produto(s) químico(s) exigem atenção`, page: "chemicals", tone: "warning" });
-    if (trucksWithoutInvoice) alerts.push({ icon: "🚛", text: `${trucksWithoutInvoice} carreta(s) de hoje sem NF`, page: "trucks", tone: "warning" });
-    if (!closing || closing.status !== "Fechado") alerts.push({ icon: "✓", text: "Fechamento do turno ainda pendente", page: "reports", tone: "info" });
-
-    return `<section class="mobile-dashboard-priority mobile-only-block">
-      <div class="mobile-priority-title"><div><small>AGORA</small><h2>Central operacional</h2></div><span>${activeOps.length} operação(ões) ativa(s)</span></div>
-      <div class="mobile-alert-strips">${alerts.slice(0, 5).map(item =>
-        `<button class="mobile-alert-strip ${item.tone}" data-page-link="${item.page}"><span>${item.icon}</span><strong>${esc(item.text)}</strong><b>›</b></button>`
-      ).join("") || `<div class="mobile-all-clear"><span>✓</span><strong>Nenhum alerta prioritário neste momento.</strong></div>`}</div>
-    </section>`;
-  }
-
-  function mobileOperationQuickMode() {
-    return `<section class="mobile-operation-mode mobile-only-block">
-      <div class="mobile-priority-title"><div><small>ACESSO RÁPIDO</small><h2>Modo operação</h2></div></div>
-      <div class="mobile-operation-grid">
-        <button data-action="new-operation"><span>⚓</span><strong>Nova operação</strong><small>Bombeio, fabricação ou backload</small></button>
-        <button data-page-link="tanks"><span>◫</span><strong>Atualizar tanque</strong><small>Cliente, produto e volume</small></button>
-        <button data-action="new-truck"><span>🚛</span><strong>Registrar carreta</strong><small>Entrada, saída e NF</small></button>
-        <button data-action="new-chemical"><span>◈</span><strong>Adicionar lote</strong><small>Inventário químico</small></button>
-        <button data-page-link="reports"><span>✓</span><strong>Fechar turno</strong><small>Conciliação e passagem</small></button>
-        <button data-action="mobile-quick"><span>＋</span><strong>Mais ações</strong><small>Abrir todos os atalhos</small></button>
-      </div>
     </section>`;
   }
 
@@ -2380,11 +2242,9 @@
     $("#page-dashboard").innerHTML =
       header(MOBILE_PAGE_META.dashboard[0], "Informações priorizadas conforme o seu cargo.",
         `<button class="btn secondary" data-export="operations">Exportar CSV</button>
-         <button class="btn secondary" data-action="refresh">↻ Atualizar agora</button>
+         <button class="btn secondary" data-action="refresh">${uiIcon("refresh", "ui-icon btn-icon")} Atualizar agora</button>
          <button class="btn primary" data-action="new-operation">+ Nova operação</button>`) +
 
-      mobileDashboardPriority(d, activeOps) +
-      mobileOperationQuickMode() +
       dashboardRoleHome(d, activeOps) +
       `<div class="dashboard-sync-strip">
         <div><span class="live-dot"></span><strong>Atualização automática ativa</strong><small>Verificação em tempo real e a cada 60 segundos</small></div>
@@ -2402,24 +2262,21 @@
       ${filtersActive ? `<div class="dashboard-filter-notice">Os filtros afetam operações, carretas, tempo parado e rankings. A tancagem sempre mostra o saldo atual da planta.</div>` : ""}
 
       <div class="grid four dashboard-primary-stats" style="margin-top:14px">
-        ${statCard(filtersActive ? "Operações no filtro" : "Operações hoje", fmt.format(operationCount), periodLabel, "⚓", activeOps.length ? `${activeOps.length} em andamento` : "Nenhuma em andamento")}
-        ${statCard(filtersActive ? "Carretas no filtro" : "Carretas hoje", fmt.format(truckCount), periodLabel, "🚛")}
-        ${statCard("Manutenções abertas", fmt.format(openMaintenance), "ordens pendentes", "⚙")}
-        ${statCard("Alertas críticos", fmt.format(criticalAlerts), "automáticos e não lidos", "⚠")}
+        ${statCard(filtersActive ? "Operações no filtro" : "Operações hoje", fmt.format(operationCount), periodLabel, uiIcon("anchor"), activeOps.length ? `${activeOps.length} em andamento` : "Nenhuma em andamento")}
+        ${statCard(filtersActive ? "Carretas no filtro" : "Carretas hoje", fmt.format(truckCount), periodLabel, uiIcon("truck"))}
+        ${statCard("Manutenções abertas", fmt.format(openMaintenance), "ordens pendentes", uiIcon("wrench"))}
+        ${statCard("Alertas críticos", fmt.format(criticalAlerts), "automáticos e não lidos", uiIcon("alert"))}
       </div>
 
       <div class="section-title">Tancagem atual</div>
       <div class="grid five dashboard-storage-grid">
-        ${storageCard("WBM", wbm.volume, wbm.capacity, "bbl", "💧", "wbm")}
-        ${storageCard("Brine", brine.volume, brine.capacity, "bbl", "●", "brine")}
-        ${storageCard("SBM", sbm.volume, sbm.capacity, "bbl", "●", "sbm")}
-        ${storageCard("Olefina", olefin.volume, olefin.capacity, "bbl", "◉", "olefin")}
-        ${storageCard("Granéis", bulk.volume, bulk.capacity, "ton", "◆", "bulk")}
+        ${storageCard("WBM", wbm.volume, wbm.capacity, "bbl", uiIcon("droplet"), "wbm")}
+        ${storageCard("Brine", brine.volume, brine.capacity, "bbl", uiIcon("droplet"), "brine")}
+        ${storageCard("SBM", sbm.volume, sbm.capacity, "bbl", uiIcon("droplet"), "sbm")}
+        ${storageCard("Olefina", olefin.volume, olefin.capacity, "bbl", uiIcon("droplet"), "olefin")}
+        ${storageCard("Granéis", bulk.volume, bulk.capacity, "ton", uiIcon("package"), "bulk")}
       </div>
       ${genericVolume > 0 ? `<div class="dashboard-data-warning">Existem ${fmt.format(genericVolume)} bbl com produto não classificado. Informe ou vincule o produto para incluir esse volume no card correto.</div>` : ""}
-
-      <div class="section-title">Tancagem por cliente</div>
-      <div class="grid four dashboard-tank-client-grid">${dashboardTankClientCards()}</div>
 
       <div class="grid two" style="margin-top:14px">
         <div class="card"><h3>Operações em andamento</h3><p>${activeOps.length} operação(ões) ativa(s) ${filtersActive ? "no filtro" : ""}</p>
@@ -2459,7 +2316,6 @@
     });
 
     d.tanks.forEach(tank => {
-      if (tank.volume > 0 && (!tank.client || tank.client === "A definir")) add("Média", "Tancagem", `${tank.name} com cliente a definir`, `${tank.product || "Produto não informado"} possui ${fmt.format(tank.volume)} ${tank.unit} sem cliente definido.`, "tanks", "tank", tank.id);
       if (tank.volume > 0 && !tank.product) add("Alta", "Tancagem", `${tank.name} com saldo sem produto`, `${fmt.format(tank.volume)} ${tank.unit} precisam ser classificados.`, "tanks", "tank", tank.id);
       if (tank.volume > 0 && !tank.lot) add("Média", "Tancagem", `${tank.name} sem lote`, `${tank.product || "Produto não informado"} possui saldo sem rastreabilidade de lote.`, "tanks", "tank", tank.id);
       if (isSiloAsset(tank) && tank.volume > 0 && !(Number(tank.density) > 0)) add("Alta", "Tancagem", `${tank.name} sem densidade`, "A capacidade operacional do silo depende da densidade cadastrada.", "tanks", "tank", tank.id);
@@ -2558,7 +2414,7 @@
 
     $("#page-quality").innerHTML =
       header("Qualidade dos dados", "Verificação automática de rastreabilidade, conciliação e campos obrigatórios.",
-        `<button class="btn secondary" data-action="refresh">↻ Recalcular</button><button class="btn primary" data-export="quality">Exportar pendências</button>`) +
+        `<button class="btn secondary" data-action="refresh">${uiIcon("refresh", "ui-icon btn-icon")} Recalcular</button><button class="btn primary" data-export="quality">Exportar pendências</button>`) +
       `<div class="quality-score-card card"><div><small>ÍNDICE DE QUALIDADE</small><strong>${Math.max(0, Math.round(100 - Math.min(100, issues.reduce((sum, item) => sum + ({Crítica:8,Alta:5,Média:2,Baixa:1}[item.severity] || 1), 0))))}%</strong><span>${issues.length} ponto(s) encontrado(s)</span></div><div class="quality-score-bars"><span>Críticos/altos<strong>${critical.length}</strong></span><span>Categorias<strong>${categories.length}</strong></span><span>Última análise<strong>${new Date().toLocaleTimeString("pt-BR")}</strong></span></div></div>
       <div class="section-title">Conciliação automática</div>
       <div class="grid three reconciliation-grid">
@@ -2569,7 +2425,7 @@
       ${latestClosingReconciliationPanel()}
       <div class="section-title">Pendências encontradas</div>
       <div class="quality-filter-chips">${categories.map(category => `<span>${esc(category)} <strong>${issues.filter(x => x.category === category).length}</strong></span>`).join("") || `<span>Nenhuma pendência</span>`}</div>
-      <div class="quality-issues-grid">${cards || `<div class="card quality-all-good"><strong>✓ Dados consistentes</strong><p>Nenhuma inconsistência automática foi encontrada.</p></div>`}</div>`;
+      <div class="quality-issues-grid">${cards || `<div class="card quality-all-good"><strong>${uiIcon("check", "ui-icon ui-icon-inline")} Dados consistentes</strong><p>Nenhuma inconsistência automática foi encontrada.</p></div>`}</div>`;
   }
 
 
@@ -2587,9 +2443,9 @@
   function renderSanitation() {
     const issues=sanitationIssues();
     const grouped=[...new Set(issues.map(item=>item.type))];
-    $("#page-sanitation").innerHTML=header("Saneamento de Dados","Localize registros antigos sem vínculo e corrija sem alterar saldos.",`<button class="btn secondary" data-action="refresh">↻ Reanalisar</button>`)+
+    $("#page-sanitation").innerHTML=header("Saneamento de Dados","Localize registros antigos sem vínculo e corrija sem alterar saldos.",`<button class="btn secondary" data-action="refresh">${uiIcon("refresh", "ui-icon btn-icon")} Reanalisar</button>`)+
       `<div class="card sanitation-intro"><strong>Correções automáticas já aplicadas</strong><p>Os lotes químicos existentes foram vinculados ao novo Catálogo Químico pelo nome. Esta tela mostra apenas o que ainda exige decisão humana.</p></div>
-      <div class="grid four">${grouped.map(type=>statCard(type,issues.filter(item=>item.type===type).length,"pendência(s)","!")).join("")||statCard("Pendências",0,"dados vinculados","✓")}</div>
+      <div class="grid four">${grouped.map(type=>statCard(type,issues.filter(item=>item.type===type).length,"pendência(s)",uiIcon("alert"))).join("")||statCard("Pendências",0,"dados vinculados",uiIcon("check"))}</div>
       <div class="section-title">Registros que exigem conferência</div><div class="sanitation-grid">${issues.map(item=>`<article class="card sanitation-card"><div>${badge(item.type)}<h3>${esc(item.title)}</h3><p>${esc(item.detail)}</p></div><button class="btn small primary" data-sanitation-page="${item.page}" data-sanitation-id="${item.id}">Abrir registro</button></article>`).join("")||`<div class="card quality-all-good"><strong>✓ Base saneada</strong><p>Nenhum vínculo antigo pendente foi encontrado.</p></div>`}</div>`;
   }
 
@@ -2618,7 +2474,7 @@
       <div class="planning-operation-meta">${operation.rig ? `<span>Sonda: ${esc(operation.rig)}</span>` : ""}${operation.well ? `<span>Poço: ${esc(operation.well)}</span>` : ""}${operation.ticketNumber ? `<span>Ticket: ${esc(operation.ticketNumber)}</span>` : ""}</div>
       <div class="planning-kpis"><span>Previsto<strong>${fmt.format(operation.planned)} ${esc(operation.unit)}</strong></span><span>Reservado<strong>${fmt.format(check.allocated)} ${esc(operation.unit)}</strong></span><span>Início<strong>${esc(start)}</strong></span></div>
       <div class="planning-assets">${check.allocations.map(item=>{const t=state.data.tanks.find(x=>x.id===item.tank_id);return `<span>${esc(t?.name||"-")}: ${fmt.format(item.quantity)} ${esc(item.unit)}</span>`}).join("")||"<span>Sem equipamentos reservados</span>"}</div>
-      ${check.issues.length?`<div class="planning-issues">${check.issues.map(x=>`<span>⚠ ${esc(x)}</span>`).join("")}</div>`:`<div class="planning-ok">✓ Saldo e capacidade conferidos</div>`}
+      ${check.issues.length?`<div class="planning-issues">${check.issues.map(x=>`<span>${uiIcon("alert", "ui-icon ui-icon-inline")} ${esc(x)}</span>`).join("")}</div>`:`<div class="planning-ok">${uiIcon("check", "ui-icon ui-icon-inline")} Saldo e capacidade conferidos</div>`}
       <button class="btn small primary" data-edit-operation="${operation.id}">Abrir planejamento</button>
     </div>`;
   }
@@ -2637,11 +2493,11 @@
         <td>${fmt.format(op.executed)} / ${fmt.format(op.planned)} ${esc(op.unit)}<div class="progress"><span style="width:${pct}%"></span></div></td>
         <td><strong>${fmt.format(flow)} ${esc(op.unit)}/h</strong><br><small>${fmt.format(operationHours(op))} h líquidas</small></td>
         <td>${operationAllocationHtml(op)}<div style="margin-top:6px">${badge(tankStatus)}</div></td>
-        <td>${badge(op.status)}${op.locked ? `<br><span class="tag">🔒 Encerrada</span>` : ""}</td>
+        <td>${badge(op.status)}${op.locked ? `<br><span class="tag">${uiIcon("lock", "ui-icon ui-icon-inline")} Encerrada</span>` : ""}</td>
         <td>${dateTime(op.start_at)}<br><small>${op.end_at ? `Fim: ${dateTime(op.end_at)}` : "Sem término"}</small></td>
         <td><div class="row-actions">
           <button class="btn small secondary" data-operation-timeline="${op.id}">Timeline</button>
-          <button class="btn small secondary" data-attachments="operation:${op.id}" data-attachment-title="${esc(op.vessel)}">📎 ${attachmentCount("operation", op.id)}</button>
+          <button class="btn small secondary" data-attachments="operation:${op.id}" data-attachment-title="${esc(op.vessel)}">${uiIcon("paperclip", "ui-icon btn-icon")} ${attachmentCount("operation", op.id)}</button>
           ${hasRole(["supervisor", "lider", "operador"]) && op.status === "Concluída" && !op.tank_movement_applied && tankMovementMode(op.activity) !== "none" ? `<button class="btn small soft" data-apply-operation-tank="${op.id}">Aplicar na tancagem</button>` : ""}
           ${canEdit ? `<button class="btn small primary" data-edit-operation="${op.id}">Editar</button>` : ""}
         </div></td>
@@ -2756,83 +2612,11 @@
     </form>`;
   }
 
-
-  function tankMobileFilterBar() {
-    const filters = state.mobile.tankFilters;
-    const clientButtons = ["Todos", ...TANK_CLIENTS].map(value =>
-      `<button class="${filters.client === value ? "active" : ""}" data-tank-client-filter="${value}">${esc(value)}</button>`
-    ).join("");
-    const viewButtons = ["Todos", "Phase #1", "Phase #2", "Tanques", "Silos", "Vazios"].map(value =>
-      `<button class="${filters.view === value ? "active" : ""}" data-tank-view-filter="${value}">${esc(value)}</button>`
-    ).join("");
-    return `<div class="mobile-tank-filter-shell mobile-only-block">
-      <div class="mobile-tank-search"><span>⌕</span><input id="mobileTankSearch" type="search" value="${esc(filters.query)}" placeholder="Buscar tanque, produto, lote ou cliente"></div>
-      <div class="mobile-filter-scroll">${clientButtons}</div>
-      <div class="mobile-filter-scroll secondary">${viewButtons}</div>
-    </div>`;
-  }
-
-  function tankCardMatchesMobileFilters(card) {
-    if (window.innerWidth > 820) return true;
-    const filters = state.mobile.tankFilters;
-    const clientOk = filters.client === "Todos" || card.dataset.client === filters.client;
-    let viewOk = true;
-    if (filters.view === "Phase #1" || filters.view === "Phase #2") viewOk = card.dataset.phase === filters.view;
-    if (filters.view === "Tanques") viewOk = card.dataset.kind !== "silo";
-    if (filters.view === "Silos") viewOk = card.dataset.kind === "silo";
-    if (filters.view === "Vazios") viewOk = card.dataset.occupied === "false";
-    const query = normalizeSearch(filters.query || "");
-    const searchOk = !query || normalizeSearch(card.dataset.search || "").includes(query);
-    return clientOk && viewOk && searchOk;
-  }
-
-  function applyTankMobileFilters() {
-    const cards = $$("[data-tank-card]");
-    cards.forEach(card => { card.hidden = !tankCardMatchesMobileFilters(card); });
-    $$("[data-tank-phase]").forEach(section => {
-      const visible = $$("[data-tank-card]", section).some(card => !card.hidden);
-      section.hidden = window.innerWidth <= 820 && !visible;
-    });
-    const visibleCount = cards.filter(card => !card.hidden).length;
-    const empty = $("#tankFilterEmpty");
-    if (empty) {
-      empty.classList.toggle("hidden", visibleCount > 0);
-      empty.querySelector("strong").textContent = visibleCount ? "" : "Nenhum equipamento encontrado";
-    }
-    const count = $("#tankFilterCount");
-    if (count) count.textContent = `${visibleCount} equipamento(s)`;
-  }
-
-  function filterLinkedSelectOptions(input) {
-    const form = input.closest("form");
-    const targetName = input.dataset.targetSelect;
-    const select = form?.elements?.[targetName];
-    if (!select) return;
-    const query = normalizeSearch(input.value || "");
-    [...select.options].forEach((option, index) => {
-      if (index === 0 || option.selected) {
-        option.hidden = false;
-        option.disabled = false;
-        return;
-      }
-      const match = !query || normalizeSearch(option.textContent).includes(query);
-      option.hidden = !match;
-      option.disabled = !match;
-    });
-  }
-
   function renderTanks() {
     $("#page-tanks").innerHTML =
-      header("Tanques e silos", "Volumetria, cliente, produto, lote, status, transferências e histórico.",
+      header("Tanques e silos", "Volumetria, transferências, produto, lote, status e histórico.",
         `<button class="btn secondary" data-page-link="fluids">Fluidos e Granéis</button><button class="btn secondary" data-export="tanks">Exportar CSV</button>${hasRole(["supervisor", "lider", "operador", "logistica"]) ? `<button class="btn primary" data-action="new-tank-transfer">Transferir entre tanques</button>` : ""}`) +
-      `${tankMobileFilterBar()}
-      <div class="info-box tank-catalog-info"><strong>Produtos vinculados:</strong> cadastre primeiro em Fluidos e Granéis e depois selecione no tanque ou silo.</div>
-      <div class="tank-client-summary-strip">${TANK_CLIENTS.map(client => {
-        const summary = tankClientSummary(client);
-        return `<span class="tank-client-summary client-${tankClientClass(client)}"><strong>${esc(client)}</strong><small>${summary.occupied.length} com saldo • ${summary.items.length} total</small></span>`;
-      }).join("")}</div>
-      <div class="mobile-tank-result-count mobile-only-block"><strong id="tankFilterCount">${state.data.tanks.length} equipamento(s)</strong><button data-action="clear-mobile-tank-filters">Limpar filtros</button></div>
-      <div id="tankFilterEmpty" class="card empty hidden"><strong></strong><span>Altere os filtros ou a busca.</span></div>` +
+      `<div class="info-box tank-catalog-info"><strong>Produtos vinculados:</strong> cadastre primeiro em Fluidos e Granéis e depois selecione no tanque ou silo.</div>` +
       ["Phase #1", "Phase #2"].map(phase => {
         const phaseItems = state.data.tanks
           .filter(item => item.phase === phase)
@@ -2840,7 +2624,7 @@
         const tanks = phaseItems.filter(item => String(item.kind).toLowerCase() !== "silo");
         const silos = phaseItems.filter(item => String(item.kind).toLowerCase() === "silo");
 
-        return `<section class="tancagem-phase-block" data-tank-phase="${esc(phase)}">
+        return `<section class="tancagem-phase-block">
           <div class="phase-heading"><div><span>ÁREA OPERACIONAL</span><h2>${phase}</h2></div><small>${tanks.length} tanque(s) • ${silos.length} silo(s)</small></div>
           <div class="asset-group tank-asset-group">
             <div class="asset-group-heading"><div class="asset-group-icon tank-group-icon">TK</div><div><h3>Tanques e Mix Tanks</h3><p>Fluidos, salmouras e produtos líquidos.</p></div></div>
@@ -2852,7 +2636,6 @@
           </div>
         </section>`;
       }).join("");
-    setTimeout(applyTankMobileFilters, 0);
   }
 
   function tankCard(tank) {
@@ -2861,65 +2644,61 @@
     const silo = isSiloAsset(tank);
     const physicalCapacity = silo ? defaultSiloPhysicalCapacity(tank) : null;
     const pct = capacity > 0 ? Math.max(0, Math.min(100, (volume / capacity) * 100)) : 0;
+    // Um saldo positivo muito pequeno ainda precisa ficar visível na faixa.
     const visualPct = volume > 0 ? Math.max(1.5, pct) : 0;
     const updater = state.data.users.find(user => user.id === tank.updated_by)?.name || "Não informado";
     const productType = productClass(tank.product, tank.kind, volume);
     const volumeState = volume > 0 ? "has-volume" : "no-volume";
-    const search = [tank.name, tank.client, tank.product, tank.lot, tank.status, tank.phase, tank.kind].filter(Boolean).join(" ");
 
-    return `<article class="card tank-card compact-tank-card ${silo ? "silo-card" : "fluid-tank-card"} tank-bg-${productType} ${volumeState}"
-      data-tank-card data-tank-id="${tank.id}" data-client="${esc(tank.client || "A definir")}"
-      data-phase="${esc(tank.phase)}" data-kind="${silo ? "silo" : "tanque"}"
-      data-occupied="${volume > 0 ? "true" : "false"}" data-search="${esc(search)}">
+    return `<div class="card tank-card compact-tank-card ${silo ? "silo-card" : "fluid-tank-card"} tank-bg-${productType} ${volumeState}">
       <div class="tank-top">
         <div>
           <h3>${esc(tank.name)}</h3>
-          <div class="tank-title-tags"><span class="tag">${esc(tank.kind)}</span><span class="tank-client-badge client-${tankClientClass(tank.client)}">${esc(tank.client || "A definir")}</span></div>
+          <span class="tag">${esc(tank.kind)}</span>
         </div>
         ${badge(tank.status)}
       </div>
 
-      <div class="tank-mobile-core">
+      <div class="compact-tank-product">
         <strong>${esc(tank.product || (volume > 0 ? "Produto não informado" : "Sem produto"))}</strong>
-        <span>${fmt.format(volume)} / ${fmt.format(capacity)} ${esc(tank.unit)}</span>
+        <span>Lote: ${esc(tank.lot || "-")}${volume > 0 && !tank.product ? ` • volume registrado` : ""}</span>
+        <span>Densidade: ${tank.density !== null && tank.density !== undefined ? `${fmt.format(tank.density)} ${esc(tank.densityUnit || (silo ? "t/m³" : "ppg"))}` : "não informada"}</span>
+        ${silo ? `<span>Volume físico: ${fmt.format(physicalCapacity)} m³</span>` : ""}
+      </div>
+
+      <div class="tank-volume-line">
+        <strong>${fmt.format(volume)} ${esc(tank.unit)}</strong>
+        <span>${silo ? "capacidade operacional" : "de"} ${fmt.format(capacity)} ${esc(tank.unit)}</span>
       </div>
 
       <div class="tank-progress ${productType} ${volumeState}" data-volume="${volume}" data-kind="${esc(tank.kind)}" role="progressbar"
-        aria-label="Ocupação de ${esc(tank.name)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct.toFixed(1)}">
+        aria-label="Ocupação de ${esc(tank.name)}"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow="${pct.toFixed(1)}">
         <span style="width:${visualPct.toFixed(2)}%" title="${fmt.format(pct)}% ocupado"></span>
       </div>
-      <div class="tank-progress-caption"><strong>${fmt.format(pct)}%</strong><span>${fmt.format(Math.max(0, capacity - volume))} ${esc(tank.unit)} livres</span></div>
 
-      <div class="tank-mobile-actions mobile-only-block">
-        ${hasRole(["supervisor", "lider", "operador", "logistica"]) ? `<button class="btn primary" data-edit-tank="${tank.id}">Atualizar</button>` : ""}
-        <button class="btn secondary" data-toggle-tank-card="${tank.id}">Ver detalhes</button>
+      <div class="tank-progress-caption">
+        <strong>${fmt.format(pct)}%</strong>
+        <span>${fmt.format(Math.max(0, capacity - volume))} ${esc(tank.unit)} livres</span>
       </div>
 
-      <div class="tank-card-details">
-        <div class="compact-tank-product">
-          <span class="tank-client-line">Cliente: <strong>${esc(tank.client || "A definir")}</strong></span>
-          <strong>${esc(tank.product || (volume > 0 ? "Produto não informado" : "Sem produto"))}</strong>
-          <span>Lote: ${esc(tank.lot || "-")}${volume > 0 && !tank.product ? ` • volume registrado` : ""}</span>
-          <span>Densidade: ${tank.density !== null && tank.density !== undefined ? `${fmt.format(tank.density)} ${esc(tank.densityUnit || (silo ? "t/m³" : "ppg"))}` : "não informada"}</span>
-          ${silo ? `<span>Volume físico: ${fmt.format(physicalCapacity)} m³</span>` : ""}
-        </div>
-
-        <div class="tank-update-meta">
-          <span>Atualizado por: ${esc(updater)}</span>
-          <span>${dateTime(tank.updated_at)}</span>
-        </div>
-
-        <div class="row-actions">
-          ${hasRole(["supervisor", "lider", "operador", "logistica"]) ? `<button class="btn small primary desktop-tank-update" data-edit-tank="${tank.id}">Atualizar conteúdo</button>` : ""}
-          ${isAdmin() ? `<button class="btn small secondary admin-structure-btn" data-edit-tank-structure="${tank.id}">Editar estrutura</button>` : ""}
-          <button class="btn small secondary" data-tank-history="${tank.id}">Histórico</button>
-          <button class="btn small secondary" data-tank-movements="${tank.id}">Movimentações</button>
-          <button class="btn small secondary" data-asset-qr="tank:${tank.id}">QR Code</button>
-        </div>
+      <div class="tank-update-meta">
+        <span>Atualizado por: ${esc(updater)}</span>
+        <span>${dateTime(tank.updated_at)}</span>
       </div>
-      <small class="tank-swipe-hint mobile-only-block">Deslize → atualizar • deslize ← histórico</small>
-    </article>`;
+
+      <div class="row-actions">
+        ${hasRole(["supervisor", "lider", "operador", "logistica"]) ? `<button class="btn small primary" data-edit-tank="${tank.id}">Atualizar conteúdo</button>` : ""}
+        ${isAdmin() ? `<button class="btn small secondary admin-structure-btn" data-edit-tank-structure="${tank.id}">Editar estrutura</button>` : ""}
+        <button class="btn small secondary" data-tank-history="${tank.id}">Histórico</button>
+        <button class="btn small secondary" data-tank-movements="${tank.id}">Movimentações</button>
+        <button class="btn small secondary" data-asset-qr="tank:${tank.id}">QR Code</button>
+      </div>
+    </div>`;
   }
+
 
   function tankHistoryVisual(tank, history) {
     const ordered=[...history].sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)).slice(-30);
@@ -2930,7 +2709,7 @@
     const last=coords.at(-1);
     return `<div class="tank-history-visual"><div class="history-chart-head"><div><strong>Evolução do volume</strong><span>Últimas ${ordered.length} alterações</span></div><div><strong>${fmt.format(tank.volume)} ${esc(tank.unit)}</strong><span>Atual</span></div></div>
       ${ordered.length?`<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Evolução do volume"><line x1="${pad}" y1="${height-pad}" x2="${width-pad}" y2="${height-pad}" class="chart-axis"/><line x1="${pad}" y1="${pad}" x2="${pad}" y2="${height-pad}" class="chart-axis"/><polyline points="${poly}" class="history-line" fill="none"/>${coords.map((p,i)=>`<circle cx="${p.x}" cy="${p.y}" r="${i===coords.length-1?5:3}" class="history-point"><title>${fmt.format(p.value)} ${esc(tank.unit)} — ${dateTime(ordered[i].created_at)}</title></circle>`).join("")}${last?`<text x="${Math.min(width-80,last.x+8)}" y="${Math.max(18,last.y-8)}">${fmt.format(last.value)} ${esc(tank.unit)}</text>`:""}</svg>`:`<div class="empty">Sem histórico suficiente para o gráfico.</div>`}
-      <div class="history-summary-grid"><span>Capacidade<strong>${fmt.format(tank.capacity)} ${esc(tank.unit)}</strong></span><span>Cliente atual<strong>${esc(tank.client || "A definir")}</strong></span><span>Produto atual<strong>${esc(tank.product||"-")}</strong></span><span>Densidade<strong>${tank.density?`${fmt.format(tank.density)} ${esc(tank.densityUnit||"")}`:"-"}</strong></span></div></div>`;
+      <div class="history-summary-grid"><span>Capacidade<strong>${fmt.format(tank.capacity)} ${esc(tank.unit)}</strong></span><span>Produto atual<strong>${esc(tank.product||"-")}</strong></span><span>Densidade<strong>${tank.density?`${fmt.format(tank.density)} ${esc(tank.densityUnit||"")}`:"-"}</strong></span></div></div>`;
   }
 
 
@@ -2939,20 +2718,7 @@
     const entries=[];
     state.data.tankHistory.filter(item=>item.tank_id===tank.id).forEach(item=>{
       const user=state.data.users.find(x=>x.id===item.changed_by)?.name||"Sistema";
-      const clientChanged = item.previous_client !== null && item.previous_client !== undefined
-        && item.new_client !== null && item.new_client !== undefined
-        && item.previous_client !== item.new_client;
-      const productChanged = (item.previous_product || "") !== (item.new_product || "");
-      const title = clientChanged && !productChanged
-        ? `Cliente: ${item.previous_client || "A definir"} → ${item.new_client || "A definir"}`
-        : `Atualização: ${item.previous_product||"Vazio"} → ${item.new_product||"Vazio"}`;
-      const clientDetail = clientChanged ? `Cliente ${item.previous_client || "A definir"} → ${item.new_client || "A definir"}` : "";
-      entries.push({
-        time:item.created_at,
-        title,
-        meta:`${user} • saldo ${fmt.format(item.previous_volume||0)} → ${fmt.format(item.new_volume||0)} ${tank.unit}`,
-        detail:[clientDetail,item.notes||`Lote ${item.previous_lot||"-"} → ${item.new_lot||"-"}`].filter(Boolean).join(" • ")
-      });
+      entries.push({time:item.created_at,title:`Atualização: ${item.previous_product||"Vazio"} → ${item.new_product||"Vazio"}`,meta:`${user} • saldo ${fmt.format(item.previous_volume||0)} → ${fmt.format(item.new_volume||0)} ${tank.unit}`,detail:item.notes||`Lote ${item.previous_lot||"-"} → ${item.new_lot||"-"}`});
     });
     state.data.tankMovements.filter(item=>item.source_tank_id===tank.id||item.destination_tank_id===tank.id).forEach(item=>{
       const direction=item.source_tank_id===tank.id?"Saída":"Entrada";
@@ -3198,7 +2964,6 @@
           `}
         `}
 
-        <div><label>Cliente *</label><select name="client" required>${tankClientOptions(tank.client || "A definir")}</select><small class="field-help">Cliente responsável pelo produto armazenado neste equipamento.</small></div>
         <div><label>Status</label><select name="status">${["Disponível", "Liberado", "Em uso", "Bloqueado", "Limpeza", "Manutenção"].map(x => `<option ${tank.status === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
         <div>
           <label>Volume atual (${esc(tank.unit)}) *</label>
@@ -3217,7 +2982,6 @@
               <button type="button" class="btn small secondary" data-action="open-fluid-catalog">Abrir catálogo</button>
             </div>
           </div>
-          <div class="linked-select-search"><span>⌕</span><input type="search" data-target-select="fluid_type_id" placeholder="Buscar produto no catálogo"></div>
           <select name="fluid_type_id" data-tank-product-select>
             <option value="" ${!tank.fluidTypeId ? "selected" : ""}>${tank.volume > 0 ? "Selecione o produto cadastrado" : "Sem produto — equipamento vazio"}</option>
             ${catalogProductOptions(tank)}
@@ -3254,7 +3018,7 @@
         <div class="wide"><label>Lote</label><input name="lot" value="${esc(tank.lot)}"></div>
         ${admin
           ? `<div class="wide admin-edit-notice structure-edit-notice"><strong>Edição estrutural</strong><span>Este modo altera nome, fase, tipo, capacidade, ordem e conteúdo. Use apenas para modificar a estrutura do equipamento.</span></div>`
-          : `<div class="wide info-box content-update-notice"><strong>Atualização operacional segura</strong><span>Cliente, produto, lote, volume e status serão alterados. Densidade e capacidade serão calculadas pelo cadastro oficial; nome e estrutura não serão enviados.</span></div>`}
+          : `<div class="wide info-box content-update-notice"><strong>Atualização operacional segura</strong><span>Produto, lote, volume e status serão alterados. Densidade e capacidade serão calculadas pelo cadastro oficial; nome e estrutura não serão enviados.</span></div>`}
       </div>
 
       <div id="tankSaveMessage" class="message hidden"></div>
@@ -3307,7 +3071,7 @@
     const bulk = ["granel", "insumo"].includes(category.toLowerCase());
     return `<article class="card catalog-product-card ${bulk ? "catalog-bulk-card" : "catalog-fluid-card"}">
       <div class="catalog-product-top">
-        <span class="catalog-product-icon">${bulk ? "◆" : "●"}</span>
+        <span class="catalog-product-icon">${bulk ? uiIcon("package") : uiIcon("droplet")}</span>
         <div><strong>${esc(item.name)}</strong><small>${esc(category)}</small></div>
         ${badge(item.active ? "Ativo" : "Inativo")}
       </div>
@@ -3359,101 +3123,13 @@
   }
 
 
-
-  const CHEMICAL_PACKAGING_ORDER = ["Big Bags", "Sacarias", "Tambores", "Bombonas", "Outros"];
-
-  function chemicalPackagingMeta(type = "Outros") {
-    const map = {
-      "Big Bags": { icon: "◆", defaultUnit: "Big Bag", description: "Produtos acondicionados em Big Bags" },
-      "Sacarias": { icon: "▤", defaultUnit: "sacos", description: "Produtos acondicionados em sacos" },
-      "Tambores": { icon: "●", defaultUnit: "tambores", description: "Produtos acondicionados em tambores" },
-      "Bombonas": { icon: "⬟", defaultUnit: "bombonas", description: "Produtos acondicionados em bombonas" },
-      "Outros": { icon: "▦", defaultUnit: "unidade", description: "Outras formas de acondicionamento" }
-    };
-    return map[type] || map.Outros;
-  }
-
-  function inferChemicalPackaging(product = {}) {
-    if (CHEMICAL_PACKAGING_ORDER.includes(product.packagingType)) return product.packagingType;
-    const unit = normalizeSearch(product.unit || "");
-    if (unit.includes("big bag") || unit.includes("bigbag")) return "Big Bags";
-    if (unit.includes("saco") || unit.includes("sacaria")) return "Sacarias";
-    if (unit.includes("tambor")) return "Tambores";
-    if (unit.includes("bombona")) return "Bombonas";
-    return "Outros";
-  }
-
-  function chemicalPackagingOptions(selected = "Outros") {
-    return CHEMICAL_PACKAGING_ORDER.map(type =>
-      `<option value="${type}" ${type === selected ? "selected" : ""}>${type}</option>`
-    ).join("");
-  }
-
-  function chemicalUnitOptions(selected = "unidade") {
-    const values = ["Big Bag", "big bag", "saco", "sacos", "tambor", "tambores", "bombona", "bombonas", "kg", "L", "unidade"];
-    const unique = [...new Set([selected, ...values].filter(Boolean))];
-    return unique.map(value => `<option value="${esc(value)}" ${value === selected ? "selected" : ""}>${esc(value)}</option>`).join("");
-  }
-
-  function syncChemicalPackagingFields(form, forceUnit = false) {
-    if (!form) return;
-    const packaging = form.elements.packaging_type?.value || "Outros";
-    const unit = form.elements.unit;
-    const meta = chemicalPackagingMeta(packaging);
-    if (unit && (forceUnit || !unit.value)) unit.value = meta.defaultUnit;
-    const hint = form.querySelector("[data-packaging-hint]");
-    if (hint) hint.textContent = `${meta.description}. Unidade sugerida: ${meta.defaultUnit}.`;
-  }
-
-  function packagingSummaryCards(groups) {
-    return CHEMICAL_PACKAGING_ORDER.map(type => {
-      const items = groups.filter(item => item.packagingType === type);
-      const totalLots = items.reduce((sum, item) => sum + item.lots.length, 0);
-      const meta = chemicalPackagingMeta(type);
-      return `<article class="card packaging-summary-card" data-packaging-summary="${esc(type)}">
-        <span class="packaging-summary-icon">${meta.icon}</span>
-        <div><small>${esc(type)}</small><strong>${items.length}</strong><span>${totalLots} lote(s)</span></div>
-      </article>`;
-    }).join("");
-  }
-
-  function chemicalInventorySection(type, items) {
-    if (!items.length) return "";
-    const meta = chemicalPackagingMeta(type);
-    const cards = items.map(item => {
-      const nextLot = item.nextLot;
-      return `<article class="card chemical-product-stock-card packaging-${normalizeSearch(type).replace(/\s+/g, "-")} ${item.active ? "" : "inactive"}">
-        <div class="chemical-product-stock-head"><div><span>${esc(item.category || "Produto químico")}</span><h3>${esc(item.name)}</h3><small class="chemical-packaging-tag">${meta.icon} ${esc(type)}</small></div>${badge(item.inventoryStatus)}</div>
-        <div class="chemical-total-value"><small>Saldo total</small><strong>${fmt.format(item.total)} ${esc(item.unit)}</strong><span>Soma de ${item.lots.length} lote(s)</span></div>
-        <div class="chemical-product-stock-grid">
-          <span>Lotes<strong>${item.lots.length}</strong></span>
-          <span>Mínimo total<strong>${fmt.format(item.minimum)} ${esc(item.unit)}</strong></span>
-          <span>Próximo FEFO<strong>${nextLot ? esc(nextLot.lot || "Sem lote") : "-"}</strong></span>
-          <span>Próxima validade<strong>${nextLot ? dateOnly(nextLot.expiry_date) : "-"}</strong></span>
-        </div>
-        <div class="row-actions">${canManageChemicals() ? `<button class="btn small primary" data-new-chemical-lot="${item.id}">+ Adicionar lote</button>` : ""}<button class="btn small secondary" data-chemical-lots="${item.id}">Ver e movimentar lotes</button>${canManageChemicals() ? `<button class="btn small secondary" data-edit-chemical-product="${item.id}">Editar produto</button>` : ""}</div>
-      </article>`;
-    }).join("");
-    return `<section class="chemical-packaging-section" data-packaging-section="${esc(type)}">
-      <div class="chemical-packaging-section-head">
-        <div class="chemical-packaging-section-icon">${meta.icon}</div>
-        <div><h2>${esc(type)}</h2><p>${esc(meta.description)} • ${items.length} produto(s)</p></div>
-      </div>
-      <div class="chemical-product-stock-grid-list">${cards}</div>
-    </section>`;
-  }
-
   function chemicalProductForm(item = {}) {
-    const packagingType = inferChemicalPackaging(item);
-    const unit = item.unit || chemicalPackagingMeta(packagingType).defaultUnit;
     return `<form id="chemicalProductForm" data-id="${item.id || ""}">
       <div class="form-grid">
         <div class="wide"><label>Nome do produto químico *</label><input name="name" required value="${esc(item.name || "")}" placeholder="Ex.: Duo Vis"></div>
         <div><label>Categoria</label><input name="category" value="${esc(item.category || "")}" placeholder="Ex.: Aditivo, Polímero"></div>
-        <div><label>Tipo de embalagem *</label><select name="packaging_type" required>${chemicalPackagingOptions(packagingType)}</select><small class="field-help" data-packaging-hint>${esc(chemicalPackagingMeta(packagingType).description)}.</small></div>
-        <div><label>Unidade padrão *</label><select name="unit" required>${chemicalUnitOptions(unit)}</select></div>
+        <div><label>Unidade padrão *</label><select name="unit">${["kg","L","saco","sacos","tambor","tambores","big bag","Big Bag","unidade"].map(value => `<option ${item.unit === value ? "selected" : ""}>${value}</option>`).join("")}</select></div>
         <div><label>Status</label><select name="active"><option value="true" ${item.active !== false ? "selected" : ""}>Ativo</option><option value="false" ${item.active === false ? "selected" : ""}>Inativo</option></select></div>
-        <div class="wide packaging-preview-card"><span>${chemicalPackagingMeta(packagingType).icon}</span><div><strong>Organização do inventário</strong><small>O produto aparecerá dentro da seção ${esc(packagingType)}.</small></div></div>
         <div class="wide"><label>Observações</label><textarea name="notes">${esc(item.notes || "")}</textarea></div>
       </div>${formActions(item.id ? "Salvar produto" : "Cadastrar produto")}
     </form>`;
@@ -3464,7 +3140,7 @@
     const active = products.filter(item => item.active).length;
     const rows = products.map(item => `<article class="card chemical-catalog-card ${item.active ? "" : "inactive"}">
       <div class="mobile-record-head"><div><strong>${esc(item.name)}</strong><small>${esc(item.category || "Produto químico")}</small></div>${badge(item.active ? "Ativo" : "Inativo")}</div>
-      <div class="mobile-record-grid"><span>Saldo total<strong>${fmt.format(item.total)} ${esc(item.unit)}</strong></span><span>Embalagem<strong>${esc(item.packagingType)}</strong></span><span>Lotes<strong>${item.lots.length}</strong></span><span>Unidade padrão<strong>${esc(item.unit)}</strong></span></div>
+      <div class="mobile-record-grid"><span>Saldo total<strong>${fmt.format(item.total)} ${esc(item.unit)}</strong></span><span>Lotes<strong>${item.lots.length}</strong></span><span>Unidade padrão<strong>${esc(item.unit)}</strong></span></div>
       ${item.notes ? `<p>${esc(item.notes)}</p>` : ""}
       <div class="row-actions">${canManageChemicals() ? `<button class="btn small primary" data-new-chemical-lot="${item.id}">+ Adicionar lote</button><button class="btn small secondary" data-edit-chemical-product="${item.id}">Editar produto</button>` : ""}<button class="btn small secondary" data-chemical-lots="${item.id}">Ver lotes</button></div>
     </article>`).join("");
@@ -3495,11 +3171,7 @@
       else if (minimum > 0 && total <= minimum) status = "Baixo estoque";
       else if (expiringLots.length) status = "Próximo vencimento";
       else if (!productLots.length || total <= 0) status = "Sem estoque";
-      const packagingType = inferChemicalPackaging(product);
-      return { ...product, packagingType, lots: productLots, total, minimum, expiredLots, expiringLots, nextLot, inventoryStatus: status };
-    }).sort((a, b) => {
-      const packageOrder = CHEMICAL_PACKAGING_ORDER.indexOf(a.packagingType) - CHEMICAL_PACKAGING_ORDER.indexOf(b.packagingType);
-      return packageOrder || a.name.localeCompare(b.name);
+      return { ...product, lots: productLots, total, minimum, expiredLots, expiringLots, nextLot, inventoryStatus: status };
     });
   }
 
@@ -3523,7 +3195,7 @@
         </div>
       </article>`;
     }).join("");
-    return `<div class="chemical-product-total-card"><span>Saldo total de ${esc(group.name)}</span><strong>${fmt.format(group.total)} ${esc(group.unit)}</strong><small>${esc(group.packagingType)} • ${group.lots.length} lote(s) cadastrado(s)</small></div>
+    return `<div class="chemical-product-total-card"><span>Saldo total de ${esc(group.name)}</span><strong>${fmt.format(group.total)} ${esc(group.unit)}</strong><small>${group.lots.length} lote(s) cadastrado(s)</small></div>
       <div class="row-actions chemical-lot-modal-actions">${canManageChemicals() ? `<button class="btn primary" data-new-chemical-lot="${group.id}">+ Adicionar lote</button>` : ""}<button class="btn secondary" data-edit-chemical-product="${group.id}">Editar produto</button></div>
       <div class="chemical-lot-list">${rows || `<div class="empty">Nenhum lote cadastrado para este produto.</div>`}</div>`;
   }
@@ -3553,16 +3225,26 @@
     const lowStock = groups.filter(item => item.inventoryStatus === "Baixo estoque" || item.inventoryStatus === "Sem estoque").length;
     const expired = groups.filter(item => item.expiredLots.length > 0).length;
     const expiring = groups.filter(item => item.expiringLots.length > 0).length;
-    const sections = CHEMICAL_PACKAGING_ORDER.map(type =>
-      chemicalInventorySection(type, groups.filter(item => item.packagingType === type))
-    ).join("");
 
-    $("#page-chemicals").innerHTML = header("Inventário de produtos químicos", "Produtos organizados por tipo de embalagem. Cada cartão mostra o total somado de todos os lotes.", `${canManageChemicals() ? `<button class="btn primary" data-action="new-chemical-product">+ Novo produto</button>` : ""}<button class="btn secondary" data-action="show-fefo">Ordem FEFO</button><button class="btn secondary" data-export="chemicals">Exportar lotes</button>`) +
-      `<div class="grid four">${statCard("Produtos", fmt.format(totalProducts), "cadastros únicos", "▦")}${statCard("Lotes", fmt.format(totalLots), "quantidades separadas", "▧")}${statCard("Baixo ou sem estoque", fmt.format(lowStock), "produtos", "⚠")}${statCard("Com vencimento crítico", fmt.format(expired + expiring), "vencidos ou até 60 dias", "⏳")}</div>
-      <div class="packaging-summary-grid">${packagingSummaryCards(groups)}</div>
-      <div class="info-box chemical-inventory-rule"><strong>Organização por embalagem:</strong> Big Bags, Sacarias, Tambores, Bombonas e Outros. O total de cada produto continua sendo calculado pela soma dos lotes.</div>
+    const cards = groups.map(item => {
+      const nextLot = item.nextLot;
+      return `<article class="card chemical-product-stock-card ${item.active ? "" : "inactive"}">
+        <div class="chemical-product-stock-head"><div><span>${esc(item.category || "Produto químico")}</span><h3>${esc(item.name)}</h3></div>${badge(item.inventoryStatus)}</div>
+        <div class="chemical-total-value"><small>Saldo total</small><strong>${fmt.format(item.total)} ${esc(item.unit)}</strong><span>Soma de ${item.lots.length} lote(s)</span></div>
+        <div class="chemical-product-stock-grid">
+          <span>Lotes<strong>${item.lots.length}</strong></span>
+          <span>Mínimo total<strong>${fmt.format(item.minimum)} ${esc(item.unit)}</strong></span>
+          <span>Próximo FEFO<strong>${nextLot ? esc(nextLot.lot || "Sem lote") : "-"}</strong></span>
+          <span>Próxima validade<strong>${nextLot ? dateOnly(nextLot.expiry_date) : "-"}</strong></span>
+        </div>
+        <div class="row-actions">${canManageChemicals() ? `<button class="btn small primary" data-new-chemical-lot="${item.id}">+ Adicionar lote</button>` : ""}<button class="btn small secondary" data-chemical-lots="${item.id}">Ver e movimentar lotes</button>${canManageChemicals() ? `<button class="btn small secondary" data-edit-chemical-product="${item.id}">Editar produto</button>` : ""}</div>
+      </article>`;
+    }).join("");
+
+    $("#page-chemicals").innerHTML = header("Inventário de produtos químicos", "Um cartão por produto. O saldo total é a soma das quantidades cadastradas em cada lote.", `${canManageChemicals() ? `<button class="btn primary" data-action="new-chemical-product">+ Novo produto</button>` : ""}<button class="btn secondary" data-action="show-fefo">Ordem FEFO</button><button class="btn secondary" data-export="chemicals">Exportar lotes</button>`) +
+      `<div class="grid four">${statCard("Produtos", fmt.format(totalProducts), "cadastros únicos", uiIcon("products"))}${statCard("Lotes", fmt.format(totalLots), "quantidades separadas", uiIcon("layers"))}${statCard("Baixo ou sem estoque", fmt.format(lowStock), "produtos", uiIcon("alert"))}${statCard("Com vencimento crítico", fmt.format(expired + expiring), "vencidos ou até 60 dias", uiIcon("hourglass"))}</div>
       <div class="info-box chemical-inventory-rule"><strong>Carretas Plataforma desvinculadas:</strong> cadastrar um produto na carreta não cria lote e não altera este inventário. Os lotes são controlados somente aqui.</div>
-      <div class="chemical-packaging-sections">${sections || `<div class="card empty">Nenhum produto químico cadastrado.</div>`}</div>`;
+      <div class="chemical-product-stock-grid-list">${cards || `<div class="card empty">Nenhum produto químico cadastrado.</div>`}</div>`;
   }
 
   function renderTrucks() {
@@ -3612,7 +3294,7 @@
         <td>${esc(item.responsible || "-")}</td><td>${badge(item.severity)}</td><td>${badge(item.status)}</td>
         <td><div class="row-actions">
           <button class="btn small secondary" data-qhse-actions="${item.id}">Ações (${openActions})</button>
-          <button class="btn small secondary" data-attachments="qhse:${item.id}" data-attachment-title="${esc(item.title)}">📎 ${attachmentCount("qhse", item.id)}</button>${isAdmin() ? `<button class="btn small primary" data-edit-qhse="${item.id}">Editar</button>` : ""}
+          <button class="btn small secondary" data-attachments="qhse:${item.id}" data-attachment-title="${esc(item.title)}">${uiIcon("paperclip", "ui-icon btn-icon")} ${attachmentCount("qhse", item.id)}</button>${isAdmin() ? `<button class="btn small primary" data-edit-qhse="${item.id}">Editar</button>` : ""}
         </div></td>
       </tr>`;
     }).join("");
@@ -3645,7 +3327,7 @@
     }).join("");
     const orderRows = state.data.maintenanceOrders.map(order => {
       const equipment = state.data.equipment.find(x => x.id === order.equipment_id)?.name || "Equipamento removido";
-      return `<tr><td><strong>${esc(order.title)}</strong><br><small>${esc(equipment)} • ${esc(order.maintenance_type)}</small></td><td>${badge(order.priority)}</td><td>${badge(order.status)}</td><td>${esc(order.responsible || "-")}</td><td>${dateOnly(order.due_date)}</td><td>${money.format(order.actual_cost || order.estimated_cost || 0)}</td><td><div class="row-actions"><button class="btn small secondary" data-attachments="maintenance:${order.id}" data-attachment-title="${esc(order.title)}">📎 ${attachmentCount("maintenance", order.id)}</button>${canManageMaintenance ? `<button class="btn small primary" data-edit-order="${order.id}">Editar</button>` : ""}</div></td></tr>`;
+      return `<tr><td><strong>${esc(order.title)}</strong><br><small>${esc(equipment)} • ${esc(order.maintenance_type)}</small></td><td>${badge(order.priority)}</td><td>${badge(order.status)}</td><td>${esc(order.responsible || "-")}</td><td>${dateOnly(order.due_date)}</td><td>${money.format(order.actual_cost || order.estimated_cost || 0)}</td><td><div class="row-actions"><button class="btn small secondary" data-attachments="maintenance:${order.id}" data-attachment-title="${esc(order.title)}">${uiIcon("paperclip", "ui-icon btn-icon")} ${attachmentCount("maintenance", order.id)}</button>${canManageMaintenance ? `<button class="btn small primary" data-edit-order="${order.id}">Editar</button>` : ""}</div></td></tr>`;
     }).join("");
     const mobileOrders = state.data.maintenanceOrders.map(order => {
       const equipment = state.data.equipment.find(x => x.id === order.equipment_id)?.name || "Equipamento removido";
@@ -3667,7 +3349,7 @@
         <td><strong>${esc(item.title)}</strong><br><small>${esc(item.issuer || "-")}</small></td>
         <td>${esc(item.owner)}</td><td>${dateOnly(item.expires_at)}${days !== null ? `<br><small>${days < 0 ? `${Math.abs(days)} dias vencido` : `${days} dias restantes`}</small>` : ""}</td>
         <td>${badge(automaticStatus)}</td>
-        <td><div class="row-actions"><button class="btn small secondary" data-attachments="certificate:${item.id}" data-attachment-title="${esc(item.title)}">📎 ${attachmentCount("certificate", item.id)}</button>${canManage ? `<button class="btn small primary" data-edit-certificate="${item.id}">Editar</button>` : ""}</div></td>
+        <td><div class="row-actions"><button class="btn small secondary" data-attachments="certificate:${item.id}" data-attachment-title="${esc(item.title)}">${uiIcon("paperclip", "ui-icon btn-icon")} ${attachmentCount("certificate", item.id)}</button>${canManage ? `<button class="btn small primary" data-edit-certificate="${item.id}">Editar</button>` : ""}</div></td>
       </tr>`;
     }).join("");
     const mobile = state.data.certificates.map(item => {
@@ -4076,7 +3758,7 @@
           <div class="catalog-linked-heading"><div><label>Produto do Catálogo Químico *</label><small>O nome e a unidade vêm do cadastro oficial.</small></div><button type="button" class="btn small secondary" data-action="open-chemical-catalog">Abrir catálogo</button></div>
           <select name="product_id" required ${lockProduct ? "disabled" : ""}><option value="">Selecione o produto</option>${products.map(product => `<option value="${product.id}" ${product.id === item.productId ? "selected" : ""}>${esc(product.name)}</option>`).join("")}</select>
           ${lockProduct ? `<input type="hidden" name="product_id" value="${esc(item.productId || "")}">` : ""}
-          <small class="field-help">${currentProduct ? `${esc(currentProduct.category || "Produto químico")} • ${esc(inferChemicalPackaging(currentProduct))} • ${esc(currentProduct.unit)} • o total será somado automaticamente` : "Selecione um produto cadastrado."}</small>
+          <small class="field-help">${currentProduct ? `${esc(currentProduct.category || "Produto químico")} • ${esc(currentProduct.unit)} • o total será somado automaticamente` : "Selecione um produto cadastrado."}</small>
         </div>
         <div><label>Lote</label><input name="lot" value="${esc(item.lot || "")}"></div>
         ${editing ? `<div><label>Saldo atual</label><input value="${fmt.format(item.quantity)} ${esc(item.unit)}" disabled><small class="field-help">Para alterar o saldo, use Movimentar.</small></div>` : `<div><label>Quantidade inicial</label><input name="quantity" type="text" inputmode="decimal" value="0"></div>`}
@@ -4280,7 +3962,7 @@
       <div class="form-grid">
         <div><label>Data *</label><input name="date" type="date" required value="${String(item.date || new Date().toISOString()).slice(0,10)}"></div>
         <div><label>Movimento *</label><select name="movement" ${stockApplied ? "disabled" : ""}>${["Entrada","Saída","Backload"].map(value => `<option ${item.movement === value ? "selected" : ""}>${value}</option>`).join("")}</select>${stockApplied ? `<input type="hidden" name="movement" value="${esc(item.movement)}">` : ""}</div>
-        <div class="wide truck-type-field"><label>Tipo da carreta *</label><div class="truck-type-selector">${["Bulk","Tank","Plataforma"].map(value => `<label><input type="radio" name="truck_type" value="${value}" ${type===value?"checked":""} ${stockApplied?"disabled":""}><span><b>${value==="Bulk"?"◆":value==="Tank"?"●":"▦"}</b><strong>${value}</strong><small>${value==="Bulk"?"Granel":value==="Tank"?"Fluido":"Vários insumos"}</small></span></label>`).join("")}</div>${stockApplied ? `<input type="hidden" name="truck_type" value="${esc(type)}">` : ""}</div>
+        <div class="wide truck-type-field"><label>Tipo da carreta *</label><div class="truck-type-selector">${["Bulk","Tank","Plataforma"].map(value => `<label><input type="radio" name="truck_type" value="${value}" ${type===value?"checked":""} ${stockApplied?"disabled":""}><span><b>${value==="Bulk"?uiIcon("package"):value==="Tank"?uiIcon("droplet"):uiIcon("products")}</b><strong>${value}</strong><small>${value==="Bulk"?"Granel":value==="Tank"?"Fluido":"Vários insumos"}</small></span></label>`).join("")}</div>${stockApplied ? `<input type="hidden" name="truck_type" value="${esc(type)}">` : ""}</div>
         <div><label>Origem / Destino *</label><input name="supplier" required value="${esc(item.supplier || "")}"></div>
         <div><label>Cliente</label><input name="client" value="${esc(item.client || "")}"></div>
         <section class="wide truck-single-section ${type==="Plataforma"?"hidden":""}" data-truck-single-section>
@@ -4475,7 +4157,7 @@
       const { data, error } = await state.client.storage.from("opscontrol-files").createSignedUrl(item.file_path, 3600);
       const url = error ? "" : data?.signedUrl || "";
       return `<div class="attachment-item">
-        <div class="attachment-icon">${String(item.mime_type).startsWith("image/") ? "🖼️" : "📄"}</div>
+        <div class="attachment-icon">${String(item.mime_type).startsWith("image/") ? uiIcon("image") : uiIcon("file")}</div>
         <div class="attachment-info"><strong>${esc(item.file_name)}</strong><small>${fileSizeLabel(item.file_size)} • ${dateTime(item.created_at)}</small></div>
         ${url ? `<a class="btn small primary" href="${url}" target="_blank" rel="noopener">Abrir</a>` : ""}
         ${canDelete(item) ? `<button class="btn small danger" data-delete-attachment="${item.id}">Excluir</button>` : ""}
@@ -4596,11 +4278,6 @@
       throw new Error(`O equipamento aberto era ${targetTankName}, mas os dados atuais pertencem a ${tank.name}. Atualize a página.`);
     }
 
-    const selectedClient = payload.client || "A definir";
-    if (!TANK_CLIENTS.includes(selectedClient)) {
-      throw new Error("Selecione Petrobras, PRIO, Equinor ou A definir.");
-    }
-
     const adminFull = form.dataset.adminFull === "true" && isAdmin();
     const newKind = adminFull ? payload.kind : tank.kind;
     const silo = isSiloAsset(newKind);
@@ -4655,7 +4332,6 @@
 
     const originalLabel = button?.textContent || "Salvar";
     const message = form.querySelector("#tankSaveMessage");
-    showMobileSaveProgress("Validando atualização", `${targetTankName} • conferindo campos`, "loading");
 
     if (button) {
       button.disabled = true;
@@ -4670,10 +4346,9 @@
       // O modo operacional usa uma função que não recebe nome, fase, tipo,
       // capacidade ou densidade. Isso elimina conflitos de nome e garante
       // que o produto seja derivado exclusivamente pelo ID do catálogo.
-      const rpcName = adminFull ? "admin_update_tank_product_capacity_v3" : "update_tank_content_v5";
+      const rpcName = adminFull ? "admin_update_tank_product_capacity_v2" : "update_tank_content_v4";
       const rpcPayload = adminFull ? {
         p_tank_id: targetTankId,
-        p_client: selectedClient,
         p_name: payload.name?.trim(),
         p_phase: payload.phase,
         p_kind: payload.kind,
@@ -4692,14 +4367,12 @@
         p_tank_id: targetTankId,
         p_expected_name: targetTankName,
         p_expected_updated_at: expectedUpdatedAt,
-        p_client: selectedClient,
         p_volume: newVolume,
         p_status: payload.status,
         p_fluid_type_id: selectedFluidId,
         p_lot: payload.lot?.trim() || null
       };
 
-      showMobileSaveProgress("Salvando no Supabase", `${targetTankName} • enviando dados`, "loading");
       const { data, error } = await state.client.rpc(rpcName, rpcPayload);
       if (error) throw error;
 
@@ -4709,7 +4382,6 @@
         throw new Error("O Supabase retornou outro equipamento. A confirmação foi rejeitada.");
       }
 
-      showMobileSaveProgress("Confirmando no banco", `${targetTankName} • validando equipamento e volume`, "loading");
       const { data: serverRow, error: confirmError } = await state.client
         .from("tanks")
         .select("*")
@@ -4729,9 +4401,6 @@
       if ((serverRow.current_fluid_type_id || null) !== selectedFluidId) {
         throw new Error("O banco não confirmou o produto selecionado.");
       }
-      if ((serverRow.client || "A definir") !== selectedClient) {
-        throw new Error("O banco não confirmou o cliente selecionado.");
-      }
 
       const mapped = {
         id: serverRow.id,
@@ -4746,7 +4415,6 @@
         fluidTypeId: serverRow.current_fluid_type_id || null,
         product: serverRow.current_product || "",
         lot: serverRow.current_lot || "",
-        client: serverRow.client || "A definir",
         density: serverRow.current_density === null || serverRow.current_density === undefined ? null : Number(serverRow.current_density),
         densityUnit: serverRow.current_density_unit || null,
         status: serverRow.status,
@@ -4761,8 +4429,7 @@
       renderTanks();
       renderDashboard();
       closeModal();
-      showMobileSaveProgress("Atualização confirmada", `${mapped.name} • ${mapped.client} • ${fmt.format(mapped.volume)} ${mapped.unit}`, "success", 1500);
-      toast(`${mapped.name} confirmado para ${mapped.client} em ${fmt.format(mapped.volume)} ${mapped.unit}.`, "success");
+      toast(`${mapped.name} confirmado em ${fmt.format(mapped.volume)} ${mapped.unit}.`, "success");
 
       // Sincronização completa em segundo plano. Uma falha em outro módulo
       // não impede a confirmação visual do tanque que já foi salvo.
@@ -4773,7 +4440,6 @@
       return mapped;
     } catch (error) {
       const friendlyMessage = friendlyTankSaveError(error);
-      showMobileSaveProgress("Não foi possível salvar", friendlyMessage, "error", 2600);
       if (message) {
         message.textContent = friendlyMessage;
         message.classList.remove("hidden");
@@ -5129,8 +4795,6 @@
       }
 
       if (form.id === "tankForm") {
-        const confirmed = await confirmTankUpdate(form);
-        if (!confirmed) return;
         await saveTankVolume(form, form.querySelector('[data-action="save-tank-volume"]'));
         return;
       }
@@ -5207,7 +4871,7 @@
       if (form.id === "chemicalProductForm") {
         if (!canManageChemicals()) throw new Error("Seu perfil não pode alterar o Catálogo Químico.");
         const payload=Object.fromEntries(new FormData(form));
-        const {data,error}=await state.client.rpc("save_chemical_product_v2",{p_id:form.dataset.id||null,p_name:payload.name?.trim(),p_category:payload.category?.trim()||null,p_packaging_type:payload.packaging_type,p_default_unit:payload.unit,p_active:payload.active==="true",p_notes:payload.notes?.trim()||null});
+        const {data,error}=await state.client.rpc("save_chemical_product",{p_id:form.dataset.id||null,p_name:payload.name?.trim(),p_category:payload.category?.trim()||null,p_default_unit:payload.unit,p_active:payload.active==="true",p_notes:payload.notes?.trim()||null});
         if(error) throw error;
         const row=Array.isArray(data)?data[0]:data;
         if(!row?.id) throw new Error("O Supabase não confirmou o produto químico.");
@@ -5415,8 +5079,6 @@
     const button = event.target.closest("button");
     if (!button) return;
 
-    if (button.id === "actionConfirmCancel") return resolveActionConfirmation(false);
-    if (button.id === "actionConfirmAccept") return resolveActionConfirmation(true);
     if (button.id === "loginBtn") return login();
     if (button.id === "logoutBtn") return logout();
     if (button.id === "menuBtn") {
@@ -5701,29 +5363,6 @@
       return;
     }
 
-
-    if (button.dataset.tankClientFilter) {
-      state.mobile.tankFilters.client = button.dataset.tankClientFilter;
-      renderTanks();
-      return;
-    }
-    if (button.dataset.tankViewFilter) {
-      state.mobile.tankFilters.view = button.dataset.tankViewFilter;
-      renderTanks();
-      return;
-    }
-    if (action === "clear-mobile-tank-filters") {
-      state.mobile.tankFilters = { client: "Todos", view: "Todos", query: "" };
-      renderTanks();
-      return;
-    }
-    if (button.dataset.toggleTankCard) {
-      const card = button.closest("[data-tank-card]");
-      const expanded = card?.classList.toggle("expanded");
-      button.textContent = expanded ? "Ocultar detalhes" : "Ver detalhes";
-      return;
-    }
-
     if (action === "refresh-tank-products") {
       try {
         button.disabled = true;
@@ -5739,11 +5378,8 @@
     }
 
     if (action === "save-tank-volume") {
-      const form = button.closest("form");
-      const confirmed = await confirmTankUpdate(form);
-      if (!confirmed) return;
       try {
-        await saveTankVolume(form, button);
+        await saveTankVolume(button.closest("form"), button);
       } catch (error) {
         toast(`Erro ao atualizar volume: ${error.message}`, "error");
       }
@@ -6019,7 +5655,7 @@
       return openModal(`Ações — ${record.title}`, `
         ${hasRole(["supervisor", "lider", "qhse"]) ? `<button class="btn primary" data-add-action="${record.id}">+ Nova ação</button>` : ""}
         <div class="section-title">Itens de ação</div>
-        <div class="attachment-list">${actions.map(item => `<div class="attachment-item"><div class="attachment-icon">✓</div><div class="attachment-info"><strong>${esc(item.title)}</strong><small>${esc(item.responsible || "Sem responsável")} • Prazo ${dateOnly(item.due_date)}</small></div>${badge(item.status)}${isAdmin() ? `<button class="btn small primary" data-edit-action="${item.id}">Editar</button>` : ""}</div>`).join("") || `<div class="empty">Nenhuma ação cadastrada.</div>`}</div>
+        <div class="attachment-list">${actions.map(item => `<div class="attachment-item"><div class="attachment-icon">${uiIcon("check")}</div><div class="attachment-info"><strong>${esc(item.title)}</strong><small>${esc(item.responsible || "Sem responsável")} • Prazo ${dateOnly(item.due_date)}</small></div>${badge(item.status)}${isAdmin() ? `<button class="btn small primary" data-edit-action="${item.id}">Editar</button>` : ""}</div>`).join("") || `<div class="empty">Nenhuma ação cadastrada.</div>`}</div>
       `, "QHSE");
     }
 
@@ -6066,7 +5702,6 @@
   document.addEventListener("change", async event => {
     const changedForm = event.target.closest("#modalBody form");
     if (changedForm) scheduleDraftSave(changedForm);
-    if (event.target.closest("#chemicalProductForm") && event.target.name === "packaging_type") syncChemicalPackagingFields(event.target.closest("#chemicalProductForm"), true);
     if (event.target.closest("#truckForm") && event.target.name === "truck_type") syncTruckForm(event.target.closest("#truckForm"), true);
     if (event.target.closest("#truckForm") && ["fluid_type_id","movement"].includes(event.target.name)) syncTruckSingleProduct(event.target.closest("#truckForm"));
     if (event.target.closest("#truckForm") && event.target.matches("[data-truck-item-product]")) {
@@ -6101,11 +5736,6 @@
   });
 
   document.addEventListener("input", event => {
-    if (event.target.matches("[data-target-select]")) filterLinkedSelectOptions(event.target);
-    if (event.target.id === "mobileTankSearch") {
-      state.mobile.tankFilters.query = event.target.value;
-      applyTankMobileFilters();
-    }
     if (event.target.closest("#operationForm")) updateOperationReview(event.target.closest("#operationForm"));
     if (event.target.id === "globalSearchInput") {
       state.searchQuery = event.target.value;
@@ -6124,13 +5754,9 @@
   $("#modal").addEventListener("click", event => {
     if (event.target === $("#modal")) closeModal();
   });
-  $("#actionConfirm").addEventListener("click", event => {
-    if (event.target === $("#actionConfirm")) resolveActionConfirmation(false);
-  });
 
   document.addEventListener("keydown", event => {
     if (event.key !== "Escape") return;
-    if (!$("#actionConfirm")?.classList.contains("hidden")) return resolveActionConfirmation(false);
     if (!$("#modal")?.classList.contains("hidden")) return closeModal();
     if (state.mobile.moreOpen || state.mobile.quickOpen) return closeMobileSheets();
     $("#sidebar")?.classList.remove("open");
@@ -6141,28 +5767,6 @@
     if (event.key === "Enter") login();
   });
 
-
-
-  document.addEventListener("touchstart", event => {
-    if (window.innerWidth > 820 || state.page !== "tanks") return;
-    if (event.target.closest("button,input,select,textarea")) return;
-    const card = event.target.closest("[data-tank-card]");
-    if (!card) return;
-    const touch = event.changedTouches[0];
-    state.mobile.tankSwipe = { card, x: touch.clientX, y: touch.clientY, time: Date.now() };
-  }, { passive: true });
-
-  document.addEventListener("touchend", event => {
-    const swipe = state.mobile.tankSwipe;
-    state.mobile.tankSwipe = null;
-    if (!swipe || window.innerWidth > 820) return;
-    const touch = event.changedTouches[0];
-    const dx = touch.clientX - swipe.x;
-    const dy = touch.clientY - swipe.y;
-    if (Date.now() - swipe.time > 700 || Math.abs(dx) < 85 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
-    if (dx > 0) swipe.card.querySelector("[data-edit-tank]")?.click();
-    else swipe.card.querySelector("[data-tank-history]")?.click();
-  }, { passive: true });
 
   document.addEventListener("focusout", async event => {
     if (!event.target.matches("[data-shift-checklist-note]")) return;
@@ -6220,5 +5824,5 @@
   }
 
   $("#connectionHint").textContent = "Acesse com seu e-mail e senha cadastrados.";
-  bootApplication();
+  restoreSession();
 })();

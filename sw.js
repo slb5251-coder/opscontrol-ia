@@ -1,12 +1,13 @@
-const CACHE="opscontrol-20260715-mobile-complete-splash-slb-1";
+const CACHE="opscontrol-20260716-v33-base-visual-1";
 const FILES=[
   "./",
   "./index.html",
-  "./app.css?v=20260715-mobile-complete-splash-slb-1",
-  "./js/config.js?v=20260715-mobile-complete-splash-slb-1",
-  "./js/app.js?v=20260715-mobile-complete-splash-slb-1",
+  "./app.css?v=20260716-v33-base-visual-1",
+  "./v33.css?v=20260716-v33-base-visual-1",
+  "./js/config.js?v=20260716-v33-base-visual-1",
+  "./js/app.js?v=20260716-v33-base-visual-1",
   "./manifest.json",
-  "./assets/icon.svg","./assets/slb-logo.png","./vendor/qrcode.js"
+  "./assets/icon.svg","./vendor/qrcode.js"
 ];
 
 self.addEventListener("install", event => {
@@ -31,6 +32,7 @@ self.addEventListener("fetch", event => {
     url.pathname.endsWith("/") ||
     url.pathname.endsWith("/index.html") ||
     url.pathname.endsWith("/app.css") ||
+    url.pathname.endsWith("/v33.css") ||
     url.pathname.endsWith("/js/app.js") ||
     url.pathname.endsWith("/js/config.js")
   );

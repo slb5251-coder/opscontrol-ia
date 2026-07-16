@@ -6,7 +6,7 @@
   "display": "standalone",
   "orientation": "any",
   "background_color": "#f4f7fb",
-  "theme_color": "#071a35",
+  "theme_color": "#0b1f3a",
   "description": "Controle operacional profissional para a B-Port LMP.",
   "icons": [
     {
@@ -81,5 +81,5 @@
       ]
     }
   ],
-  "version": "20260715-integrated-closing-suite-1"
+  "version": "20260716-v33-base-visual-1"
 }

@@ -1,10 +1,10 @@
-const CACHE="opscontrol-20260716-control-center-light-visual-1";
+const CACHE="opscontrol-20260716-tanks-scada-plant-view-1";
 const FILES=[
   "./",
   "./index.html",
-  "./app.css?v=20260716-control-center-light-visual-1",
-  "./js/config.js?v=20260716-control-center-light-visual-1",
-  "./js/app.js?v=20260716-control-center-light-visual-1",
+  "./app.css?v=20260716-tanks-scada-plant-view-1",
+  "./js/config.js?v=20260716-tanks-scada-plant-view-1",
+  "./js/app.js?v=20260716-tanks-scada-plant-view-1",
   "./manifest.json",
   "./assets/icon.svg","./assets/slb-logo.png","./vendor/qrcode.js"
 ];

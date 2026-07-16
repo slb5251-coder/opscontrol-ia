@@ -12,7 +12,7 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const APP_VERSION = "20260716-control-center-light-visual-1";
+  const APP_VERSION = "20260716-tanks-scada-plant-view-1";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -3377,7 +3377,7 @@
   }
 
   function ensureTankPageState() {
-    state.tankPage ||= {source:"real",view:"cards",filters:{type:"Todos",product:"Todos",area:"Todos",client:"Todos",status:"Todos",query:""}};
+    state.tankPage ||= {source:"real",view:"cards",filters:{type:"Todos",product:"Todos",area:"Todos",client:"Todos",status:"Todos",query:""},fullscreen:false};
     return state.tankPage;
   }
 
@@ -3521,15 +3521,116 @@
     </div>`;
   }
 
+
+  function equipmentProductIcon(tank) {
+    const icons={wbm:"💧",brine:"◆",sbm:"◉",olefin:"◌",water:"◍",barite:"▰",bentonite:"▱",calcite:"◇",cement:"■",kcl:"▧",bulk:"▦",unknown:"●",empty:"○"};
+    return icons[equipmentProductKey(tank)] || "●";
+  }
+
+  function relativeEquipmentTime(value) {
+    if (!value) return "sem atualização";
+    const diff=Math.max(0,Date.now()-new Date(value).getTime());
+    const minutes=Math.floor(diff/60000);
+    if(minutes<1) return "agora";
+    if(minutes<60) return `há ${minutes} min`;
+    const hours=Math.floor(minutes/60);
+    if(hours<24) return `há ${hours} h`;
+    const days=Math.floor(hours/24);
+    return `há ${days} dia${days===1?"":"s"}`;
+  }
+
+  function equipmentLastMovement(tank) {
+    const movements=(state.data?.tankMovements||[])
+      .filter(item=>item.source_tank_id===tank.id||item.destination_tank_id===tank.id)
+      .sort((a,b)=>new Date(b.movementAt||b.created_at)-new Date(a.movementAt||a.created_at));
+    const movement=movements[0];
+    if(!movement) return null;
+    const incoming=movement.destination_tank_id===tank.id || movement.direction==="Entrada";
+    return {
+      type:movement.movement_type || (incoming?"Entrada":"Saída"),
+      direction:incoming?"Entrada":"Saída",
+      quantity:Number(movement.quantity||0),
+      unit:movement.unit||tank.unit,
+      time:movement.movementAt||movement.created_at
+    };
+  }
+
+  function equipmentClientTone(client="A definir") {
+    const value=normalizeSearch(client).replace(/\s+/g,"-");
+    return value||"a-definir";
+  }
+
+  function tankAreaSummaryCard(title, items, unit, tone) {
+    const capacity=items.reduce((sum,item)=>sum+Number(item.capacity||0),0);
+    const volume=items.reduce((sum,item)=>sum+Number(item.volume||0),0);
+    const occupied=items.filter(item=>Number(item.volume||0)>0).length;
+    const pct=capacity>0?volume/capacity*100:0;
+    return `<article class="tank-area-summary tone-${tone}">
+      <div><small>ÁREA OPERACIONAL</small><h3>${esc(title)}</h3></div>
+      <strong>${fmt.format(volume)} ${esc(unit)}</strong>
+      <span>${occupied}/${items.length} com saldo • ${fmt.format(pct)}% da capacidade</span>
+      <div><i style="width:${Math.min(100,pct)}%"></i></div>
+    </article>`;
+  }
+
+  function tankAreaSummaries(items) {
+    const phase1=items.filter(item=>item.phase==="Phase #1"&&!isSiloAsset(item));
+    const phase2=items.filter(item=>item.phase==="Phase #2"&&!isSiloAsset(item));
+    const silos=items.filter(isSiloAsset);
+    return `<div class="tank-area-summary-grid">${tankAreaSummaryCard("Phase #1",phase1,"bbl","phase1")}${tankAreaSummaryCard("Phase #2",phase2,"bbl","phase2")}${tankAreaSummaryCard("Silos",silos,"ton","silos")}</div>`;
+  }
+
+  function tankPlantAsset(tank, demo=false) {
+    const level=equipmentLevelState(tank), status=equipmentStatus(tank), tone=controlStatusTone(status);
+    return `<button class="tank-plant-asset tone-${tone} level-${level.key}" data-action="open-equipment-details" data-tank-id="${tank.id}" data-demo="${demo?"true":"false"}">
+      <span class="tank-plant-client client-${equipmentClientTone(tank.client)}">${esc(tank.client||"A definir")}</span>
+      <div class="tank-plant-vessel ${isSiloAsset(tank)?"silo":"tank"}"><i class="material-${equipmentProductKey(tank)}" style="height:${level.pct}%"></i><b>${fmt.format(level.pct)}%</b></div>
+      <strong>${esc(tank.name)}</strong><small>${equipmentProductIcon(tank)} ${esc(equipmentProductLabel(tank))}</small><em>${esc(status)}</em>
+    </button>`;
+  }
+
+  function tankPlantZone(title, items, demo=false, zoneClass="") {
+    return `<section class="tank-plant-zone ${zoneClass}"><div class="tank-plant-zone-head"><div><small>MAPA DA PLANTA</small><h3>${esc(title)}</h3></div><span>${items.length} equipamento(s)</span></div><div class="tank-plant-assets">${items.map(item=>tankPlantAsset(item,demo)).join("")||`<div class="empty">Nenhum equipamento nesta área.</div>`}</div></section>`;
+  }
+
+  function tankPlantView(items,demo=false) {
+    const phase1=items.filter(item=>item.phase==="Phase #1"&&!isSiloAsset(item)).sort((a,b)=>Number(a.order||0)-Number(b.order||0));
+    const phase2=items.filter(item=>item.phase==="Phase #2"&&!isSiloAsset(item)).sort((a,b)=>Number(a.order||0)-Number(b.order||0));
+    const silos1=items.filter(item=>item.phase==="Phase #1"&&isSiloAsset(item)).sort((a,b)=>Number(a.order||0)-Number(b.order||0));
+    const silos2=items.filter(item=>item.phase==="Phase #2"&&isSiloAsset(item)).sort((a,b)=>Number(a.order||0)-Number(b.order||0));
+    return `<div class="tank-plant-view">${tankPlantZone("Phase #1 — Tanques e Mix Tanks",phase1,demo,"phase-one")}${tankPlantZone("Phase #2 — Tanques e Mix Tanks",phase2,demo,"phase-two")}<div class="tank-plant-silo-row">${tankPlantZone("Phase #1 — Silos",silos1,demo,"silos")}${tankPlantZone("Phase #2 — Silos",silos2,demo,"silos")}</div></div>`;
+  }
+
+  function tankActiveFlows() {
+    const flows=[];
+    (state.data?.operations||[]).filter(op=>!["Concluída","Cancelada"].includes(op.status)).forEach(op=>{
+      const source=state.data.tanks.find(t=>t.id===op.source_tank_id);
+      const destination=state.data.tanks.find(t=>t.id===op.destination_tank_id);
+      if(source||destination) flows.push({source:source?.name||"Origem externa",destination:destination?.name||op.vessel||"Destino externo",product:op.product||"Produto",activity:op.activity,status:op.status});
+      const allocations=(state.data.operationAllocations||[]).filter(a=>a.operation_id===op.id);
+      if(!source&&!destination&&allocations.length>1){
+        const first=state.data.tanks.find(t=>t.id===allocations[0].tank_id);
+        allocations.slice(1,4).forEach(a=>{const next=state.data.tanks.find(t=>t.id===a.tank_id);if(first&&next)flows.push({source:first.name,destination:next.name,product:op.product||"Produto",activity:op.activity,status:op.status});});
+      }
+    });
+    return flows.slice(0,8);
+  }
+
+  function tankFlowPanel() {
+    const flows=tankActiveFlows();
+    return `<section class="tank-flow-panel"><div class="tank-flow-heading"><div><small>FLUXO OPERACIONAL</small><h2>Movimentações entre equipamentos</h2><p>Operações ativas com origem e destino vinculados.</p></div><span>${flows.length} fluxo(s)</span></div><div class="tank-flow-list">${flows.map(flow=>`<article class="tank-flow-item tone-${controlStatusTone(flow.status)}"><strong>${esc(flow.source)}</strong><div><span>→</span><small>${esc(flow.activity)} • ${esc(flow.product)}</small></div><strong>${esc(flow.destination)}</strong></article>`).join("")||`<div class="empty compact">Nenhum fluxo entre equipamentos ativo neste momento.</div>`}</div></section>`;
+  }
+
   function equipmentCardV3(tank, options={}) {
     const demo=options.demo===true, level=equipmentLevelState(tank), status=equipmentStatus(tank), parts=equipmentDateParts(tank.updated_at);
-    const sg=equipmentSpecificGravity(tank); const silo=isSiloAsset(tank);
-    return `<article class="equipment-card-v3 level-${level.key} ${silo?"silo":"fluid"}" data-equipment-card data-tank-card data-tank-id="${esc(tank.id)}" data-demo="${demo?"true":"false"}">
+    const sg=equipmentSpecificGravity(tank), silo=isSiloAsset(tank), last=demo?null:equipmentLastMovement(tank);
+    return `<article class="equipment-card-v3 compact-equipment-card level-${level.key} ${silo?"silo":"fluid"}" data-equipment-card data-tank-card data-tank-id="${esc(tank.id)}" data-demo="${demo?"true":"false"}">
+      <div class="equipment-client-ribbon client-${equipmentClientTone(tank.client)}">${esc(tank.client||"A definir")}</div>
       <div class="equipment-card-head"><div><small>${esc(tank.phase||"-")}</small><h3>${esc(tank.name)}</h3></div>${equipmentStatusTag(status)}</div>
       <div class="equipment-card-main reference-card-main">
         ${technicalEquipmentVisual(tank,{demo,visualKey:`${demo?"demo":"real"}:${tank.id}`})}
         <div class="equipment-card-info reference-card-info">
-          <div class="equipment-product"><span>${esc(equipmentProductLabel(tank))}</span><strong>${esc(equipmentDescription(tank))}</strong><small>Cliente: ${esc(tank.client||"A definir")}</small></div>
+          <div class="equipment-product"><span>${equipmentProductIcon(tank)} ${esc(equipmentProductLabel(tank))}</span><strong>${esc(equipmentDescription(tank))}</strong></div>
           <div class="equipment-volume"><strong>${fmt.format(Number(tank.volume||0))}</strong><span>/ ${fmt.format(Number(tank.capacity||0))} ${esc(tank.unit)}</span><b>${fmt.format(level.pct)}%</b></div>
           <div class="equipment-card-metrics">
             <span>${silo?"Peso / densidade":"Densidade"}<strong>${tank.density!==null&&tank.density!==undefined?`${fmt.format(tank.density)} ${esc(tank.densityUnit||"")}`:"-"}</strong></span>
@@ -3538,7 +3639,8 @@
           </div>
         </div>
       </div>
-      <div class="equipment-card-update"><span><b>${parts.date}</b>${parts.time}</span><span><b>Responsável</b>${esc(equipmentUpdater(tank))}</span></div>
+      ${last?`<div class="equipment-last-movement"><span class="${last.direction==="Entrada"?"incoming":"outgoing"}">${last.direction==="Entrada"?"↓":"↑"}</span><div><small>Última movimentação</small><strong>${esc(last.type)} • ${last.direction==="Entrada"?"+":"-"}${fmt.format(last.quantity)} ${esc(last.unit)}</strong></div><time>${relativeEquipmentTime(last.time)}</time></div>`:""}
+      <div class="equipment-card-update"><span><b>Atualizado ${relativeEquipmentTime(tank.updated_at)}</b>${parts.date} ${parts.time}</span><span><b>Responsável</b>${esc(equipmentUpdater(tank))}</span></div>
       ${level.key!=="normal"?`<div class="equipment-alert-label alert-${level.key}"><span>!</span>${esc(level.label)}</div>`:""}
       <div class="equipment-card-actions no-print">
         ${!demo&&hasRole(["supervisor","lider","operador","logistica"])?`<button class="btn small primary" data-action="open-tank-movement" data-tank-id="${tank.id}">Movimentar</button>`:""}
@@ -3701,14 +3803,18 @@
     const page=ensureTankPageState(), all=equipmentDataset(), filtered=filteredEquipmentData(), demo=page.source==="demo";
     const fluids=filtered.filter(t=>!isSiloAsset(t)), silos=filtered.filter(isSiloAsset);
     const alerts=filtered.filter(t=>!["normal","empty"].includes(equipmentLevelState(t).key)).length;
-    $("#page-tanks").innerHTML=`<div class="tanks-page-v3">
-      <div class="tanks-page-heading"><div><small>GESTÃO DE TANCAGEM</small><h1>Tanques e Silos</h1><p>Monitoramento em tempo real da tancagem da planta</p></div><div class="tanks-heading-actions"><span class="auto-update-active"><i></i>Atualização automática ativa</span><button class="btn secondary" data-action="refresh-tank-page">↻ Atualizar dados</button><div class="view-switch"><button class="${page.view==="cards"?"active":""}" data-action="tank-view-cards">▦</button><button class="${page.view==="list"?"active":""}" data-action="tank-view-list">☷</button></div></div></div>
+    const content=page.view==="plant"
+      ? tankPlantView(filtered,demo)
+      : `${equipmentSection("TANQUES DE FLUIDOS","◫",fluids,demo)}${equipmentSection("SILOS DE GRANÉIS","▱",silos,demo)}`;
+    $("#page-tanks").innerHTML=`<div class="tanks-page-v3 ${page.fullscreen?"tank-operational-fullscreen":""}">
+      <div class="tanks-page-heading"><div><small>GESTÃO DE TANCAGEM</small><h1>Tanques e Silos</h1><p>Visão operacional, mapa da planta, volumes, clientes e movimentações</p></div><div class="tanks-heading-actions"><span class="auto-update-active"><i></i>Atualização automática ativa</span><button class="btn secondary" data-action="refresh-tank-page">↻ Atualizar dados</button><button class="btn secondary" data-action="tank-operational-fullscreen">▣ Tela operacional</button><div class="view-switch"><button class="${page.view==="plant"?"active":""}" data-action="tank-view-plant" title="Mapa da planta">⌘</button><button class="${page.view==="cards"?"active":""}" data-action="tank-view-cards" title="Cartões">▦</button><button class="${page.view==="list"?"active":""}" data-action="tank-view-list" title="Lista">☷</button></div></div></div>
       <div class="tank-source-switch"><button class="${!demo?"active":""}" data-action="tank-source-real">Dados reais do Supabase</button><button class="${demo?"active":""}" data-action="tank-source-demo">Demonstração completa</button>${demo?`<span>DADOS FICTÍCIOS • 8 EQUIPAMENTOS</span>`:`<span>REALTIME • ${all.length} EQUIPAMENTOS</span>`}</div>
       ${tankPageFilters(all)}
+      ${tankAreaSummaries(filtered)}
+      ${tankFlowPanel()}
       <div class="tank-page-summary"><span><small>Equipamentos visíveis</small><strong>${filtered.length}</strong></span><span><small>Tanques e Mix Tanks</small><strong>${fluids.length}</strong></span><span><small>Silos de granéis</small><strong>${silos.length}</strong></span><span><small>Alertas</small><strong>${alerts}</strong></span></div>
-      ${equipmentSection("TANQUES DE FLUIDOS","◫",fluids,demo)}
-      ${equipmentSection("SILOS DE GRANÉIS","▱",silos,demo)}
-      <footer class="tanks-page-footer"><div class="status-legend">${statusLegend()}</div><div><span>Última atualização: <strong>${state.lastSync?dateTime(state.lastSync):dateTime(new Date())}</strong></span><span class="footer-connection ${navigator.onLine?"online":"offline"}"><i></i>${navigator.onLine?"Conectado":"Sem conexão"}</span><button class="btn small secondary" data-action="refresh-tank-page">Atualizar</button><b>${alerts} alerta(s)</b></div></footer>
+      ${content}
+      <footer class="tanks-page-footer sticky-tank-legend"><div class="status-legend">${statusLegend()}</div><div><span>Última atualização: <strong>${state.lastSync?dateTime(state.lastSync):dateTime(new Date())}</strong></span><span class="footer-connection ${navigator.onLine?"online":"offline"}"><i></i>${navigator.onLine?"Conectado":"Sem conexão"}</span><button class="btn small secondary" data-action="refresh-tank-page">Atualizar</button><b>${alerts} alerta(s)</b></div></footer>
     </div>`;
     selectTankFilterValues();
     updateShellPageMeta("tanks");
@@ -6258,8 +6364,18 @@
     }
     if (button.dataset.action === "tank-source-demo") { ensureTankPageState().source="demo"; renderTanks(); return; }
     if (button.dataset.action === "tank-source-real") { ensureTankPageState().source="real"; renderTanks(); return; }
+    if (button.dataset.action === "tank-view-plant") { ensureTankPageState().view="plant"; renderTanks(); return; }
     if (button.dataset.action === "tank-view-cards") { ensureTankPageState().view="cards"; renderTanks(); return; }
     if (button.dataset.action === "tank-view-list") { ensureTankPageState().view="list"; renderTanks(); return; }
+    if (button.dataset.action === "tank-operational-fullscreen") {
+      const pageState=ensureTankPageState();
+      pageState.fullscreen=!pageState.fullscreen;
+      if(pageState.fullscreen){
+        const target=$("#page-tanks");
+        if(target?.requestFullscreen) await target.requestFullscreen().catch(()=>{});
+      } else if(document.fullscreenElement) await document.exitFullscreen().catch(()=>{});
+      renderTanks(); return;
+    }
     if (button.dataset.action === "refresh-tank-page") { await refreshRealtime("atualização manual",true); renderTanks(); return; }
     if (button.dataset.action === "open-equipment-details") {
       const demo=button.dataset.demo==="true";

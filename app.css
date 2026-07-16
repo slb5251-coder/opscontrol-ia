@@ -2489,3 +2489,611 @@ input:focus,select:focus,textarea:focus{
   .topbar.industrial-topbar{padding:0 12px!important}
   .reference-card-main{padding:8px!important}
 }
+
+
+/* ==========================================================
+   RESPONSIVIDADE MULTITELA
+   Mobile | Notebook 14–17" | Monitor | TV 32–55"
+   ========================================================== */
+
+/* Evita textos e legendas estourando os cartões */
+.equipment-card-v3,
+.tank-plant-asset,
+.tv-tank-grid .equipment-card-v3,
+.tv-silo-grid .equipment-card-v3{
+  min-width:0!important;
+  overflow:hidden!important;
+}
+.equipment-card-v3 *,
+.tank-plant-asset *,
+.tv-tank-grid .equipment-card-v3 *,
+.tv-silo-grid .equipment-card-v3 *{
+  min-width:0;
+}
+.equipment-product strong,
+.equipment-product small,
+.equipment-client-ribbon,
+.tank-plant-client,
+.tank-plant-asset>small,
+.tank-plant-asset>em,
+.equipment-card-metrics strong,
+.equipment-card-metrics span,
+.equipment-card-update span,
+.equipment-card-update b{
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  white-space:nowrap!important;
+}
+
+/* Legendas compactas ao lado dos tanques e silos */
+.reference-card-main{
+  display:grid!important;
+  grid-template-columns:minmax(96px,38%) minmax(0,1fr)!important;
+  align-items:center!important;
+  gap:10px!important;
+}
+.reference-card-main .equipment-product{
+  gap:3px!important;
+}
+.reference-card-main .equipment-product span{
+  font-size:9px!important;
+  line-height:1.1!important;
+}
+.reference-card-main .equipment-product strong{
+  font-size:12px!important;
+  line-height:1.2!important;
+}
+.reference-card-main .equipment-product small{
+  font-size:9px!important;
+  line-height:1.2!important;
+}
+.equipment-card-metrics{
+  gap:5px!important;
+}
+.equipment-card-metrics>div,
+.equipment-card-metrics>span{
+  padding:6px 7px!important;
+}
+.equipment-card-metrics span{
+  font-size:8px!important;
+  letter-spacing:0!important;
+}
+.equipment-card-metrics strong{
+  font-size:10px!important;
+}
+.equipment-volume{
+  padding:8px 9px!important;
+}
+.equipment-volume strong{
+  font-size:17px!important;
+}
+.equipment-volume span{
+  font-size:9px!important;
+}
+.equipment-volume b{
+  font-size:20px!important;
+}
+.equipment-client-ribbon{
+  max-width:58%!important;
+  font-size:8px!important;
+  padding:4px 7px!important;
+}
+.equipment-status-tag{
+  max-width:46%!important;
+  font-size:8px!important;
+  padding:4px 7px!important;
+  overflow:hidden!important;
+  text-overflow:ellipsis!important;
+  white-space:nowrap!important;
+}
+.equipment-card-head h3{
+  font-size:15px!important;
+}
+.equipment-card-head small{
+  font-size:8px!important;
+}
+.equipment-card-update{
+  gap:6px!important;
+}
+.equipment-card-update span,
+.equipment-card-update b{
+  font-size:8px!important;
+}
+
+/* Mapa e sinótico: legenda ao lado mais discreta */
+.tank-plant-asset{
+  padding:10px!important;
+  min-height:145px!important;
+}
+.tank-plant-asset>strong{
+  font-size:12px!important;
+}
+.tank-plant-client{
+  font-size:8px!important;
+  max-width:100%!important;
+}
+.tank-plant-asset>small,
+.tank-plant-asset>em{
+  font-size:8px!important;
+}
+.tank-plant-vessel{
+  width:46px!important;
+  height:78px!important;
+}
+.tank-plant-vessel b{
+  font-size:9px!important;
+}
+
+/* Base fluida para qualquer tela */
+.main-content{
+  width:100%!important;
+  max-width:none!important;
+  padding:clamp(12px,1.4vw,22px)!important;
+}
+.page-header h1,
+.tanks-page-heading h1{
+  font-size:clamp(22px,2vw,28px)!important;
+}
+.page-header p,
+.tanks-page-heading p{
+  font-size:clamp(11px,.95vw,13px)!important;
+}
+.card,
+.equipment-card-v3,
+.tank-plant-asset{
+  border-radius:clamp(14px,1.2vw,19px)!important;
+}
+
+/* Notebook 14" a 17" — normalmente 1280 a 1920 px */
+@media (min-width:1100px) and (max-width:1919px){
+  .shell{
+    grid-template-columns:220px minmax(0,1fr)!important;
+  }
+  .sidebar{
+    width:220px!important;
+    padding:12px 9px!important;
+  }
+  .nav-item{
+    padding:9px 10px!important;
+    font-size:11px!important;
+  }
+  .nav-label{
+    font-size:11px!important;
+  }
+  .equipment-grid-v3{
+    grid-template-columns:repeat(4,minmax(0,1fr))!important;
+    gap:11px!important;
+  }
+  .tank-plant-grid{
+    grid-template-columns:repeat(6,minmax(0,1fr))!important;
+    gap:9px!important;
+  }
+  .control-kpi-grid,
+  .dashboard-kpi-grid{
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+  }
+  .equipment-card-v3{
+    padding:12px!important;
+  }
+  .reference-card-main{
+    grid-template-columns:minmax(82px,35%) minmax(0,1fr)!important;
+    gap:7px!important;
+    padding:7px!important;
+  }
+  .reference-view-window{
+    min-height:150px!important;
+  }
+  .reference-tank,
+  .reference-silo{
+    transform:scale(.88)!important;
+    transform-origin:center center!important;
+  }
+}
+
+/* Notebook menor / resolução 1366x768 */
+@media (min-width:1100px) and (max-width:1450px){
+  .topbar.industrial-topbar{
+    height:62px!important;
+    padding:0 14px!important;
+  }
+  .shell{
+    min-height:calc(100vh - 62px)!important;
+    grid-template-columns:205px minmax(0,1fr)!important;
+  }
+  .sidebar{
+    top:62px!important;
+    height:calc(100vh - 62px)!important;
+    width:205px!important;
+  }
+  .main-content{
+    padding:12px!important;
+  }
+  .equipment-grid-v3{
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+    gap:9px!important;
+  }
+  .tank-plant-grid{
+    grid-template-columns:repeat(5,minmax(0,1fr))!important;
+  }
+  .equipment-card-v3{
+    padding:10px!important;
+  }
+  .equipment-card-head h3{
+    font-size:14px!important;
+  }
+  .reference-view-window{
+    min-height:138px!important;
+  }
+  .control-center-hero{
+    padding:15px!important;
+  }
+  .topbar-search-trigger span,
+  .topbar-search-trigger kbd,
+  .topbar-datetime{
+    display:none!important;
+  }
+}
+
+/* Monitor grande e TV 32" a 55" em Full HD/4K */
+@media (min-width:1920px){
+  body{
+    font-size:16px!important;
+  }
+  .topbar.industrial-topbar{
+    height:78px!important;
+    padding:0 30px!important;
+  }
+  .shell{
+    grid-template-columns:265px minmax(0,1fr)!important;
+    min-height:calc(100vh - 78px)!important;
+  }
+  .sidebar{
+    top:78px!important;
+    width:265px!important;
+    height:calc(100vh - 78px)!important;
+    padding:20px 14px!important;
+  }
+  .nav-item{
+    padding:13px 14px!important;
+    font-size:13px!important;
+  }
+  .nav-label{
+    font-size:13px!important;
+  }
+  .main-content{
+    padding:24px 28px!important;
+  }
+  .equipment-grid-v3{
+    grid-template-columns:repeat(5,minmax(0,1fr))!important;
+    gap:15px!important;
+  }
+  .tank-plant-grid{
+    grid-template-columns:repeat(7,minmax(0,1fr))!important;
+    gap:12px!important;
+  }
+  .reference-card-main{
+    grid-template-columns:minmax(105px,38%) minmax(0,1fr)!important;
+  }
+  .equipment-card-head h3{
+    font-size:17px!important;
+  }
+  .equipment-product strong{
+    font-size:13px!important;
+  }
+  .equipment-volume strong{
+    font-size:20px!important;
+  }
+  .equipment-volume b{
+    font-size:23px!important;
+  }
+}
+
+/* TV 32–55 no modo painel */
+@media (min-width:1280px){
+  .tv-screen{
+    min-height:100vh!important;
+    height:100vh!important;
+    overflow:hidden!important;
+    display:grid!important;
+    grid-template-rows:auto minmax(0,1fr) auto!important;
+  }
+  .tv-content{
+    min-height:0!important;
+    overflow:hidden!important;
+    padding:clamp(10px,1.1vw,20px)!important;
+  }
+  .tv-dedicated-plant-slide,
+  .tv-dashboard-slide,
+  .tv-alerts-full-slide,
+  .tv-operations-only-slide{
+    height:100%!important;
+    min-height:0!important;
+    overflow:hidden!important;
+  }
+  .tv-inventory-section{
+    min-height:0!important;
+    overflow:hidden!important;
+  }
+  .tv-plant-grid{
+    display:grid!important;
+    grid-template-columns:repeat(auto-fit,minmax(165px,1fr))!important;
+    gap:clamp(7px,.65vw,12px)!important;
+    overflow:hidden!important;
+  }
+  .tv-tank-grid .equipment-card-v3,
+  .tv-silo-grid .equipment-card-v3{
+    padding:9px!important;
+    min-height:0!important;
+  }
+  .tv-tank-grid .reference-card-main,
+  .tv-silo-grid .reference-card-main{
+    grid-template-columns:minmax(72px,34%) minmax(0,1fr)!important;
+    gap:6px!important;
+    padding:5px!important;
+  }
+  .tv-tank-grid .reference-view-window,
+  .tv-silo-grid .reference-view-window{
+    min-height:112px!important;
+  }
+  .tv-tank-grid .reference-tank,
+  .tv-tank-grid .reference-silo,
+  .tv-silo-grid .reference-tank,
+  .tv-silo-grid .reference-silo{
+    transform:scale(.72)!important;
+    transform-origin:center center!important;
+  }
+  .tv-tank-grid .equipment-product span,
+  .tv-silo-grid .equipment-product span{
+    font-size:8px!important;
+  }
+  .tv-tank-grid .equipment-product strong,
+  .tv-silo-grid .equipment-product strong{
+    font-size:11px!important;
+  }
+  .tv-tank-grid .equipment-product small,
+  .tv-silo-grid .equipment-product small{
+    font-size:8px!important;
+  }
+  .tv-tank-grid .equipment-volume strong,
+  .tv-silo-grid .equipment-volume strong{
+    font-size:15px!important;
+  }
+  .tv-tank-grid .equipment-volume b,
+  .tv-silo-grid .equipment-volume b{
+    font-size:17px!important;
+  }
+  .tv-tank-grid .equipment-card-metrics,
+  .tv-silo-grid .equipment-card-metrics{
+    display:none!important;
+  }
+  .tv-tank-grid .equipment-card-update,
+  .tv-silo-grid .equipment-card-update{
+    display:none!important;
+  }
+  .tv-panel-title.large h2{
+    font-size:clamp(22px,1.9vw,34px)!important;
+  }
+  .tv-panel-title.large span{
+    font-size:clamp(10px,.9vw,14px)!important;
+  }
+  .tv-plant-kpis{
+    margin:8px 0!important;
+    gap:8px!important;
+  }
+  .tv-plant-kpis>div{
+    padding:9px 12px!important;
+  }
+  .tv-plant-kpis span{
+    font-size:10px!important;
+  }
+  .tv-plant-kpis strong{
+    font-size:clamp(18px,1.5vw,26px)!important;
+  }
+}
+
+/* TV em 4K: mantém proporção sem deixar gigante */
+@media (min-width:2560px){
+  .tv-content{
+    max-width:2400px!important;
+    width:100%!important;
+    margin:0 auto!important;
+  }
+  .tv-plant-grid{
+    grid-template-columns:repeat(auto-fit,minmax(200px,1fr))!important;
+  }
+  .tv-tank-grid .reference-view-window,
+  .tv-silo-grid .reference-view-window{
+    min-height:145px!important;
+  }
+  .tv-tank-grid .reference-tank,
+  .tv-tank-grid .reference-silo,
+  .tv-silo-grid .reference-tank,
+  .tv-silo-grid .reference-silo{
+    transform:scale(.88)!important;
+  }
+}
+
+/* Tablet */
+@media (min-width:700px) and (max-width:1099px){
+  .main-content{
+    padding:14px 12px 92px!important;
+  }
+  .equipment-grid-v3{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    gap:10px!important;
+  }
+  .tank-plant-grid{
+    grid-template-columns:repeat(3,minmax(0,1fr))!important;
+  }
+  .control-kpi-grid,
+  .dashboard-kpi-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  }
+  .reference-card-main{
+    grid-template-columns:minmax(90px,35%) minmax(0,1fr)!important;
+  }
+}
+
+/* Mobile */
+@media (max-width:699px){
+  body{
+    font-size:14px!important;
+    overflow-x:hidden!important;
+  }
+  .topbar.industrial-topbar{
+    height:58px!important;
+    padding:0 9px!important;
+  }
+  .topbar-left,.topbar-right{
+    gap:5px!important;
+  }
+  .mobile-page-copy strong{
+    font-size:13px!important;
+  }
+  .mobile-page-copy small{
+    font-size:8px!important;
+  }
+  .topbar-search-trigger,
+  .topbar-datetime,
+  .user-chip strong,
+  .user-chip small{
+    display:none!important;
+  }
+  .user-chip{
+    width:36px!important;
+    height:36px!important;
+    padding:0!important;
+    justify-content:center!important;
+  }
+  .main-content{
+    padding:10px 8px 88px!important;
+  }
+  .page-header,
+  .tanks-page-heading{
+    display:grid!important;
+    gap:9px!important;
+    align-items:start!important;
+  }
+  .page-header h1,
+  .tanks-page-heading h1{
+    font-size:21px!important;
+  }
+  .page-header-actions,
+  .tanks-page-heading .actions{
+    width:100%!important;
+    display:grid!important;
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    gap:7px!important;
+  }
+  .page-header-actions .btn,
+  .tanks-page-heading .actions .btn{
+    width:100%!important;
+    justify-content:center!important;
+    padding:9px 7px!important;
+    font-size:10px!important;
+  }
+  .equipment-grid-v3,
+  .tank-plant-grid,
+  .control-kpi-grid,
+  .dashboard-kpi-grid,
+  .grid-2,.grid-3,.grid-4{
+    grid-template-columns:1fr!important;
+    gap:9px!important;
+  }
+  .equipment-card-v3{
+    padding:10px!important;
+  }
+  .reference-card-main{
+    grid-template-columns:104px minmax(0,1fr)!important;
+    gap:8px!important;
+    padding:7px!important;
+  }
+  .reference-view-window{
+    min-height:142px!important;
+  }
+  .reference-tank,
+  .reference-silo{
+    transform:scale(.82)!important;
+    transform-origin:center center!important;
+  }
+  .equipment-card-metrics{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  }
+  .equipment-card-actions{
+    display:grid!important;
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    gap:6px!important;
+  }
+  .equipment-card-actions .btn{
+    width:100%!important;
+    padding:8px 5px!important;
+    font-size:10px!important;
+  }
+  .tanks-page-filters,
+  .mobile-filter-scroll{
+    display:flex!important;
+    overflow-x:auto!important;
+    flex-wrap:nowrap!important;
+    padding-bottom:4px!important;
+    scrollbar-width:none!important;
+  }
+  .tanks-page-filters::-webkit-scrollbar,
+  .mobile-filter-scroll::-webkit-scrollbar{
+    display:none!important;
+  }
+  .tanks-page-filters>*,
+  .mobile-filter-scroll>*{
+    flex:0 0 auto!important;
+  }
+  .table-wrap{
+    overflow-x:auto!important;
+  }
+  .modal-card,
+  .drawer-card{
+    width:100%!important;
+    max-width:none!important;
+    border-radius:20px 20px 0 0!important;
+  }
+  .modal{
+    align-items:flex-end!important;
+  }
+}
+
+/* Mobile muito estreito */
+@media (max-width:390px){
+  .reference-card-main{
+    grid-template-columns:86px minmax(0,1fr)!important;
+  }
+  .reference-view-window{
+    min-height:126px!important;
+  }
+  .reference-tank,
+  .reference-silo{
+    transform:scale(.72)!important;
+  }
+  .equipment-product strong{
+    font-size:11px!important;
+  }
+  .equipment-volume strong{
+    font-size:15px!important;
+  }
+  .equipment-volume b{
+    font-size:18px!important;
+  }
+}
+
+/* Orientação paisagem em celular/tablet */
+@media (max-height:600px) and (orientation:landscape){
+  .topbar.industrial-topbar{
+    height:52px!important;
+  }
+  .main-content{
+    padding-top:7px!important;
+  }
+  .equipment-grid-v3{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  }
+  .reference-view-window{
+    min-height:110px!important;
+  }
+}

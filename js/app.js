@@ -12,7 +12,7 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const APP_VERSION = "20260716-v33-base-visual-1";
+  const APP_VERSION = "20260716-v33-2-operacoes-profissional-1";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -2579,8 +2579,46 @@
   }
 
 
+  function operationPriorityCard(op) {
+    const pct = op.planned ? Math.min(100, Math.round(Number(op.executed || 0) / Number(op.planned || 1) * 100)) : 0;
+    const flow = operationFlow(op);
+    const allocations = normalizedOperationAllocations(op);
+    const statusIcon = op.status === "Em andamento" ? "activity" : op.status === "Paralisada" ? "alert" : "calendar";
+    return `<article class="operation-focus-card ${statusClass(op.status)}">
+      <div class="operation-focus-head">
+        <div class="operation-focus-icon">${uiIcon(statusIcon)}</div>
+        <div><small>${esc(op.client || "Cliente não informado")}</small><h3>${esc(op.vessel || "Operação")}</h3></div>
+        ${badge(op.status)}
+      </div>
+      <div class="operation-focus-service"><strong>${esc(op.activity)}</strong><span>${esc(op.product || "Produto não informado")}</span></div>
+      <div class="operation-focus-meta">
+        ${op.rig ? `<span>Sonda<strong>${esc(op.rig)}</strong></span>` : ""}
+        ${op.well ? `<span>Poço<strong>${esc(op.well)}</strong></span>` : ""}
+        ${op.ticketNumber ? `<span>Ticket<strong>${esc(op.ticketNumber)}</strong></span>` : ""}
+      </div>
+      <div class="operation-focus-progress"><div><span>Progresso</span><strong>${pct}%</strong></div><div class="progress"><span style="width:${pct}%"></span></div></div>
+      <div class="operation-focus-kpis">
+        <span>Executado<strong>${fmt.format(op.executed)} ${esc(op.unit)}</strong></span>
+        <span>Vazão<strong>${fmt.format(flow)} ${esc(op.unit)}/h</strong></span>
+        <span>Tancagem<strong>${allocations.length} equipamento(s)</strong></span>
+      </div>
+      <div class="operation-focus-actions">
+        <button class="btn small secondary" data-operation-timeline="${op.id}">${uiIcon("history", "ui-icon btn-icon")} Timeline</button>
+        <button class="btn small primary" data-edit-operation="${op.id}">${uiIcon("edit", "ui-icon btn-icon")} Abrir operação</button>
+      </div>
+    </article>`;
+  }
+
   function renderOperations() {
     const operations = filteredOperations();
+    const active = operations.filter(op => ["Em andamento", "Paralisada"].includes(op.status));
+    const programmed = operations.filter(op => op.status === "Programada");
+    const completed = operations.filter(op => op.status === "Concluída");
+    const totalPlanned = operations.reduce((sum, op) => sum + Number(op.planned || 0), 0);
+    const totalExecuted = operations.reduce((sum, op) => sum + Number(op.executed || 0), 0);
+    const completion = totalPlanned > 0 ? Math.min(100, Math.round(totalExecuted / totalPlanned * 100)) : 0;
+    const pendingTank = operations.filter(op => op.status === "Concluída" && !op.tank_movement_applied && tankMovementMode(op.activity) !== "none").length;
+
     const rows = operations.map(op => {
       const pct = op.planned ? Math.min(100, Math.round(op.executed / op.planned * 100)) : 0;
       const flow = operationFlow(op);
@@ -2589,7 +2627,7 @@
       return `<tr>
         <td><strong>${esc(op.client)}</strong><br><small>${esc(op.vessel)}</small><br><small>Sonda: ${esc(op.rig || "-")} • Poço: ${esc(op.well || "-")}</small><br><small>Ticket: ${esc(op.ticketNumber || "-")} • OS: ${esc(op.service_order || "-")}</small></td>
         <td>${esc(op.activity)}<br><small>${esc(op.product)} • ${esc(op.lot || "-")}</small></td>
-        <td>${fmt.format(op.executed)} / ${fmt.format(op.planned)} ${esc(op.unit)}<div class="progress"><span style="width:${pct}%"></span></div></td>
+        <td><div class="operation-table-progress"><div><strong>${fmt.format(op.executed)} / ${fmt.format(op.planned)} ${esc(op.unit)}</strong><span>${pct}%</span></div><div class="progress"><span style="width:${pct}%"></span></div></div></td>
         <td><strong>${fmt.format(flow)} ${esc(op.unit)}/h</strong><br><small>${fmt.format(operationHours(op))} h líquidas</small></td>
         <td>${operationAllocationHtml(op)}<div style="margin-top:6px">${badge(tankStatus)}</div></td>
         <td>${badge(op.status)}${op.locked ? `<br><span class="tag">${uiIcon("lock", "ui-icon ui-icon-inline")} Encerrada</span>` : ""}</td>
@@ -2603,7 +2641,7 @@
       </tr>`;
     }).join("");
 
-    const mobile = operations.map(op => `<div class="card mobile-record-card">
+    const mobile = operations.map(op => `<div class="card mobile-record-card operation-mobile-card">
       <div class="mobile-record-head"><div><strong>${esc(op.client)}</strong><small>${esc(op.vessel)} • ${esc(op.activity)}</small></div>${badge(op.status)}</div>
       <div class="operation-mobile-meta">${op.rig ? `<span>Sonda <strong>${esc(op.rig)}</strong></span>` : ""}${op.well ? `<span>Poço <strong>${esc(op.well)}</strong></span>` : ""}${op.ticketNumber ? `<span>Ticket <strong>${esc(op.ticketNumber)}</strong></span>` : ""}</div>
       <div class="mobile-record-grid"><span>Produto<strong>${esc(op.product)}</strong></span><span>Executado<strong>${fmt.format(op.executed)} ${esc(op.unit)}</strong></span><span>Vazão<strong>${fmt.format(operationFlow(op))} ${esc(op.unit)}/h</strong></span><span>Tancagem<strong>${normalizedOperationAllocations(op).length} equipamento(s)</strong></span></div>
@@ -2611,14 +2649,28 @@
       <div class="row-actions"><button class="btn small secondary" data-operation-timeline="${op.id}">Timeline</button>${isAdmin() || !op.locked || hasRole(["supervisor"]) ? `<button class="btn small primary" data-edit-operation="${op.id}">Editar</button>` : ""}</div>
     </div>`).join("");
 
+    const priority = [...active, ...programmed].slice(0, 6);
     $("#page-operations").innerHTML =
-      header("Operações", "Planejamento, rateio por vários tanques/silos, vazão, timeline e documentos.",
-        `<button class="btn secondary" data-export="operations">Exportar CSV</button><button class="btn primary" data-action="new-operation">+ Nova operação</button>`) +
-      `<div class="section-title">Planejamento operacional</div><div class="planning-grid">${state.data.operations.filter(op=>op.status==="Programada").sort((a,b)=>new Date(a.start_at||"2999-01-01")-new Date(b.start_at||"2999-01-01")).slice(0,8).map(planningCard).join("")||`<div class="card empty">Nenhuma operação programada.</div>`}</div>
-       <div class="section-title">Controle das operações</div>
-       <div class="card table-wrap desktop-record-table"><table class="data-table"><thead><tr><th>Cliente / Embarcação</th><th>Atividade / Produto</th><th>Progresso</th><th>Vazão</th><th>Distribuição da tancagem</th><th>Status</th><th>Período</th><th>Ações</th></tr></thead><tbody>${rows || `<tr><td colspan="8" class="empty">Nenhuma operação cadastrada.</td></tr>`}</tbody></table></div><div class="mobile-record-list">${mobile || `<div class="empty">Nenhuma operação cadastrada.</div>`}</div>`;
+      header("Operações", "Planeje, acompanhe e encerre serviços com rastreabilidade completa.",
+        `<button class="btn secondary" data-export="operations">${uiIcon("download", "ui-icon btn-icon")} Exportar CSV</button><button class="btn primary" data-action="new-operation">${uiIcon("plus", "ui-icon btn-icon")} Nova operação</button>`) +
+      `<section class="operations-command-bar">
+        <div class="operations-command-copy"><span>CENTRAL OPERACIONAL</span><h2>Visão consolidada das operações</h2><p>Acompanhe programação, execução, vazão e atualização da tancagem em uma única tela.</p></div>
+        <div class="operations-command-progress"><div><span>Execução consolidada</span><strong>${completion}%</strong></div><div class="progress"><span style="width:${completion}%"></span></div><small>${fmt.format(totalExecuted)} de ${fmt.format(totalPlanned)} nas unidades registradas</small></div>
+      </section>
+      <div class="operations-kpi-grid">
+        ${statCard("Em andamento", active.filter(op => op.status === "Em andamento").length, "operação(ões) ativa(s)", uiIcon("activity"))}
+        ${statCard("Programadas", programmed.length, "aguardando início", uiIcon("calendar"))}
+        ${statCard("Paralisadas", active.filter(op => op.status === "Paralisada").length, "exigem acompanhamento", uiIcon("alert"))}
+        ${statCard("Concluídas", completed.length, "no período filtrado", uiIcon("check"))}
+        ${statCard("Tancagem pendente", pendingTank, "aguardando aplicação", uiIcon("tank"))}
+      </div>
+      <div class="section-heading-row"><div><span>PRIORIDADES</span><h2>Programação e execução</h2></div><small>${priority.length} operação(ões) em destaque</small></div>
+      <div class="operation-focus-grid">${priority.map(operationPriorityCard).join("") || `<div class="card empty">Nenhuma operação ativa ou programada.</div>`}</div>
+      <div class="section-heading-row"><div><span>PLANEJAMENTO</span><h2>Conferência de saldo e capacidade</h2></div><small>Validação automática dos equipamentos reservados</small></div>
+      <div class="planning-grid">${programmed.sort((a,b)=>new Date(a.start_at||"2999-01-01")-new Date(b.start_at||"2999-01-01")).slice(0,8).map(planningCard).join("")||`<div class="card empty">Nenhuma operação programada.</div>`}</div>
+      <div class="section-heading-row"><div><span>REGISTROS</span><h2>Controle completo</h2></div><small>${operations.length} registro(s) no filtro atual</small></div>
+      <div class="card table-wrap desktop-record-table operations-table-card"><table class="data-table"><thead><tr><th>Cliente / Embarcação</th><th>Atividade / Produto</th><th>Progresso</th><th>Vazão</th><th>Distribuição da tancagem</th><th>Status</th><th>Período</th><th>Ações</th></tr></thead><tbody>${rows || `<tr><td colspan="8" class="empty">Nenhuma operação cadastrada.</td></tr>`}</tbody></table></div><div class="mobile-record-list">${mobile || `<div class="empty">Nenhuma operação cadastrada.</div>`}</div>`;
   }
-
 
   function setOperationStep(form, step = 1) {
     if (!form) return;

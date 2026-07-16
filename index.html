@@ -1,13 +1,13 @@
 <!doctype html>
-<html lang="pt-BR">
+<html lang="pt-BR" data-theme="dark">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#071a35">
+  <meta name="theme-color" content="#07111F">
   <title>OpsControl IA Pro</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="app.css?v=20260716-tank-structure-edit-v5-1">
+  <link rel="stylesheet" href="app.css?v=20260716-industrial-complete-ui-v3-1">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
@@ -36,16 +36,19 @@
   </section>
 
   <section id="appView" class="app-view hidden">
-    <header class="topbar">
+    <header class="topbar industrial-topbar">
       <div class="topbar-left">
         <button id="menuBtn" class="icon-btn mobile-only" aria-label="Abrir menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16"></path><path d="M4 12h16"></path><path d="M4 17h16"></path></svg></button>
-        <div class="brand"><span class="brand-mark">OC</span><div class="desktop-brand-copy"><strong>OpsControl IA</strong><small>PRO</small></div><div class="mobile-page-copy"><strong id="mobilePageTitle">Dashboard</strong><small id="mobilePageSubtitle">Visão geral</small></div></div>
+        <button id="sidebarCollapseBtn" class="icon-btn desktop-sidebar-toggle" aria-label="Recolher menu" title="Recolher menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 6l-6 6 6 6"></path></svg></button>
+        <div class="topbar-page-copy"><strong id="topbarPageTitle">Painel</strong><small id="topbarPageSubtitle">Visão Geral</small></div>
+        <div class="mobile-page-copy"><strong id="mobilePageTitle">Painel</strong><small id="mobilePageSubtitle">Visão Geral</small></div>
       </div>
       <div class="topbar-right">
+        <div class="topbar-datetime"><strong id="shellTime">--:--</strong><span id="shellDate">--/--/----</span></div>
         <button id="globalSearchBtn" class="icon-btn" aria-label="Busca geral" title="Busca geral"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg></button>
-        <span id="syncBadge" class="status-badge neutral">Modo local</span>
+        <span id="syncBadge" class="status-badge neutral">Conectando...</span>
         <button id="notificationsBtn" class="icon-btn" aria-label="Notificações"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 7h18s-3 0-3-7"></path><path d="M10.5 20a1.5 1.5 0 0 0 3 0"></path></svg><span id="alertCount" class="count-badge">0</span></button>
-        <button class="user-chip"><span id="userInitials">US</span><div><strong id="userName">Usuário</strong><small id="userRole">Perfil</small></div></button>
+        <button class="user-chip" aria-label="Abrir perfil"><span id="userInitials">US</span><div><strong id="userName">Usuário</strong><small id="userRole">Perfil</small></div><b>⌄</b></button>
       </div>
     </header>
 
@@ -59,27 +62,38 @@
     <div class="shell">
       <button id="sidebarBackdrop" class="sidebar-backdrop mobile-only" aria-label="Fechar menu"></button>
       <aside id="sidebar" class="sidebar">
-        <nav>
-          <button class="nav-item active" data-page="dashboard"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13h8V3H3z"></path><path d="M13 21h8v-6h-8z"></path><path d="M13 11h8V3h-8z"></path><path d="M3 21h8v-6H3z"></path></svg></span><span class="nav-label">Dashboard</span></button>
-          <button class="nav-item" data-page="tv"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="13" rx="2"></rect><path d="M8 21h8"></path><path d="M12 17v4"></path><path d="M7 9h4v4H7z"></path><path d="M14 9h3"></path><path d="M14 12h3"></path></svg></span><span class="nav-label">Painel TV</span></button>
-          <button class="nav-item" data-page="quality"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8.7-7 10-4-1.3-7-5.5-7-10V6l7-3z"></path><path d="M8.5 12l2.2 2.2 4.8-5"></path></svg></span><span class="nav-label">Qualidade dos Dados</span></button>
-          <button class="nav-item" data-page="sanitation"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16"></path><path d="M7 5v14h10V5"></path><path d="M9 9h6"></path><path d="M9 13h6"></path><path d="M9 17h4"></path></svg></span><span class="nav-label">Saneamento de Dados</span></button>
-          <button class="nav-item" data-page="operations"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v15"></path><path d="M8 7l4-4 4 4"></path><path d="M5 21h14"></path><path d="M4 17c2.5 0 3.5 1 5 1s2.5-1 4-1 2.5 1 4 1 2.5-1 3-1"></path></svg></span><span class="nav-label">Operações</span></button>
-          <button class="nav-item" data-page="tanks"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4h10"></path><path d="M7 20h10"></path><path d="M8 4v16"></path><path d="M16 4v16"></path><path d="M8 9h8"></path><path d="M8 15h8"></path></svg></span><span class="nav-label">Tanques e Silos</span></button>
-          <button class="nav-item" data-page="fluids"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v5.5L5.4 15a5 5 0 0 0 4.6 7h4a5 5 0 0 0 4.6-7L14 7.5V2"></path><path d="M8 2h8"></path><path d="M8 14h8"></path></svg></span><span class="nav-label">Fluidos e Granéis</span></button>
-          <button class="nav-item" data-page="chemical-catalog"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path></svg></span><span class="nav-label">Catálogo Químico</span></button>
-          <button class="nav-item" data-page="chemicals"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v7.5L5 18a3 3 0 0 0 2.6 4.5h8.8A3 3 0 0 0 19 18l-5-8.5V2"></path><path d="M8 2h8"></path><path d="M8.5 14h7"></path></svg></span><span class="nav-label">Inventário Químico</span></button>
-          <button class="nav-item" data-page="trucks"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 17h4"></path><path d="M3 6h11v9H3z"></path><path d="M14 9h3l4 4v2h-7z"></path><circle cx="7.5" cy="18" r="1.5"></circle><circle cx="17.5" cy="18" r="1.5"></circle></svg></span><span class="nav-label">Carretas</span></button>
-          <button class="nav-item" data-page="qhse"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8.7-7 10-4-1.3-7-5.5-7-10V6l7-3z"></path><path d="M9.5 12.5l1.8 1.8 3.7-4"></path></svg></span><span class="nav-label">QHSE</span></button>
-          <button class="nav-item" data-page="maintenance"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.3 2.3-2-2z"></path></svg></span><span class="nav-label">Manutenção</span></button>
-          <button class="nav-item" data-page="certificates"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3h8l5 5v11a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"></path><path d="M16 3v5h5"></path><path d="M9 13h6"></path><path d="M9 17h4"></path></svg></span><span class="nav-label">Certificados</span></button>
-          <button class="nav-item" data-page="alerts"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 7h18s-3 0-3-7"></path><path d="M10.5 20a1.5 1.5 0 0 0 3 0"></path></svg></span><span class="nav-label">Alertas e Chat</span></button>
-          <button class="nav-item" data-page="reports"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10"></path><path d="M10 20V4"></path><path d="M16 20v-7"></path><path d="M22 20v-3"></path></svg></span><span class="nav-label">Relatórios</span></button>
-          <button class="nav-item" data-page="audit"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l2 2 4-4"></path><path d="M5 3h14v18H5z"></path><path d="M8 7h8"></path><path d="M8 17h8"></path></svg></span><span class="nav-label">Auditoria</span></button>
-          <button class="nav-item" data-page="settings"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 0 1 0 2.8 2 2 0 0 1-2.8 0l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9c0 .7.4 1.3 1 1.5h.2a2 2 0 0 1 0 4h-.2a1.7 1.7 0 0 0-1.5 1z"></path></svg></span><span class="nav-label">Configurações</span></button>
+        <div class="sidebar-brand">
+          <div class="sidebar-logo-mark"><span>OC</span></div>
+          <div class="sidebar-brand-copy"><strong>OpsControl IA</strong><small>B-PORT LMP</small></div>
+        </div>
+        <nav class="industrial-sidebar-nav">
+          <div class="sidebar-nav-label">OPERAÇÃO</div>
+          <button class="nav-item active" data-page="dashboard"><span class="nav-icon">▦</span><span class="nav-label">Painel</span></button>
+          <button class="nav-item" data-page="operations"><span class="nav-icon">⚓</span><span class="nav-label">Operações</span></button>
+          <button class="nav-item" data-page="tanks"><span class="nav-icon">◫</span><span class="nav-label">Tanques e Silos</span></button>
+          <button class="nav-item" data-page="trucks"><span class="nav-icon">▱</span><span class="nav-label">Carretas</span></button>
+          <button class="nav-item" data-page="maintenance"><span class="nav-icon">⌁</span><span class="nav-label">Manutenção</span></button>
+          <button class="nav-item" data-page="qhse"><span class="nav-icon">◇</span><span class="nav-label">QHSE</span></button>
+          <button class="nav-item" data-page="reports"><span class="nav-icon">▥</span><span class="nav-label">Relatórios</span></button>
+          <button class="nav-item" data-page="audit"><span class="nav-icon">↺</span><span class="nav-label">Histórico</span></button>
+          <button class="nav-item" data-page="users"><span class="nav-icon">♙</span><span class="nav-label">Usuários</span></button>
+          <button class="nav-item" data-page="settings"><span class="nav-icon">⚙</span><span class="nav-label">Configurações</span></button>
+          <div class="sidebar-nav-label additional">MÓDULOS ADICIONAIS</div>
+          <button class="nav-item secondary-module" data-page="tv"><span class="nav-icon">▣</span><span class="nav-label">Painel TV</span></button>
+          <button class="nav-item secondary-module" data-page="quality"><span class="nav-icon">✓</span><span class="nav-label">Qualidade dos Dados</span></button>
+          <button class="nav-item secondary-module" data-page="sanitation"><span class="nav-icon">≋</span><span class="nav-label">Saneamento</span></button>
+          <button class="nav-item secondary-module" data-page="fluids"><span class="nav-icon">◉</span><span class="nav-label">Fluidos e Granéis</span></button>
+          <button class="nav-item secondary-module" data-page="chemical-catalog"><span class="nav-icon">▤</span><span class="nav-label">Catálogo Químico</span></button>
+          <button class="nav-item secondary-module" data-page="chemicals"><span class="nav-icon">◈</span><span class="nav-label">Inventário Químico</span></button>
+          <button class="nav-item secondary-module" data-page="certificates"><span class="nav-icon">▧</span><span class="nav-label">Certificados</span></button>
+          <button class="nav-item secondary-module" data-page="alerts"><span class="nav-icon">◌</span><span class="nav-label">Alertas e Chat</span></button>
         </nav>
         <div class="sidebar-footer">
-          <div class="plant-card"><small>Unidade</small><strong>B-Port LMP</strong><span>Porto do Açu</span></div>
+          <div class="sidebar-general-status">
+            <div class="sidebar-status-title"><strong>Status Geral</strong><small>Equipamentos</small></div>
+            <div id="sidebarStatusPanel" class="sidebar-status-list"></div>
+          </div>
+          <div class="plant-card"><small>Unidade operacional</small><strong>B-Port LMP</strong><span>Porto do Açu</span></div>
           <button id="logoutBtn" class="btn danger outline full">Sair</button>
         </div>
       </aside>
@@ -101,6 +115,7 @@
         <section id="page-alerts" class="page"></section>
         <section id="page-reports" class="page"></section>
         <section id="page-audit" class="page"></section>
+        <section id="page-users" class="page"></section>
         <section id="page-settings" class="page"></section>
       </main>
     </div>
@@ -170,8 +185,8 @@
   </div>
 
   <div id="toastContainer" class="toast-container"></div>
-  <script src="js/config.js?v=20260716-tank-structure-edit-v5-1"></script>
-  <script src="vendor/qrcode.js?v=20260716-tank-structure-edit-v5-1"></script>
-  <script src="js/app.js?v=20260716-tank-structure-edit-v5-1"></script>
+  <script src="js/config.js?v=20260716-industrial-complete-ui-v3-1"></script>
+  <script src="vendor/qrcode.js?v=20260716-industrial-complete-ui-v3-1"></script>
+  <script src="js/app.js?v=20260716-industrial-complete-ui-v3-1"></script>
 </body>
 </html>

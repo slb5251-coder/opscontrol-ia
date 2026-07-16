@@ -1,0 +1,7049 @@
+(() => {
+  "use strict";
+
+  const $ = (selector, root = document) => root.querySelector(selector);
+  const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
+  const CONFIG = window.OPSCONTROL_CONFIG || {};
+  const CONFIG_KEY = "opscontrol_config";
+  const THEME_KEY = "opscontrol_theme";
+  const OFFLINE_QUEUE_KEY = "opscontrol_offline_queue";
+  const LOCAL_BACKUP_KEY = "opscontrol_daily_backups";
+  const FORM_DRAFT_KEY = "opscontrol_form_drafts";
+  const TEST_MODE_KEY = "opscontrol_homologation_mode";
+  const TEST_LOG_KEY = "opscontrol_homologation_log";
+  const APP_ENV_KEY = "opscontrol_environment";
+  const APP_VERSION = "20260716-tv-steps-operations-phase1-phase2-silos-1";
+  const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
+  const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+
+  const state = {
+    client: null,
+    user: null,
+    data: null,
+    page: "dashboard",
+    realtime: null,
+    realtimeStatus: "CLOSED",
+    refreshing: false,
+    refreshDebounce: null,
+    refreshTimer: null,
+    autoRefreshStarted: false,
+    lastRefreshError: null,
+    lastSync: null,
+    filters: { start: "", end: "", client: "", product: "" },
+    handover: { date: "", shift: "" },
+    closing: { date: "", shift: "" },
+    tv: { slide: 0, paused: false, timer: null, clockTimer: null, intervalMs: 15000 },
+    offlineSyncing: false,
+    installPrompt: null,
+    searchQuery: "",
+    testMode: localStorage.getItem(TEST_MODE_KEY) === "true",
+    draftTimer: null,
+    mobile: {
+      moreOpen: false,
+      quickOpen: false,
+      pullReady: false,
+      pullDistance: 0,
+      pullStartY: 0,
+      pullRefreshing: false,
+      tankFilters: { client: "Todos", view: "Todos", query: "" },
+      tankSwipe: null
+    },
+    tankPage: {
+      source: "real",
+      view: "cards",
+      filters: { type:"Todos", product:"Todos", area:"Todos", client:"Todos", status:"Todos", query:"" }
+    },
+    shellClockTimer: null,
+    visual: {
+      tankLevels: new Map()
+    },
+    config: loadConfig()
+  };
+
+
+  const SPLASH_MIN_MS = 1100;
+  const splashStartedAt = Date.now();
+  let actionConfirmResolver = null;
+  let saveProgressTimer = null;
+
+  function hideSplash() {
+    const splash = $("#splashView");
+    if (!splash) return;
+    const delay = Math.max(0, SPLASH_MIN_MS - (Date.now() - splashStartedAt));
+    setTimeout(() => {
+      splash.classList.add("leaving");
+      setTimeout(() => splash.remove(), 420);
+    }, delay);
+  }
+
+  async function bootApplication() {
+    document.body.classList.toggle("sidebar-collapsed",localStorage.getItem("opscontrol_sidebar_collapsed")==="1");
+    try {
+      await restoreSession();
+    } finally {
+      hideSplash();
+    }
+  }
+
+  function showMobileSaveProgress(title, detail, stateName = "loading", autoHide = 0) {
+    const panel = $("#mobileSaveProgress");
+    if (!panel) return;
+    clearTimeout(saveProgressTimer);
+    panel.className = `mobile-save-progress ${stateName}`;
+    $("#mobileSaveProgressTitle").textContent = title;
+    $("#mobileSaveProgressDetail").textContent = detail;
+    if (autoHide > 0) {
+      saveProgressTimer = setTimeout(() => panel.classList.add("hidden"), autoHide);
+    }
+  }
+
+  function hideMobileSaveProgress() {
+    clearTimeout(saveProgressTimer);
+    $("#mobileSaveProgress")?.classList.add("hidden");
+  }
+
+  function openActionConfirmation({ title, message, rows = [], confirmLabel = "Confirmar", eyebrow = "CONFIRMAÇÃO" }) {
+    if (actionConfirmResolver) actionConfirmResolver(false);
+    $("#actionConfirmEyebrow").textContent = eyebrow;
+    $("#actionConfirmTitle").textContent = title;
+    $("#actionConfirmMessage").textContent = message || "";
+    $("#actionConfirmDetails").innerHTML = rows.map(row =>
+      `<div><span>${esc(row.label)}</span><strong>${esc(row.value)}</strong></div>`
+    ).join("");
+    $("#actionConfirmAccept").textContent = confirmLabel;
+    $("#actionConfirm").classList.remove("hidden");
+    document.body.classList.add("confirm-open");
+    return new Promise(resolve => { actionConfirmResolver = resolve; });
+  }
+
+  function resolveActionConfirmation(value) {
+    $("#actionConfirm")?.classList.add("hidden");
+    document.body.classList.remove("confirm-open");
+    const resolver = actionConfirmResolver;
+    actionConfirmResolver = null;
+    if (resolver) resolver(Boolean(value));
+  }
+
+  function confirmTankUpdate(form) {
+    const product = state.data.fluids.find(item => item.id === form.elements.fluid_type_id?.value);
+    const structural = form.dataset.adminFull === "true";
+    const currentTank = state.data.tanks.find(item => item.id === form.dataset.tankId);
+    const originalName = form.dataset.tankName || "Equipamento";
+    const finalName = structural ? (form.elements.name?.value?.trim() || originalName) : originalName;
+    const unit = structural ? (form.elements.unit?.value || (String(form.elements.kind?.value).toLowerCase() === "silo" ? "ton" : "bbl")) : (currentTank?.unit || "");
+    const rows = [
+      { label: "Equipamento", value: finalName },
+      { label: "Cliente", value: form.elements.client?.value || "A definir" },
+      { label: "Produto", value: product?.name || "Sem produto" },
+      { label: "Volume", value: `${form.elements.volume?.value || "0"} ${unit}` },
+      { label: "Lote", value: form.elements.lot?.value || "-" },
+      { label: "Status", value: form.elements.status?.value || "-" }
+    ];
+    if (structural) {
+      rows.splice(1, 0,
+        { label: "Nome anterior", value: originalName },
+        { label: "Fase / tipo", value: `${form.elements.phase?.value || "-"} • ${form.elements.kind?.value || "-"}` },
+        { label: "Capacidade", value: `${form.elements.capacity?.value || "0"} ${unit}` },
+        { label: "Densidade", value: `${form.elements.density?.value || "-"} ${form.elements.density_unit?.value || ""}`.trim() }
+      );
+    }
+    return openActionConfirmation({
+      eyebrow: structural ? "EDIÇÃO ESTRUTURAL" : "TANCAGEM",
+      title: structural ? `Confirmar estrutura de ${finalName}` : `Confirmar atualização de ${finalName}`,
+      message: structural ? "Nome, capacidade e densidade serão alterados no equipamento selecionado." : "Confira os dados antes de enviar ao Supabase.",
+      confirmLabel: structural ? `Salvar estrutura de ${finalName}` : `Confirmar em ${finalName}`,
+      rows
+    });
+  }
+
+  function loadConfig() {
+    const saved = JSON.parse(localStorage.getItem(CONFIG_KEY) || "{}");
+    const environment = localStorage.getItem(APP_ENV_KEY) || CONFIG.defaultEnvironment || "production";
+    const selected = CONFIG.environments?.[environment] || {};
+    return {
+      url: saved.url || selected.supabaseUrl || CONFIG.supabaseUrl || "",
+      key: saved.key || selected.supabaseKey || CONFIG.supabaseKey || "",
+      environment
+    };
+  }
+
+  function esc(value = "") {
+    return String(value).replace(/[&<>"']/g, char => ({
+      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"
+    }[char]));
+  }
+
+  function uid(prefix = "id") {
+    return `${prefix}-${crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`}`;
+  }
+
+  function dateOnly(value) {
+    if (!value) return "-";
+    return new Date(`${String(value).slice(0, 10)}T12:00:00`).toLocaleDateString("pt-BR");
+  }
+
+  function dateTime(value) {
+    if (!value) return "-";
+    return new Date(value).toLocaleString("pt-BR");
+  }
+
+  function toLocalInput(value) {
+    if (!value) return "";
+    const d = new Date(value);
+    const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
+    return local.toISOString().slice(0, 16);
+  }
+
+  function daysUntil(value) {
+    if (!value) return null;
+    return Math.ceil((new Date(`${String(value).slice(0, 10)}T23:59:59`) - new Date()) / 86400000);
+  }
+
+  function localDateKey(value = new Date()) {
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return "";
+    const parts = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "America/Sao_Paulo",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit"
+    }).formatToParts(date);
+    const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
+    return `${values.year}-${values.month}-${values.day}`;
+  }
+
+  function recordDateKey(value) {
+    if (!value) return "";
+    const text = String(value);
+    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
+    return localDateKey(value);
+  }
+
+  function addDaysToDateKey(dateKey, days) {
+    if (!dateKey) return "";
+    const date = new Date(`${dateKey}T12:00:00`);
+    if (Number.isNaN(date.getTime())) return "";
+    date.setDate(date.getDate() + Number(days || 0));
+    return localDateKey(date);
+  }
+
+  function normalizedAlertLevel(value = "") {
+    return String(value)
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+  }
+
+  function isCriticalAlert(value) {
+    return ["alta", "critica", "critico", "critical", "urgente"].includes(normalizedAlertLevel(value));
+  }
+
+  function latestTimestamp(values = []) {
+    const valid = values
+      .filter(Boolean)
+      .map(value => new Date(value))
+      .filter(value => !Number.isNaN(value.getTime()));
+    return valid.length ? new Date(Math.max(...valid.map(value => value.getTime()))) : null;
+  }
+
+  function filterIsActive() {
+    return Object.values(state.filters).some(Boolean);
+  }
+
+  const MOBILE_PAGE_META = {
+    dashboard: ["Início", "Resumo do seu perfil"],
+    quality: ["Qualidade dos Dados", "Conciliação e inconsistências"],
+    sanitation: ["Saneamento de Dados", "Registros antigos e vínculos"],
+    tv: ["Painel TV", "Exibição coletiva"],
+    operations: ["Operações", "Serviços e movimentações"],
+    tanks: ["Tanques e Silos", "Inventário da planta"],
+    fluids: ["Fluidos e Granéis", "Catálogo de produtos"],
+    "chemical-catalog": ["Catálogo Químico", "Nomes e unidades oficiais"],
+    chemicals: ["Inventário Químico", "Lotes, validade e saldo"],
+    trucks: ["Carretas", "Entradas e saídas"],
+    qhse: ["QHSE", "Segurança e ações"],
+    maintenance: ["Manutenção", "Equipamentos e ordens"],
+    certificates: ["Certificados", "Documentos da equipe"],
+    alerts: ["Alertas e Chat", "Comunicação operacional"],
+    reports: ["Relatórios", "Passagem de serviço"],
+    audit: ["Auditoria", "Rastreabilidade"],
+    settings: ["Configurações", "Perfil e sistema"]
+  };
+
+  function isMobileViewport() {
+    return window.matchMedia("(max-width: 820px)").matches;
+  }
+
+  function isStandaloneApp() {
+    return window.matchMedia("(display-mode: standalone)").matches || window.navigator.standalone === true;
+  }
+
+  function closeMobileSheets() {
+    state.mobile.moreOpen = false;
+    state.mobile.quickOpen = false;
+    $("#mobileMoreSheet")?.classList.add("hidden");
+    $("#mobileQuickSheet")?.classList.add("hidden");
+    $("#mobileSheetBackdrop")?.classList.add("hidden");
+    document.body.classList.remove("mobile-sheet-open");
+  }
+
+  function openMobileSheet(kind) {
+    if (!isMobileViewport()) return;
+    closeMobileSheets();
+    const target = kind === "quick" ? $("#mobileQuickSheet") : $("#mobileMoreSheet");
+    if (!target) return;
+    state.mobile.quickOpen = kind === "quick";
+    state.mobile.moreOpen = kind === "more";
+    target.classList.remove("hidden");
+    $("#mobileSheetBackdrop")?.classList.remove("hidden");
+    document.body.classList.add("mobile-sheet-open");
+  }
+
+  function mobileModuleButton(page, label, description = "") {
+    return `<button class="mobile-module-button" data-mobile-page="${page}">
+      <span class="mobile-module-icon">${esc(label.slice(0, 2).toUpperCase())}</span>
+      <span><strong>${esc(label)}</strong><small>${esc(description)}</small></span>
+      <b>›</b>
+    </button>`;
+  }
+
+  function mobileQuickButton(action, label, description, icon) {
+    return `<button class="mobile-quick-button" data-action="${action}">
+      <span>${icon}</span><span><strong>${esc(label)}</strong><small>${esc(description)}</small></span><b>+</b>
+    </button>`;
+  }
+
+  function renderMobileShell() {
+    if (!state.data) return;
+
+    const [title, subtitle] = MOBILE_PAGE_META[state.page] || [state.page, ""];
+    if ($("#mobilePageTitle")) $("#mobilePageTitle").textContent = title;
+    if ($("#mobilePageSubtitle")) $("#mobilePageSubtitle").textContent = subtitle;
+
+    $$("[data-mobile-page]").forEach(button => {
+      const page = button.dataset.mobilePage;
+      button.classList.toggle("active", page === state.page);
+      if (button.closest("#mobileBottomNav")) {
+        button.classList.toggle("hidden", !moduleAllowed(page));
+      }
+    });
+
+    const morePages = [
+      ["fluids", "Fluidos e Granéis", "Cadastrar produtos vinculados à tancagem"],
+      ["chemical-catalog", "Catálogo Químico", "Nomes oficiais dos insumos"],
+      ["quality", "Qualidade", "Conciliação e inconsistências"],
+      ["sanitation", "Saneamento", "Corrigir vínculos antigos"],
+      ["reports", "Relatórios", "Passagem e indicadores"],
+      ["chemicals", "Químicos", "Estoque e validade"],
+      ["trucks", "Carretas", "Entradas e saídas"],
+      ["qhse", "QHSE", "Segurança e ocorrências"],
+      ["maintenance", "Manutenção", "Equipamentos e OS"],
+      ["certificates", "Certificados", "Documentos"],
+      ["alerts", "Alertas", "Avisos e chat"],
+      ["audit", "Auditoria", "Alterações do sistema"],
+      ["settings", "Configurações", "Perfil e sistema"],
+      ["tv", "Painel TV", "Exibição coletiva"]
+    ].filter(([page]) => moduleAllowed(page));
+
+    const more = $("#mobileMoreModules");
+    if (more) more.innerHTML = morePages.map(([page, label, description]) => mobileModuleButton(page, label, description)).join("");
+
+    const quickActions = [];
+    if (moduleAllowed("fluids") && canManageFluidCatalog()) {
+      quickActions.push(mobileQuickButton("new-fluid", "Cadastrar fluido", "Produto líquido para tanques e mix tanks", "💧"));
+      quickActions.push(mobileQuickButton("new-bulk", "Cadastrar granel", "Produto sólido para os silos", "◆"));
+    }
+    if (moduleAllowed("chemical-catalog") && canManageChemicals()) {
+      quickActions.push(mobileQuickButton("new-chemical-product", "Cadastrar químico", "Nome e unidade no catálogo oficial", "▦"));
+    }
+    if (moduleAllowed("operations") && hasRole(["supervisor", "lider", "operador"])) {
+      quickActions.push(mobileQuickButton("new-operation", "Nova operação", "Bombeio, fabricação, backload ou descarga", "⚓"));
+    }
+    if (moduleAllowed("trucks") && hasRole(["supervisor", "lider", "logistica"])) {
+      quickActions.push(mobileQuickButton("new-truck", "Movimentar carreta", "Entrada, saída, NF e produto", "🚛"));
+    }
+    if (moduleAllowed("qhse") && hasRole(["supervisor", "lider", "operador", "qhse"])) {
+      quickActions.push(mobileQuickButton("new-qhse", "Novo registro QHSE", "DDS, APR, risco, inspeção ou ocorrência", "🛡"));
+    }
+    if (moduleAllowed("maintenance") && hasRole(["supervisor", "lider", "mecanico"])) {
+      quickActions.push(mobileQuickButton("new-maintenance-order", "Abrir ordem de serviço", "Preventiva, corretiva ou inspeção", "🔧"));
+    }
+    if (moduleAllowed("chemicals") && canManageChemicals()) {
+      quickActions.push(mobileQuickButton("new-chemical", "Adicionar lote", "Quantidade, validade e localização", "◈"));
+    }
+    if (moduleAllowed("alerts") && hasRole(["supervisor", "lider", "qhse", "logistica"])) {
+      quickActions.push(mobileQuickButton("new-alert", "Criar comunicado", "Aviso para a equipe", "🔔"));
+    }
+
+    const quick = $("#mobileQuickActions");
+    if (quick) quick.innerHTML = quickActions.join("") || `<div class="empty">Nenhum atalho disponível para seu perfil.</div>`;
+
+    const installArea = $("#mobileInstallArea");
+    if (installArea) {
+      const feedbackButton = `<button class="btn secondary full mobile-feedback-button" data-action="open-feedback">Enviar feedback da versão</button>`;
+      installArea.innerHTML = feedbackButton + (state.installPrompt && !isStandaloneApp()
+        ? `<button class="btn primary full" data-action="install-app">Instalar OpsControl neste celular</button><small>O aplicativo ficará disponível na tela inicial.</small>`
+        : isStandaloneApp()
+          ? `<div class="info-box">OpsControl já está instalado neste aparelho.</div>`
+          : `<small>Use “Adicionar à tela de início” no navegador para instalar.</small>`);
+    }
+
+    const pending = offlineQueue().length;
+    const banner = $("#mobileStatusBanner");
+    if (banner) {
+      if (!navigator.onLine || pending) {
+        banner.classList.remove("hidden");
+        banner.className = `mobile-status-banner ${navigator.onLine ? "pending" : "offline"}`;
+        banner.innerHTML = navigator.onLine
+          ? `<strong>${pending} registro(s) aguardando sincronização</strong><button data-action="sync-offline">Sincronizar</button>`
+          : `<strong>Sem conexão</strong><span>${pending ? `${pending} registro(s) salvos no aparelho` : "Você está trabalhando offline"}</span>`;
+      } else {
+        banner.classList.add("hidden");
+      }
+    }
+  }
+
+
+  function normalizeSearch(value = "") {
+    return String(value)
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+  }
+
+  function searchIndex() {
+    const d = state.data || {};
+    const rows = [];
+    const add = (type, id, page, title, subtitle, terms = "") => rows.push({
+      type, id, page, title, subtitle,
+      haystack: normalizeSearch(`${title} ${subtitle} ${terms}`)
+    });
+
+    (d.tanks || []).forEach(x => add("tank", x.id, "tanks", x.name, `${x.product || "Sem produto"} • ${x.client || "A definir"} • lote ${x.lot || "-"}`, `${x.phase} ${x.kind} ${x.status} ${x.client || "A definir"}`));
+    (d.operations || []).forEach(x => add("operation", x.id, "operations", `${x.client} • ${x.vessel}`, `${x.activity} de ${x.product}`, `${x.service_order} ${x.ticketNumber} ${x.rig} ${x.well} ${x.lot} ${x.status}`));
+    (d.trucks || []).forEach(x => {
+      const itemTerms = (x.items || []).map(item => `${item.productName} ${item.quantity} ${item.unit}`).join(" ");
+      add("truck", x.id, "trucks", x.plate || x.product, `${x.truckType} • ${x.product} • NF ${x.invoice || "-"}`, `${x.driver} ${x.supplier} ${x.client} ${x.lot} ${itemTerms}`);
+    });
+    (d.chemicalProducts || []).forEach(x => add("chemical-product", x.id, "chemical-catalog", x.name, `${x.category || "Produto químico"} • ${x.unit}`, x.notes));
+    (d.chemicals || []).forEach(x => add("chemical", x.id, "chemicals", x.name, `Lote ${x.lot || "-"} • ${fmt.format(x.quantity)} ${x.unit}`, `${x.location} ${x.supplier} ${x.category}`));
+    (d.equipment || []).forEach(x => add("equipment", x.id, "maintenance", x.name, `${x.category} • ${x.status}`, `${x.location} ${x.notes}`));
+    (d.maintenanceOrders || []).forEach(x => add("maintenance", x.id, "maintenance", x.title, `${x.responsible || "Sem responsável"} • ${x.status}`, `${x.priority} ${x.description}`));
+    (d.qhse || []).forEach(x => add("qhse", x.id, "qhse", x.title, `${x.type} • ${x.status}`, `${x.description} ${x.responsible}`));
+    (d.certificates || []).forEach(x => add("certificate", x.id, "certificates", x.title, `${x.owner} • ${dateOnly(x.expires_at)}`, `${x.issuer} ${x.status}`));
+    (d.users || []).forEach(x => add("user", x.id, "settings", x.name, `${x.role} • ${x.department || "-"}`, x.email));
+    return rows;
+  }
+
+  function globalSearchResults(query) {
+    const normalized = normalizeSearch(query);
+    if (normalized.length < 2) return [];
+    const tokens = normalized.split(/\s+/).filter(Boolean);
+    return searchIndex()
+      .map(item => ({ ...item, score: tokens.reduce((sum, token) => sum + (item.haystack.includes(token) ? 1 : 0), 0) }))
+      .filter(item => item.score === tokens.length)
+      .sort((a, b) => b.score - a.score || a.title.localeCompare(b.title))
+      .slice(0, 40);
+  }
+
+  function searchResultIcon(type) {
+    return ({ tank: "TK", operation: "OP", truck: "CR", "chemical-product": "CQ", chemical: "QI", equipment: "EQ", maintenance: "OS", qhse: "QS", certificate: "CT", user: "US" })[type] || "•";
+  }
+
+  function renderGlobalSearchResults(query = "") {
+    const container = $("#globalSearchResults");
+    if (!container) return;
+    const results = globalSearchResults(query);
+    container.innerHTML = query.trim().length < 2
+      ? `<div class="search-empty-state"><strong>Digite pelo menos duas letras</strong><span>Pesquise embarcação, OS, NF, lote, tanque, produto, placa, funcionário ou equipamento.</span></div>`
+      : results.length
+        ? results.map(item => `<button class="global-search-result" data-search-type="${item.type}" data-search-id="${item.id}" data-search-page="${item.page}">
+            <span class="global-search-icon">${searchResultIcon(item.type)}</span>
+            <span><strong>${esc(item.title)}</strong><small>${esc(item.subtitle)}</small></span><b>›</b>
+          </button>`).join("")
+        : `<div class="search-empty-state"><strong>Nenhum resultado encontrado</strong><span>Tente pesquisar outro nome, lote, NF, OS ou placa.</span></div>`;
+  }
+
+  function globalSearchModal() {
+    return `<div class="global-search-box"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg><input id="globalSearchInput" autocomplete="off" placeholder="Pesquisar em todo o sistema" value="${esc(state.searchQuery)}"></div><div id="globalSearchResults" class="global-search-results"></div>`;
+  }
+
+  function openGlobalSearch() {
+    openModal("Busca geral", globalSearchModal(), "LOCALIZAR");
+    setTimeout(() => {
+      $("#globalSearchInput")?.focus();
+      renderGlobalSearchResults(state.searchQuery);
+    }, 50);
+  }
+
+  function openSearchResult(type, id, page) {
+    closeModal();
+    showPage(page);
+    if (type === "tank") return openAssetQr("tank", id);
+    if (type === "equipment") return openAssetQr("equipment", id);
+    if (type === "operation") {
+      const item = state.data.operations.find(x => x.id === id);
+      if (item && hasRole(["supervisor", "lider", "operador"])) openModal(`Operação — ${item.vessel}`, operationForm(item), "RESULTADO");
+      return;
+    }
+    if (type === "chemical-product") {
+      const item = state.data.chemicalProducts.find(x => x.id === id);
+      if (item && canManageChemicals()) openModal(`Produto químico — ${item.name}`, chemicalProductForm(item), "CATÁLOGO QUÍMICO");
+      return;
+    }
+    if (type === "chemical") {
+      const item = state.data.chemicals.find(x => x.id === id);
+      if (item) {
+        const history = state.data.chemicalMovements.filter(x => x.inventory_id === id);
+        openModal(`Produto — ${item.name}`, `<div class="asset-detail-summary"><h3>${esc(item.name)}</h3><p>Lote ${esc(item.lot || "-")} • ${fmt.format(item.quantity)} ${esc(item.unit)}</p></div><div class="timeline professional-timeline">${history.slice(0, 30).map(x => `<div class="timeline-item"><span class="timeline-dot"></span><div><strong>${esc(x.movement_type)} — ${fmt.format(x.quantity)} ${esc(item.unit)}</strong><small>${dateTime(x.created_at)}</small><p>Saldo: ${fmt.format(x.previous_balance)} → ${fmt.format(x.new_balance)}</p></div></div>`).join("") || `<div class="empty">Sem movimentações.</div>`}</div>`, "RESULTADO");
+      }
+      return;
+    }
+    if (type === "maintenance") {
+      const item = state.data.maintenanceOrders.find(x => x.id === id);
+      if (item && hasRole(["supervisor", "lider", "mecanico"])) openModal("Ordem de serviço", maintenanceOrderForm(item), "RESULTADO");
+      return;
+    }
+    if (type === "qhse") {
+      document.querySelector(`[data-qhse-actions="${id}"]`)?.click();
+      return;
+    }
+    toast("Módulo aberto no registro pesquisado.", "success");
+  }
+
+  function draftStore() {
+    try { return JSON.parse(localStorage.getItem(FORM_DRAFT_KEY) || "{}"); } catch (_) { return {}; }
+  }
+
+  function draftIdentity(form) {
+    if (!form) return "";
+    if (form.id === "tankForm") return "";
+    const hiddenRecordId = form.querySelector?.('input[type="hidden"][name="id"]')?.value
+      || form.querySelector?.('input[type="hidden"][name="tank_id"]')?.value
+      || "";
+    if (form.dataset.id || form.dataset.userId || form.dataset.operationId || form.dataset.recordId || hiddenRecordId) return "";
+    const kind = form.dataset.kind || form.id;
+    return `${state.user?.id || "anon"}:${kind}`;
+  }
+
+  function clearLegacyTankDrafts() {
+    try {
+      const drafts = draftStore();
+      let changed = false;
+      Object.keys(drafts).forEach(key => {
+        if (key.endsWith(":tankForm") || key.includes("tankForm")) {
+          delete drafts[key];
+          changed = true;
+        }
+      });
+      if (changed) localStorage.setItem(FORM_DRAFT_KEY, JSON.stringify(drafts));
+    } catch (_) {}
+  }
+
+  function serializeFormDraft(form) {
+    const fields = [...form.querySelectorAll("input[name],select[name],textarea[name]")]
+      .filter(field => !["file", "password", "hidden"].includes(field.type))
+      .filter(field => !["id", "tank_id", "record_id", "operation_id"].includes(field.name))
+      .map((field, index) => ({
+        name: field.name,
+        index,
+        type: field.type,
+        value: field.value,
+        checked: field.checked
+      }));
+    const allocationRows = form.id === "operationForm"
+      ? [...form.querySelectorAll("[data-operation-allocation-row]")].map(row => ({
+          tank_id: row.querySelector("[data-allocation-tank]")?.value || "",
+          quantity: row.querySelector("[data-allocation-quantity]")?.value || ""
+        }))
+      : [];
+    const truckItems = form.id === "truckForm"
+      ? [...form.querySelectorAll("[data-truck-platform-row]")].map(row => ({
+          chemical_product_id: row.querySelector("[data-truck-item-product]")?.value || "",
+          quantity: row.querySelector("[data-truck-item-quantity]")?.value || ""
+        }))
+      : [];
+    return { fields, allocationRows, truckItems, saved_at: new Date().toISOString() };
+  }
+
+  function saveFormDraft(form) {
+    const key = draftIdentity(form);
+    if (!key) return;
+    const drafts = draftStore();
+    drafts[key] = serializeFormDraft(form);
+    localStorage.setItem(FORM_DRAFT_KEY, JSON.stringify(drafts));
+    const status = $("#draftStatus");
+    if (status) status.textContent = `Rascunho salvo às ${new Date().toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" })}`;
+  }
+
+  function clearFormDraft(form) {
+    const key = draftIdentity(form);
+    if (!key) return;
+    const drafts = draftStore();
+    delete drafts[key];
+    localStorage.setItem(FORM_DRAFT_KEY, JSON.stringify(drafts));
+  }
+
+  function restoreFormDraft(form) {
+    const key = draftIdentity(form);
+    if (!key) return false;
+    const draft = draftStore()[key];
+    if (!draft?.fields?.length) return false;
+
+    if (form.id === "truckForm" && draft.truckItems?.length) {
+      const list = form.querySelector("[data-truck-items-list]");
+      if (list) list.innerHTML = draft.truckItems.map(item => truckPlatformItemRow({
+        chemicalProductId:item.chemical_product_id,
+        quantity:item.quantity
+      })).join("");
+    }
+
+    if (form.id === "operationForm" && draft.allocationRows?.length) {
+      const mode = tankMovementMode(form.elements.activity?.value || "");
+      const direction = mode === "out" ? "source" : "destination";
+      const unit = form.elements.unit?.value || "bbl";
+      const list = form.querySelector("[data-operation-allocation-list]");
+      if (list && mode !== "none") {
+        list.innerHTML = draft.allocationRows.map(row => operationAllocationRow({ tank_id: row.tank_id, quantity: row.quantity }, direction, unit, false, form.elements.fluid_type_id?.value || "")).join("");
+      }
+    }
+
+    const allFields = [...form.querySelectorAll("input[name],select[name],textarea[name]")]
+      .filter(field => !["file", "password", "hidden"].includes(field.type))
+      .filter(field => !["id", "tank_id", "record_id", "operation_id"].includes(field.name));
+    draft.fields.forEach(saved => {
+      if (["id", "tank_id", "record_id", "operation_id"].includes(saved.name)) return;
+      const candidates = allFields.filter(field => field.name === saved.name);
+      const field = candidates.shift() || allFields[saved.index];
+      if (!field || field.type === "file") return;
+      if (["checkbox", "radio"].includes(field.type)) field.checked = saved.checked;
+      else field.value = saved.value;
+    });
+
+    const banner = document.createElement("div");
+    banner.className = "draft-restored-banner";
+    banner.innerHTML = `<div><strong>Rascunho restaurado</strong><span id="draftStatus">Salvo em ${dateTime(draft.saved_at)}</span></div><button type="button" class="btn small secondary" data-action="discard-draft">Descartar</button>`;
+    form.prepend(banner);
+    syncOperationCatalogFields(form);
+    if (form.id === "truckForm") syncTruckForm(form);
+    updateOperationAllocationSummary(form);
+    return true;
+  }
+
+  function scheduleDraftSave(form) {
+    if (!draftIdentity(form)) return;
+    clearTimeout(state.draftTimer);
+    state.draftTimer = setTimeout(() => saveFormDraft(form), 450);
+  }
+
+  function testLog() {
+    try { return JSON.parse(localStorage.getItem(TEST_LOG_KEY) || "[]"); } catch (_) { return []; }
+  }
+
+  function addTestLog(context, data = {}) {
+    const log = testLog();
+    log.unshift({
+      id: uid("test"),
+      context,
+      data,
+      user: state.data?.profile?.name || state.user?.email || "Usuário",
+      page: state.page,
+      created_at: new Date().toISOString()
+    });
+    localStorage.setItem(TEST_LOG_KEY, JSON.stringify(log.slice(0, 300)));
+  }
+
+  function setTestMode(enabled) {
+    state.testMode = enabled;
+    localStorage.setItem(TEST_MODE_KEY, String(enabled));
+    document.body.classList.toggle("homologation-mode", enabled);
+    renderAll();
+    toast(enabled ? "Modo homologação ativado. Nenhum salvamento irá para o banco oficial." : "Modo homologação desativado.", "success");
+  }
+
+  function simulateFormSubmission(form) {
+    const payload = Object.fromEntries(new FormData(form));
+    if (form.id === "truckForm") payload.platform_items = collectTruckPlatformItems(form, false);
+    Object.keys(payload).forEach(key => {
+      if (payload[key] instanceof File) payload[key] = payload[key].name || "arquivo";
+    });
+    addTestLog(`form:${form.id || form.dataset.kind || "registro"}`, payload);
+    clearFormDraft(form);
+    closeModal();
+    renderSettings();
+    toast("Ação simulada na homologação local. O banco oficial não foi alterado.", "success");
+  }
+
+  function feedbackForm() {
+    return `<form id="feedbackForm">
+      <div class="form-grid">
+        <div><label>Tipo</label><select name="category"><option>Erro</option><option>Dificuldade</option><option selected>Sugestão</option><option>Campo desnecessário</option><option>Informação ausente</option></select></div>
+        <div><label>Nota da experiência</label><select name="rating"><option value="">Sem nota</option>${[1,2,3,4,5].map(value => `<option value="${value}">${value} de 5</option>`).join("")}</select></div>
+        <div class="wide"><label>O que aconteceu ou poderia melhorar? *</label><textarea name="message" required placeholder="Conte onde demorou, errou, precisou voltar ou não encontrou uma informação."></textarea></div>
+        <input type="hidden" name="page" value="${esc(state.page)}">
+      </div>${formActions("Enviar feedback")}
+    </form>`;
+  }
+
+  function assetData(type, id) {
+    if (type === "tank") {
+      const item = state.data.tanks.find(x => x.id === id);
+      if (!item) return null;
+      return {
+        type, id, page: "tanks", code: item.name, title: item.name,
+        subtitle: `${item.phase} • ${item.kind}`,
+        lines: [
+          ["Produto", item.product || "Sem produto"],
+          ["Lote", item.lot || "-"],
+          ["Saldo", `${fmt.format(item.volume)} ${item.unit}`],
+          ["Capacidade", `${fmt.format(item.capacity)} ${item.unit}`],
+          ["Status", item.status],
+          ["Atualização", dateTime(item.updated_at)]
+        ]
+      };
+    }
+    if (type === "equipment") {
+      const item = state.data.equipment.find(x => x.id === id);
+      if (!item) return null;
+      return {
+        type, id, page: "maintenance", code: item.name, title: item.name,
+        subtitle: `${item.category} • ${item.location || "-"}`,
+        lines: [
+          ["Status", item.status],
+          ["Horímetro", `${fmt.format(item.hourmeter)} h`],
+          ["Próxima manutenção", dateOnly(item.next_maintenance_date)],
+          ["Localização", item.location || "-"],
+          ["Atualização", dateTime(item.updated_at)]
+        ]
+      };
+    }
+    return null;
+  }
+
+  function assetDeepLink(type, id) {
+    const url = new URL(location.href);
+    url.searchParams.set("asset", type);
+    url.searchParams.set("id", id);
+    const data = assetData(type, id);
+    url.hash = data?.page || "dashboard";
+    return url.toString();
+  }
+
+  function qrSvg(text) {
+    if (typeof qrcode !== "function") return `<div class="qr-error">Gerador de QR indisponível.</div>`;
+    const qr = qrcode(0, "M");
+    qr.addData(text);
+    qr.make();
+    return qr.createSvgTag({ cellSize: 5, margin: 2, scalable: true });
+  }
+
+  function assetQrContent(type, id) {
+    const data = assetData(type, id);
+    if (!data) return `<div class="empty">Ativo não localizado.</div>`;
+    const link = assetDeepLink(type, id);
+    return `<div class="asset-qr-layout" id="assetQrPrint">
+      <div class="asset-qr-code">${qrSvg(link)}</div>
+      <div class="asset-qr-info"><span class="asset-code">${esc(data.code)}</span><h3>${esc(data.title)}</h3><p>${esc(data.subtitle)}</p><div class="asset-detail-grid">${data.lines.map(([label, value]) => `<span>${esc(label)}<strong>${esc(value)}</strong></span>`).join("")}</div></div>
+      <div class="asset-qr-actions no-print"><button class="btn secondary" data-action="copy-asset-link" data-link="${esc(link)}">Copiar link</button><button class="btn primary" data-action="print-asset-qr">Imprimir etiqueta</button></div>
+    </div>`;
+  }
+
+  function openAssetQr(type, id) {
+    const data = assetData(type, id);
+    if (!data) return toast("Ativo não localizado.", "error");
+    showPage(data.page);
+    openModal(`Identificação — ${data.title}`, assetQrContent(type, id), "QR CODE");
+  }
+
+  function openDeepLinkedAsset() {
+    const params = new URLSearchParams(location.search);
+    const type = params.get("asset");
+    const id = params.get("id");
+    if (!type || !id) return;
+    setTimeout(() => openAssetQr(type, id), 180);
+  }
+
+  function toast(message, kind = "normal") {
+    const el = document.createElement("div");
+    el.className = `toast ${kind}`;
+    el.textContent = message;
+    $("#toastContainer").appendChild(el);
+    setTimeout(() => el.remove(), 3600);
+  }
+
+  function showLoginMessage(message) {
+    const el = $("#loginMessage");
+    el.textContent = message;
+    el.classList.remove("hidden");
+  }
+
+  function role() {
+    return String(state.data?.profile?.role || "").toLowerCase();
+  }
+
+  function isAdmin() {
+    return role() === "admin";
+  }
+
+  function hasRole(roles) {
+    return isAdmin() || roles.includes(role());
+  }
+
+  function canEditTankStructure() {
+    return hasRole(["supervisor"]);
+  }
+
+  function canManageFluidCatalog() {
+    return hasRole(["supervisor", "lider", "logistica"]);
+  }
+
+  function canManageTrucks() {
+    return hasRole(["supervisor", "lider", "logistica"]);
+  }
+
+  function canManageChemicals() {
+    return hasRole(["supervisor", "lider", "logistica", "qhse"]);
+  }
+
+  function canManageCertificates() {
+    return hasRole(["supervisor", "logistica"]);
+  }
+
+  function canManageHandover() {
+    return hasRole(["supervisor", "lider", "operador", "logistica", "qhse", "mecanico"]);
+  }
+
+  function canDeleteHandoverPending() {
+    return hasRole(["supervisor", "lider"]);
+  }
+
+  function canApproveHandover() {
+    return hasRole(["supervisor", "lider"]);
+  }
+
+  function canViewAudit() {
+    return hasRole(["supervisor"]);
+  }
+
+  function moduleAllowed(module) {
+    if (isAdmin() || module === "settings" || module === "users") return true;
+    if (module === "fluids" && ["supervisor", "lider", "operador", "logistica", "qhse"].includes(role())) return true;
+    if (module === "chemical-catalog" && ["supervisor", "lider", "logistica", "qhse"].includes(role())) return true;
+    if (module === "sanitation" && ["admin", "supervisor"].includes(role())) return true;
+    const permissions = state.data?.profile?.permissions || {};
+    if (Object.prototype.hasOwnProperty.call(permissions, module)) return permissions[module] !== false;
+
+    const defaults = {
+      supervisor: ["dashboard", "users", "quality", "sanitation",  "tv", "operations", "tanks", "fluids", "chemical-catalog", "chemicals", "trucks", "qhse", "maintenance", "certificates", "alerts", "reports", "audit"],
+      lider: ["dashboard", "users", "quality",  "tv", "operations", "tanks", "fluids", "chemical-catalog", "chemicals", "trucks", "qhse", "maintenance", "certificates", "alerts", "reports"],
+      operador: ["dashboard", "quality", "tv", "operations", "tanks", "fluids", "chemical-catalog", "chemicals", "trucks", "qhse", "alerts", "reports"],
+      logistica: ["dashboard", "quality",  "tv", "operations", "tanks", "fluids", "chemical-catalog", "chemicals", "trucks", "certificates", "alerts", "reports"],
+      mecanico: ["dashboard", "quality", "tv", "maintenance", "certificates", "alerts", "reports"],
+      qhse: ["dashboard", "quality",  "tv", "operations", "chemicals", "qhse", "certificates", "alerts", "reports"],
+      tv: ["tv"],
+      user: ["dashboard", "quality", "tv", "certificates", "alerts"]
+    };
+    return (defaults[role()] || defaults.user).includes(module);
+  }
+
+  function statusClass(status = "") {
+    const s = String(status).toLowerCase();
+    if (["conclu", "liberado", "válido", "ativo", "recebida", "operando", "disponível", "fechada"].some(x => s.includes(x))) return "green";
+    if (["andamento", "programada", "atenção", "a vencer", "próximo vencimento", "manutenção", "média", "aberta"].some(x => s.includes(x))) return "amber";
+    if (["bloqueado", "parado", "crítico", "vencido", "baixo estoque", "alta", "cancelada", "inativo"].some(x => s.includes(x))) return "red";
+    if (s.includes("wbm")) return "blue";
+    return "neutral";
+  }
+
+  function badge(text) {
+    return `<span class="badge ${statusClass(text)}">${esc(text || "-")}</span>`;
+  }
+
+  function header(title, subtitle, actions = "") {
+    return `<div class="page-header">
+      <div><h1>${title}</h1><p>${subtitle}</p></div>
+      <div class="actions no-print">${actions}</div>
+    </div>`;
+  }
+
+  function formActions(label = "Salvar") {
+    return `<div class="form-actions">
+      <button type="button" class="btn secondary" data-close-modal>Cancelar</button>
+      <button class="btn primary">${label}</button>
+    </div>`;
+  }
+
+  function openModal(title, body, eyebrow = "REGISTRO") {
+    closeMobileSheets();
+    $("#modalTitle").textContent = title;
+    $("#modalEyebrow").textContent = eyebrow;
+    $("#modalBody").innerHTML = body;
+    $("#modal").classList.remove("hidden");
+    document.body.classList.add("modal-open");
+    syncOperationCatalogFields($("#operationForm"));
+    syncChemicalPackagingFields($("#chemicalProductForm"));
+    setOperationStep($("#operationForm"), 1);
+    syncTruckForm($("#truckForm"));
+    syncTankCatalogFields($("#tankForm"));
+    syncOfficialTankCapacity($("#tankForm"));
+    syncSiloCapacityPreview($("#tankForm"));
+    updateTransferPreview($("#tankTransferForm"));
+    const modalForm = $("#modalBody form");
+    if (modalForm?.id === "tankForm") clearLegacyTankDrafts();
+    else if (modalForm) restoreFormDraft(modalForm);
+    setTimeout(() => {
+      const firstField = $("#modalBody input:not([type='hidden']):not([disabled]), #modalBody select:not([disabled]), #modalBody textarea:not([disabled])");
+      firstField?.focus({ preventScroll: true });
+    }, 120);
+  }
+
+  function closeModal() {
+    $("#modal").classList.remove("equipment-drawer");
+    $("#modal").classList.add("hidden");
+    document.body.classList.remove("modal-open");
+  }
+
+  function productClass(product = "", kind = "", volume = 0) {
+    const numericVolume = Number(volume || 0);
+    if (numericVolume <= 0) return "empty";
+
+    const p = String(product || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+    const equipmentKind = String(kind || "").toLowerCase();
+
+    // Todo silo com saldo utiliza a cor de granel, mesmo sem produto informado.
+    if (equipmentKind.includes("silo")) return "bulk";
+
+    if (["brine", "nacl", "cacl", "salmoura", "cadit"].some(term => p.includes(term))) return "brine";
+    if (["sbm", "rheliant", "sintetico", "oleo base"].some(term => p.includes(term))) return "sbm";
+    if (["olef", "olefina"].some(term => p.includes(term))) return "olefin";
+    if (["wb", "wbdf", "flopro", "glydril", "glydrill", "water", "kcl polymer", "premix"].some(term => p.includes(term))) return "wbm";
+    if (["barita", "bentonita", "calcita", "cimento", "bulk", "granel"].some(term => p.includes(term))) return "bulk";
+
+    // Qualquer tanque/Mix Tank com volume e produto desconhecido recebe cor genérica.
+    return "generic";
+  }
+
+  function tankMovementMode(activity = "") {
+    const value = String(activity).toLowerCase();
+    if (["bombeio", "carregamento"].includes(value)) return "out";
+    if (["backload", "fabricação", "fabricacao", "descarga"].includes(value)) return "in";
+    return "none";
+  }
+
+  function filteredOperations() {
+    const f = state.filters;
+    return (state.data?.operations || []).filter(op => {
+      const date = recordDateKey(op.start_at || op.created_at);
+      if (f.start && date && date < f.start) return false;
+      if (f.end && date && date > f.end) return false;
+      if (f.client && op.client !== f.client) return false;
+      if (f.product && op.product !== f.product) return false;
+      return true;
+    });
+  }
+
+  function filteredTrucks() {
+    const f = state.filters;
+    return (state.data?.trucks || []).filter(item => {
+      const date = recordDateKey(item.date);
+      if (f.start && date && date < f.start) return false;
+      if (f.end && date && date > f.end) return false;
+      if (f.client && item.client !== f.client) return false;
+      if (f.product && item.product !== f.product && !(item.items || []).some(product => product.productName === f.product)) return false;
+      return true;
+    });
+  }
+
+  function csvEscape(value) {
+    const text = String(value ?? "").replace(/"/g, '""');
+    return `"${text}"`;
+  }
+
+  function downloadCsv(filename, headers, rows) {
+    const content = [headers, ...rows].map(row => row.map(csvEscape).join(";")).join("\n");
+    const blob = new Blob(["\ufeff" + content], { type: "text/csv;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
+
+  function downloadJson(filename, value) {
+    const blob = new Blob([JSON.stringify(value, null, 2)], { type: "application/json;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = filename;
+    link.click();
+    URL.revokeObjectURL(url);
+  }
+
+  function offlineQueue() {
+    try { return JSON.parse(localStorage.getItem(OFFLINE_QUEUE_KEY) || "[]"); }
+    catch (_) { return []; }
+  }
+
+  function saveOfflineQueue(items) {
+    localStorage.setItem(OFFLINE_QUEUE_KEY, JSON.stringify(items.slice(-100)));
+    updateConnectionBadge();
+    openDeepLinkedAsset();
+  }
+
+  function hasFileSelection(form) {
+    return [...form.querySelectorAll('input[type="file"]')].some(input => input.files?.length);
+  }
+
+  function queueOfflineForm(form) {
+    if (hasFileSelection(form)) return false;
+    const payload = Object.fromEntries(new FormData(form));
+    let action = null;
+    if (form.id === "truckForm") {
+      delete payload.attachment;
+      action = {
+        type: "truck",
+        id: form.dataset.id || null,
+        payload,
+        items: collectTruckPlatformItems(form, false)
+      };
+    } else if (form.id === "genericForm" && ["qhse", "alert"].includes(form.dataset.kind)) {
+      action = { type: "entity", kind: form.dataset.kind, id: form.dataset.id || null, payload };
+    } else if (form.id === "eventForm") {
+      action = { type: "event", operationId: form.dataset.operationId, payload };
+    } else if (form.id === "actionItemForm") {
+      action = { type: "action_item", id: form.dataset.id || null, qhseId: form.dataset.qhseId || null, payload };
+    } else if (form.id === "handoverPendingForm") {
+      action = { type: "handover_pending", id: form.dataset.id || null, payload };
+    }
+    if (!action) return false;
+    const queue = offlineQueue();
+    queue.push({ id: uid("offline"), queued_at: new Date().toISOString(), ...action });
+    saveOfflineQueue(queue);
+    return true;
+  }
+
+  async function replayOfflineAction(action) {
+    if (action.type === "truck") return saveTruck(action.payload, action.id, action.items || []);
+    if (action.type === "entity") return saveEntity(action.kind, action.payload, action.id);
+    if (action.type === "event") {
+      const p = action.payload;
+      const { error } = await state.client.from("operation_events").insert({
+        operation_id: action.operationId, event_time: p.event_time, title: p.title,
+        description: p.description || null, event_type: p.event_type,
+        quantity: Number(p.quantity || 0) || null, unit: p.unit === "-" ? null : p.unit,
+        created_by: state.user.id
+      });
+      if (error) throw error;
+      return;
+    }
+    if (action.type === "action_item") {
+      const p = action.payload;
+      const row = { qhse_record_id: action.qhseId, title: p.title, description: p.description || null,
+        responsible: p.responsible || null, due_date: p.due_date || null, status: p.status,
+        completed_at: p.status === "Concluído" ? new Date().toISOString() : null };
+      const query = action.id ? state.client.from("action_items").update(row).eq("id", action.id)
+        : state.client.from("action_items").insert({ ...row, created_by: state.user.id });
+      const { error } = await query; if (error) throw error; return;
+    }
+    if (action.type === "handover_pending") {
+      const p = action.payload; const completed = p.status === "Concluído";
+      const row = { title:p.title, description:p.description||null, category:p.category,
+        responsible:p.responsible||null, priority:p.priority, status:p.status,
+        due_at:p.due_at ? new Date(p.due_at).toISOString() : null,
+        completed_at:completed?new Date().toISOString():null, completed_by:completed?state.user.id:null };
+      const query = action.id ? state.client.from("handover_pending_items").update(row).eq("id",action.id)
+        : state.client.from("handover_pending_items").insert({ ...row, created_by:state.user.id });
+      const { error } = await query; if (error) throw error;
+    }
+  }
+
+  async function syncOfflineQueue() {
+    if (state.offlineSyncing || !navigator.onLine || !state.client || !state.user) return;
+    const queue = offlineQueue();
+    if (!queue.length) return;
+    state.offlineSyncing = true;
+    const remaining = [];
+    let synced = 0;
+    for (const action of queue) {
+      try { await replayOfflineAction(action); synced += 1; }
+      catch (error) { remaining.push({ ...action, last_error: error.message }); }
+    }
+    saveOfflineQueue(remaining);
+    state.offlineSyncing = false;
+    if (synced) {
+      await loadData(); renderAll();
+      toast(`${synced} registro(s) offline sincronizado(s).`, "success");
+    }
+  }
+
+  function backupPayload() {
+    const d = state.data || {};
+    return {
+      generated_at: new Date().toISOString(), generated_by: d.profile?.name || "-", version: APP_VERSION,
+      tanks: d.tanks || [], operations: d.operations || [], operationAllocations: d.operationAllocations || [],
+      trucks: d.trucks || [], truckItems: d.truckItems || [],
+      chemicalProducts: d.chemicalProducts || [], chemicals: d.chemicals || [], chemicalMovements: d.chemicalMovements || [],
+      closings:d.closings || [], closingItems:d.closingItems || [], inventoryCounts:d.inventoryCounts || [],
+      tankMovements: d.tankMovements || [], qhse: d.qhse || [], actionItems: d.actionItems || [],
+      equipment: d.equipment || [], maintenanceOrders: d.maintenanceOrders || [],
+      certificates: d.certificates || [], handoverPendings: d.handoverPendings || [],
+      handoverNotes: d.handoverNotes || [], handoverApprovals: d.handoverApprovals || [],
+      checklistItems: d.shiftChecklist || []
+    };
+  }
+
+  function saveLocalDailyBackup() {
+    if (!state.data) return;
+    try {
+      const today = localDateKey();
+      const backups = JSON.parse(localStorage.getItem(LOCAL_BACKUP_KEY) || "[]").filter(item => item.date !== today);
+      backups.push({ date: today, created_at: new Date().toISOString(), data: backupPayload() });
+      localStorage.setItem(LOCAL_BACKUP_KEY, JSON.stringify(backups.slice(-3)));
+    } catch (error) { console.warn("Backup local:", error); }
+  }
+
+  function latestLocalBackup() {
+    try { return JSON.parse(localStorage.getItem(LOCAL_BACKUP_KEY) || "[]").slice(-1)[0] || null; }
+    catch (_) { return null; }
+  }
+
+  function exportData(kind) {
+    const date = new Date().toISOString().slice(0, 10);
+    if (kind === "operations") {
+      const rows = filteredOperations().map(op => [op.client, op.vessel, op.rig, op.well, op.ticketNumber, op.service_order, op.activity, op.product, op.fluidTypeId, op.lot, op.planned, op.executed, op.unit, operationAllocationText(op), op.status, op.start_at, op.end_at, op.paused_minutes, op.tank_movement_applied ? "Aplicada" : "Não aplicada"]);
+      return downloadCsv(`operacoes-${date}.csv`, ["Cliente", "Embarcação", "Sonda", "Poço", "Ticket", "OS", "Atividade", "Produto", "ID do produto", "Lote", "Planejado", "Executado", "Unidade", "Distribuição tanques/silos", "Status", "Início", "Término", "Parado (min)", "Tancagem"], rows);
+    }
+    if (kind === "tanks") {
+      const rows = state.data.tanks.map(t => [t.phase, t.name, t.kind, t.client || "A definir", t.product, t.lot, t.volume, t.capacity, t.unit, t.physicalCapacityM3 || "", t.status, t.updated_at]);
+      return downloadCsv(`tancagem-${date}.csv`, ["Fase", "Tanque/Silo", "Tipo", "Cliente", "Produto", "Lote", "Volume", "Capacidade", "Unidade", "Volume físico m³", "Status", "Atualização"], rows);
+    }
+    if (kind === "chemicals") {
+      const totals = new Map(groupedChemicalInventory().map(item => [item.id, item.total]));
+      const products = new Map(groupedChemicalInventory().map(item => [item.id, item]));
+      const rows = state.data.chemicals.map(c => {
+        const product = products.get(c.productId);
+        return [c.name, c.category, product?.packagingType || "Outros", totals.get(c.productId) || 0, c.lot || "Sem lote", c.quantity, c.unit, c.minimum, c.expiry_date, c.location, c.supplier, chemicalDisplayStatus(c)];
+      });
+      return downloadCsv(`inventario-quimico-${date}.csv`, ["Produto", "Categoria", "Tipo de embalagem", "Total do produto", "Lote", "Quantidade do lote", "Unidade", "Mínimo do lote", "Validade", "Localização", "Fornecedor", "Status"], rows);
+    }
+    if (kind === "trucks") {
+      const rows = filteredTrucks().flatMap(t => t.truckType === "Plataforma" && t.items.length
+        ? t.items.map((item,index) => [t.date,t.movement,t.truckType,t.supplier,t.client,item.productName,"",item.quantity,item.unit,index+1,t.items.length,t.plate,t.driver,t.invoice,t.status])
+        : [[t.date,t.movement,t.truckType,t.supplier,t.client,t.product,t.lot,t.quantity,t.unit,1,1,t.plate,t.driver,t.invoice,t.status]]);
+      return downloadCsv(`carretas-${date}.csv`, ["Data","Movimento","Tipo da carreta","Origem/Destino","Cliente","Produto","Lote","Quantidade","Unidade","Item","Total de itens","Placa","Motorista","NF","Status"], rows);
+    }
+    if (kind === "maintenance") {
+      const rows = state.data.equipment.map(e => [e.name, e.category, e.status, e.hourmeter, e.next_maintenance_date, e.maintenance_due_hourmeter, e.location]);
+      return downloadCsv(`manutencao-${date}.csv`, ["Equipamento", "Categoria", "Status", "Horímetro", "Próxima preventiva", "Horímetro limite", "Localização"], rows);
+    }
+    if (kind === "audit") {
+      const rows = state.data.auditLogs.map(x => [x.created_at, state.data.users.find(u=>u.id===x.changed_by)?.name||"Sistema", x.table_name, x.action, x.record_id, auditChangeSummary(x)]);
+      return downloadCsv("auditoria.csv", ["Data","Usuário","Tabela","Ação","Registro","Alterações"], rows);
+    }
+    if (kind === "quality") {
+      const rows = dataQualityIssues().map(x => [x.severity, x.category, x.title, x.detail, x.page, x.entityType, x.entityId]);
+      return downloadCsv(`qualidade-dados-${localDateKey()}.csv`, ["Severidade","Categoria","Pendência","Detalhe","Módulo","Tipo","ID"], rows);
+    }
+  }
+
+  function operationFieldValue(form, name) {
+    return form?.querySelector(`[name="${name}"]:not([disabled])`)?.value
+      ?? form?.querySelector(`[name="${name}"]`)?.value
+      ?? "";
+  }
+
+
+  function operationCatalogProducts(op = {}) {
+    const currentId = op.fluidTypeId || "";
+    return (state.data?.fluids || [])
+      .filter(item => item.active !== false || item.id === currentId)
+      .sort((a, b) => {
+        const bulkA = ["granel", "insumo"].includes(String(a.type || "").toLowerCase()) ? 1 : 0;
+        const bulkB = ["granel", "insumo"].includes(String(b.type || "").toLowerCase()) ? 1 : 0;
+        return bulkA - bulkB || a.name.localeCompare(b.name);
+      });
+  }
+
+  function operationCatalogOptions(op = {}) {
+    const currentId = op.fluidTypeId || "";
+    const products = operationCatalogProducts(op);
+    const fluids = products.filter(item => !["granel", "insumo"].includes(String(item.type || "").toLowerCase()));
+    const bulks = products.filter(item => ["granel", "insumo"].includes(String(item.type || "").toLowerCase()));
+    const render = item => `<option value="${item.id}" data-product="${esc(item.name)}" data-unit="${esc(item.unit || "bbl")}" data-category="${esc(item.type || "")}" ${item.id === currentId ? "selected" : ""}>${esc(item.name)}${item.active === false ? " — inativo (histórico)" : ""}</option>`;
+    return `${fluids.length ? `<optgroup label="Fluidos">${fluids.map(render).join("")}</optgroup>` : ""}${bulks.length ? `<optgroup label="Granéis">${bulks.map(render).join("")}</optgroup>` : ""}`;
+  }
+
+  function selectedOperationCatalogItem(form) {
+    const id = form?.elements?.fluid_type_id?.value || "";
+    return (state.data?.fluids || []).find(item => item.id === id) || null;
+  }
+
+  function syncOperationCatalogFields(form, resetAllocations = false) {
+    if (!form) return;
+    const select = form.elements.fluid_type_id;
+    const unitInput = form.elements.unit;
+    const selected = selectedOperationCatalogItem(form);
+
+    if (unitInput) unitInput.value = selected?.unit || "";
+    const category = form.querySelector("[data-operation-product-category]");
+    if (category) {
+      category.textContent = selected
+        ? `${selected.type} • unidade ${selected.unit}${selected.density ? ` • densidade ${fmt.format(selected.density)} ${selected.densityUnit || ""}` : ""}`
+        : "Selecione um produto cadastrado.";
+    }
+
+    if (resetAllocations && form.dataset.allocationLocked !== "true") {
+      const list = form.querySelector("[data-operation-allocation-list]");
+      const mode = tankMovementMode(operationFieldValue(form, "activity"));
+      if (list) {
+        list.innerHTML = mode === "none"
+          ? ""
+          : operationAllocationRow({}, mode === "out" ? "source" : "destination", selected?.unit || "bbl", false, selected?.id || "");
+      }
+    }
+    syncOperationTankFields(form);
+  }
+
+  function allocationsForOperation(operationId) {
+    if (!operationId) return [];
+    return (state.data?.operationAllocations || [])
+      .filter(item => item.operation_id === operationId)
+      .sort((a, b) => a.display_order - b.display_order);
+  }
+
+  function normalizedOperationAllocations(op = {}) {
+    const stored = allocationsForOperation(op.id);
+    if (stored.length) return stored;
+    const mode = tankMovementMode(op.activity);
+    if (mode === "out" && op.source_tank_id) {
+      return [{ direction: "source", tank_id: op.source_tank_id, quantity: Number(op.executed || 0), unit: op.unit, display_order: 0 }];
+    }
+    if (mode === "in" && op.destination_tank_id) {
+      return [{ direction: "destination", tank_id: op.destination_tank_id, quantity: Number(op.executed || 0), unit: op.unit, display_order: 0 }];
+    }
+    return [];
+  }
+
+  function operationAllocationText(op) {
+    const allocations = normalizedOperationAllocations(op);
+    if (!allocations.length) return "Não distribuída";
+    return allocations.map(item => {
+      const tank = state.data.tanks.find(t => t.id === item.tank_id);
+      return `${tank?.name || "Equipamento"}: ${fmt.format(item.quantity)} ${item.unit || op.unit}`;
+    }).join(" + ");
+  }
+
+  function operationAllocationHtml(op) {
+    const allocations = normalizedOperationAllocations(op);
+    if (!allocations.length) return `<span class="muted">Não distribuída</span>`;
+    return `<div class="operation-allocation-chips">${allocations.map(item => {
+      const tank = state.data.tanks.find(t => t.id === item.tank_id);
+      return `<span class="operation-allocation-chip"><strong>${esc(tank?.name || "Equipamento")}</strong>${fmt.format(item.quantity)} ${esc(item.unit || op.unit)}</span>`;
+    }).join("")}</div>`;
+  }
+
+  function operationTankOptions(unit = "bbl", selectedId = "", direction = "source", fluidTypeId = "") {
+    const phaseOrder = ["Phase #1", "Phase #2"];
+    return phaseOrder.map(phase => {
+      const options = state.data.tanks
+        .filter(tank => tank.phase === phase)
+        .filter(tank => tank.unit === unit || tank.id === selectedId)
+        .filter(tank => {
+          if (!fluidTypeId || tank.id === selectedId) return true;
+          if (direction === "source") return tank.fluidTypeId === fluidTypeId;
+          return Number(tank.volume || 0) <= 0 || tank.fluidTypeId === fluidTypeId;
+        })
+        .sort((a, b) => a.order - b.order)
+        .map(tank => {
+          const free = Math.max(0, Number(tank.capacity || 0) - Number(tank.volume || 0));
+          const availability = direction === "source"
+            ? `saldo ${fmt.format(tank.volume)} ${tank.unit}`
+            : `livre ${fmt.format(free)} ${tank.unit}`;
+          return `<option value="${tank.id}" ${tank.id === selectedId ? "selected" : ""}>${esc(tank.name)} — ${availability} — ${esc(tank.product || "Vazio")}</option>`;
+        }).join("");
+      return options ? `<optgroup label="${phase}">${options}</optgroup>` : "";
+    }).join("");
+  }
+
+  function operationAllocationRow(allocation = {}, direction = "source", unit = "bbl", locked = false, fluidTypeId = "") {
+    const rowId = uid("allocation");
+    return `<div class="operation-allocation-row" data-operation-allocation-row data-direction="${direction}" data-row-id="${rowId}">
+      <span class="allocation-number">#</span>
+      <div class="allocation-tank-field">
+        <label>Tanque ou silo</label>
+        <select data-allocation-tank ${locked ? "disabled" : ""}>
+          <option value="">Selecione o equipamento</option>
+          ${operationTankOptions(unit, allocation.tank_id || "", direction, fluidTypeId)}
+        </select>
+      </div>
+      <div class="allocation-quantity-field">
+        <label>Quantidade</label>
+        <div class="allocation-quantity-input"><input data-allocation-quantity type="text" inputmode="decimal" value="${allocation.quantity ? String(allocation.quantity).replace(".", ",") : ""}" placeholder="0" ${locked ? "readonly" : ""}><span data-allocation-unit>${esc(unit)}</span></div>
+      </div>
+      ${locked ? "" : `<button type="button" class="btn small danger outline allocation-remove" data-remove-operation-allocation aria-label="Remover equipamento">Remover</button>`}
+    </div>`;
+  }
+
+  function refreshOperationAllocationOptions(form) {
+    if (!form) return;
+    const mode = tankMovementMode(operationFieldValue(form, "activity"));
+    const direction = mode === "out" ? "source" : "destination";
+    const unit = operationFieldValue(form, "unit") || "bbl";
+    const fluidTypeId = form.elements.fluid_type_id?.value || "";
+    form.querySelectorAll("[data-operation-allocation-row]").forEach((row, index) => {
+      row.dataset.direction = direction;
+      row.querySelector(".allocation-number").textContent = `${index + 1}.`;
+      const select = row.querySelector("[data-allocation-tank]");
+      const selected = select?.value || "";
+      if (select) select.innerHTML = `<option value="">Selecione o equipamento</option>${operationTankOptions(unit, selected, direction, fluidTypeId)}`;
+      const unitLabel = row.querySelector("[data-allocation-unit]");
+      if (unitLabel) unitLabel.textContent = unit;
+    });
+  }
+
+  function addOperationAllocationRow(form, allocation = {}) {
+    const list = form?.querySelector("[data-operation-allocation-list]");
+    if (!list) return;
+    const mode = tankMovementMode(operationFieldValue(form, "activity"));
+    if (mode === "none") return;
+    const direction = mode === "out" ? "source" : "destination";
+    const unit = operationFieldValue(form, "unit") || "bbl";
+    list.insertAdjacentHTML("beforeend", operationAllocationRow(allocation, direction, unit, false, form.elements.fluid_type_id?.value || ""));
+    refreshOperationAllocationOptions(form);
+    updateOperationAllocationSummary(form);
+  }
+
+  function collectOperationAllocations(form) {
+    const mode = tankMovementMode(operationFieldValue(form, "activity"));
+    if (mode === "none") return [];
+    const direction = mode === "out" ? "source" : "destination";
+    const unit = operationFieldValue(form, "unit") || "bbl";
+    const rows = [...form.querySelectorAll("[data-operation-allocation-row]")];
+    const allocations = [];
+    const used = new Set();
+
+    rows.forEach((row, index) => {
+      const tankId = row.querySelector("[data-allocation-tank]")?.value || "";
+      const rawQuantity = row.querySelector("[data-allocation-quantity]")?.value || "";
+      if (!tankId && !String(rawQuantity).trim()) return;
+      if (!tankId) throw new Error(`Selecione o tanque ou silo na linha ${index + 1}.`);
+      const quantity = parseTankVolume(rawQuantity);
+      if (!Number.isFinite(quantity) || quantity <= 0) throw new Error(`Informe uma quantidade válida na linha ${index + 1}.`);
+      if (used.has(tankId)) throw new Error("O mesmo tanque ou silo não pode aparecer duas vezes na distribuição.");
+      const tank = state.data.tanks.find(item => item.id === tankId);
+      if (!tank) throw new Error("Um dos equipamentos selecionados não foi localizado.");
+      if (tank.unit !== unit) throw new Error(`${tank.name} utiliza ${tank.unit}, diferente da unidade da operação (${unit}).`);
+      const fluidTypeId = form.elements.fluid_type_id?.value || "";
+      if (direction === "source" && fluidTypeId && tank.fluidTypeId !== fluidTypeId) {
+        throw new Error(`${tank.name} não possui o produto selecionado na operação.`);
+      }
+      if (direction === "destination" && fluidTypeId && Number(tank.volume || 0) > 0 && tank.fluidTypeId !== fluidTypeId) {
+        throw new Error(`${tank.name} contém outro produto.`);
+      }
+      used.add(tankId);
+      allocations.push({ direction, tank_id: tankId, quantity, unit, display_order: allocations.length });
+    });
+
+    return allocations;
+  }
+
+  function updateOperationAllocationSummary(form) {
+    if (!form) return;
+    const summary = form.querySelector("[data-operation-allocation-summary]");
+    if (!summary) return;
+    let allocations = [];
+    try { allocations = collectOperationAllocations(form); } catch (_) {}
+    const total = allocations.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+    const executed = parseTankVolume(form.querySelector('[name="executed"]')?.value || "0") || 0;
+    const unit = operationFieldValue(form, "unit") || "bbl";
+    const difference = executed-total;
+    const complete = executed > 0 && Math.abs(difference) <= 0.001;
+    summary.classList.toggle("allocation-complete", complete);
+    summary.classList.toggle("allocation-pending", !complete);
+    summary.innerHTML = `<div><strong>${fmt.format(total)} / ${fmt.format(executed)} ${esc(unit)}</strong><span>${allocations.length} equipamento(s) selecionado(s)</span></div><span>${complete ? "Distribuição completa" : difference > 0 ? `Faltam ${fmt.format(difference)} ${esc(unit)}` : difference < 0 ? `Excede ${fmt.format(Math.abs(difference))} ${esc(unit)}` : "Informe a quantidade executada"}</span>`;
+  }
+
+  function syncOperationTankFields(form) {
+    if (!form) return;
+    const mode = tankMovementMode(operationFieldValue(form, "activity"));
+    const previousMode = form.dataset.allocationMode || mode;
+    const field = form.querySelector(".operation-allocation-field");
+    const list = form.querySelector("[data-operation-allocation-list]");
+    const title = form.querySelector("[data-operation-allocation-title]");
+    const addButton = form.querySelector("[data-add-operation-allocation]");
+    const checkbox = form.elements.apply_tank_movement;
+    const hint = form.querySelector("#operationTankHint");
+    const locked = form.dataset.allocationLocked === "true";
+
+    field?.classList.toggle("hidden", mode === "none");
+    if (title) title.textContent = mode === "out" ? "Distribuição da saída por tanque/silo" : "Distribuição da entrada por tanque/silo";
+    if (addButton) {
+      addButton.classList.toggle("hidden", mode === "none" || locked);
+      addButton.textContent = mode === "out" ? "+ Adicionar origem" : "+ Adicionar destino";
+    }
+
+    if (previousMode !== mode && !locked && list) {
+      list.innerHTML = "";
+      if (mode !== "none") list.innerHTML = operationAllocationRow({}, mode === "out" ? "source" : "destination", operationFieldValue(form, "unit") || "bbl", false, form.elements.fluid_type_id?.value || "");
+    }
+    form.dataset.allocationMode = mode;
+
+    if (checkbox) {
+      checkbox.disabled = mode === "none" || checkbox.dataset.applied === "true";
+      if (mode === "none") checkbox.checked = false;
+    }
+    if (hint) {
+      hint.textContent = mode === "out"
+        ? "Distribua a quantidade executada entre todas as origens utilizadas."
+        : mode === "in"
+          ? "Distribua a quantidade executada entre todos os destinos utilizados."
+          : "Esta atividade não altera a volumetria automaticamente.";
+    }
+    refreshOperationAllocationOptions(form);
+    updateOperationAllocationSummary(form);
+  }
+
+  function operationHours(op) {
+    if (!op.start_at) return 0;
+    const end = op.end_at ? new Date(op.end_at) : new Date();
+    const total = Math.max(0, (end - new Date(op.start_at)) / 3600000);
+    return Math.max(0, total - Number(op.paused_minutes || 0) / 60);
+  }
+
+  function operationFlow(op) {
+    const hours = operationHours(op);
+    return hours > 0 ? Number(op.executed || 0) / hours : Number(op.flow_rate || 0);
+  }
+
+  function attachmentCount(module, recordId) {
+    return (state.data?.attachments || []).filter(item => item.module === module && item.record_id === recordId).length;
+  }
+
+  function fileSizeLabel(bytes) {
+    const value = Number(bytes || 0);
+    if (value < 1024) return `${value} B`;
+    if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+    return `${(value / 1024 / 1024).toFixed(1)} MB`;
+  }
+
+  function safeFileName(name) {
+    return String(name || "arquivo")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[^a-zA-Z0-9._-]+/g, "-")
+      .replace(/-+/g, "-");
+  }
+
+  async function initClient() {
+    if (!state.config.url || !state.config.key || !window.supabase) {
+      throw new Error("A conexão do sistema não está configurada.");
+    }
+    if (!state.client) {
+      state.client = window.supabase.createClient(state.config.url, state.config.key);
+    }
+    return state.client;
+  }
+
+  async function login() {
+    const email = $("#loginEmail").value.trim();
+    const password = $("#loginPassword").value;
+    if (!email || !password) return showLoginMessage("Preencha e-mail e senha.");
+
+    try {
+      await initClient();
+      const { data, error } = await state.client.auth.signInWithPassword({ email, password });
+      if (error) throw error;
+      state.user = data.user;
+      await loadData();
+      if (state.data.profile.active === false) {
+        await state.client.auth.signOut();
+        throw new Error("Seu acesso está bloqueado. Procure o administrador.");
+      }
+      openApp();
+    } catch (error) {
+      showLoginMessage(`Falha no login: ${error.message}`);
+    }
+  }
+
+  async function restoreSession() {
+    try {
+      await initClient();
+      const { data } = await state.client.auth.getSession();
+      if (!data.session?.user) return;
+      state.user = data.session.user;
+      await loadData();
+      if (state.data.profile.active === false) {
+        await state.client.auth.signOut();
+        return;
+      }
+      openApp();
+    } catch (error) {
+      console.error("Não foi possível restaurar a sessão:", error);
+    }
+  }
+
+  async function loadData() {
+    const c = state.client;
+    const u = state.user;
+    const results = await Promise.all([
+      c.from("profiles").select("*").eq("id", u.id).maybeSingle(),
+      c.from("profiles").select("*").order("full_name"),
+      c.from("fluid_types").select("*").order("name"),
+      c.from("tanks").select("*").order("display_order"),
+      c.from("tank_history").select("*").order("created_at", { ascending: false }).limit(500),
+      c.from("operations").select("*").order("start_at", { ascending: false }).limit(2000),
+      c.from("operation_events").select("*").order("event_time", { ascending: true }).limit(5000),
+      c.from("trucks").select("*").order("movement_date", { ascending: false }).limit(2000),
+      c.from("qhse_records").select("*").order("record_date", { ascending: false }).limit(1000),
+      c.from("action_items").select("*").order("due_date", { ascending: true }).limit(500),
+      c.from("equipment").select("*").order("name"),
+      c.from("diesel_logs").select("*").order("log_date", { ascending: false }).limit(500),
+      c.from("maintenance_orders").select("*").order("opened_at", { ascending: false }).limit(500),
+      c.from("certificates").select("*").order("expires_at"),
+      c.from("alerts").select("*").order("created_at", { ascending: false }).limit(1000),
+      c.from("chat_messages").select("*").order("created_at", { ascending: true }).limit(500),
+      c.from("attachments").select("*").order("created_at", { ascending: false }).limit(1000),
+      c.from("chemical_inventory").select("*").order("product_name").limit(1000),
+      c.from("chemical_movements").select("*").order("created_at", { ascending: false }).limit(3000),
+      c.from("tank_movements").select("*").order("created_at", { ascending: false }).limit(2000),
+      c.from("inventory_alerts").select("*").order("created_at", { ascending: false }),
+      c.from("operational_health_alerts").select("*").order("created_at", { ascending: false }),
+      c.from("system_errors").select("*").order("created_at", { ascending: false }).limit(50),
+      c.from("operation_tank_allocations").select("*").order("display_order", { ascending: true }),
+      c.from("handover_pending_items").select("*").order("created_at", { ascending: false }).limit(1000),
+      c.from("shift_handover_notes").select("*").order("shift_date", { ascending: false }).limit(500),
+      c.from("operational_alert_center").select("*").order("created_at", { ascending: false }).limit(1000),
+      c.from("shift_handover_approvals").select("*").order("shift_date", { ascending: false }).limit(500),
+      c.from("shift_checklist_items").select("*").order("shift_date", { ascending: false }).limit(2000),
+      c.from("audit_logs").select("*").order("created_at", { ascending: false }).limit(1500),
+      c.from("app_feedback").select("*").order("created_at", { ascending: false }).limit(500),
+      c.from("truck_movement_items").select("*").order("display_order", { ascending: true }).limit(5000),
+      c.from("chemical_products").select("*").order("name"),
+      c.from("operational_closings").select("*").order("closing_date", { ascending: false }).order("shift", { ascending: true }).limit(200),
+      c.from("closing_reconciliation_items").select("*").order("created_at", { ascending: false }).limit(10000),
+      c.from("inventory_counts").select("*").order("counted_at", { ascending: false }).limit(5000)
+    ]);
+
+    if (results[0]?.error) throw results[0].error;
+
+    results.forEach((result, index) => {
+      if (!result?.error) return;
+      console.warn(`Fonte opcional ${index} indisponível:`, result.error);
+      results[index] = { data: [] };
+    });
+
+    const profile = results[0].data || {
+      id: u.id,
+      email: u.email,
+      full_name: u.email,
+      role: "user",
+      active: true,
+      permissions: {}
+    };
+
+    state.data = {
+      profile: {
+        id: profile.id,
+        name: profile.full_name || u.email,
+        email: profile.email || u.email,
+        role: profile.role || "user",
+        department: profile.department || "",
+        active: profile.active !== false,
+        permissions: profile.permissions || {}
+      },
+      users: (results[1].data || []).map(x => ({
+        id: x.id, email: x.email || "", name: x.full_name || x.email || "Usuário",
+        role: x.role || "user", department: x.department || "", active: x.active !== false,
+        permissions: x.permissions || {}, created_at: x.created_at
+      })),
+      fluids: (results[2].data || []).map(x => ({
+        id: x.id, name: x.name, type: x.category, unit: x.default_unit,
+        density: Number(x.density_value ?? x.density_ppg ?? 0),
+        densityUnit: x.density_unit || (["granel", "insumo"].includes(String(x.category || "").toLowerCase()) ? "t/m³" : "ppg"),
+        description: x.description || x.name,
+        specificGravity: x.specific_gravity === null || x.specific_gravity === undefined ? null : Number(x.specific_gravity),
+        displayColor: x.display_color || "",
+        active: x.active !== false
+      })),
+      tanks: (results[3].data || []).map(x => ({
+        id: x.id, name: x.name, phase: x.phase, kind: x.kind,
+        capacity: Number(x.capacity), unit: x.unit, volume: Number(x.current_volume || 0),
+        physicalCapacityM3: x.physical_capacity_m3 === null || x.physical_capacity_m3 === undefined
+          ? null : Number(x.physical_capacity_m3),
+        fluidTypeId: x.current_fluid_type_id || null,
+        product: x.current_product || "", lot: x.current_lot || "",
+        client: x.client || "A definir",
+        density: x.current_density === null || x.current_density === undefined ? null : Number(x.current_density),
+        densityUnit: x.current_density_unit || null,
+        status: x.status, order: x.display_order,
+        updated_by: x.updated_by, updated_at: x.updated_at
+      })),
+      tankHistory: results[4].data || [],
+      operations: (results[5].data || []).map(x => {
+        const linkedProduct = (results[2].data || []).find(item => item.id === x.fluid_type_id);
+        return {
+        id: x.id, client: x.client, vessel: x.vessel, service_order: x.service_order || "",
+        rig: x.rig || "", well: x.well || "", ticketNumber: x.ticket_number || "",
+        fluidTypeId: x.fluid_type_id || null,
+        activity: x.activity, product: linkedProduct?.name || x.product, lot: x.lot || "",
+        planned: Number(x.planned_quantity || 0), executed: Number(x.executed_quantity || 0),
+        unit: x.unit, status: x.status, start_at: x.start_at, end_at: x.end_at,
+        notes: x.notes || "", occurrence: x.occurrence || "", responsible_id: x.responsible_id,
+        flow_rate: Number(x.flow_rate || 0), flow_rate_unit: x.flow_rate_unit || "",
+        paused_minutes: Number(x.paused_minutes || 0), locked: x.locked === true,
+        source_tank_id: x.source_tank_id, destination_tank_id: x.destination_tank_id,
+        apply_tank_movement: x.apply_tank_movement === true,
+        tank_movement_applied: x.tank_movement_applied === true,
+        tank_movement_applied_at: x.tank_movement_applied_at,
+        created_by: x.created_by, created_at: x.created_at, updated_at: x.updated_at
+      };
+      }),
+      operationEvents: results[6].data || [],
+      trucks: (results[7].data || []).map(x => {
+        const linkedProduct = (results[2].data || []).find(item => item.id === x.fluid_type_id);
+        const items = (results[31].data || []).filter(item => item.truck_id === x.id).map(item => ({
+          id: item.id,
+          truckId: item.truck_id,
+          chemicalProductId: item.chemical_product_id || null,
+          productName: item.product_name,
+          lot: item.lot || "",
+          quantity: Number(item.quantity || 0),
+          unit: item.unit,
+          displayOrder: Number(item.display_order || 0),
+          created_at: item.created_at,
+          updated_at: item.updated_at
+        }));
+        return {
+          id: x.id, date: x.movement_date, movement: x.movement_type,
+          truckType: x.truck_type || (["bbl","m³","m3"].includes(String(x.unit || "").toLowerCase()) ? "Tank" : "Bulk"),
+          fluidTypeId: x.fluid_type_id || null,
+          tankId: x.tank_id || null,
+          stockApplied: x.stock_applied === true,
+          stockAppliedAt: x.stock_applied_at,
+          stockSummary: x.stock_application_summary || {},
+          supplier: x.supplier, client: x.client || "",
+          product: linkedProduct?.name || x.product, lot: x.lot || "",
+          quantity: Number(x.quantity || 0), unit: x.unit, plate: x.plate || "",
+          driver: x.driver_name || "", invoice: x.invoice_number || "", status: x.status,
+          notes: x.notes || "", items, created_by: x.created_by,
+          created_at: x.created_at, updated_at: x.updated_at
+        };
+      }),
+      qhse: (results[8].data || []).map(x => ({
+        id: x.id, date: x.record_date, type: x.record_type, title: x.title,
+        description: x.description || "", responsible: x.responsible || "",
+        severity: x.severity, status: x.status, created_by: x.created_by,
+        created_at: x.created_at, updated_at: x.updated_at
+      })),
+      actionItems: results[9].data || [],
+      equipment: (results[10].data || []).map(x => ({
+        id: x.id, name: x.name, category: x.category, status: x.status,
+        hourmeter: Number(x.hourmeter || 0), last_hours: Number(x.last_work_hours || 0),
+        diesel_initial: Number(x.diesel_initial || 0), refueled: Number(x.diesel_refueled || 0),
+        diesel_final: Number(x.diesel_final || 0), location: x.location || "",
+        next_maintenance_date: x.next_maintenance_date,
+        maintenance_due_hourmeter: Number(x.maintenance_due_hourmeter || 0),
+        maintenance_interval_hours: Number(x.maintenance_interval_hours || 0),
+        notes: x.notes || "", updated_at: x.updated_at
+      })),
+      dieselLogs: results[11].data || [],
+      maintenanceOrders: (results[12].data || []).map(x => ({
+        id: x.id, equipment_id: x.equipment_id, title: x.title,
+        description: x.description || "", priority: x.priority, status: x.status,
+        opened_at: x.opened_at, due_date: x.due_date, closed_at: x.closed_at,
+        responsible: x.responsible || "", maintenance_type: x.maintenance_type || "Corretiva",
+        parts_used: x.parts_used || "", solution: x.solution || "",
+        estimated_cost: Number(x.estimated_cost || 0), actual_cost: Number(x.actual_cost || 0),
+        before_notes: x.before_notes || "", after_notes: x.after_notes || ""
+      })),
+      certificates: (results[13].data || []).map(x => ({
+        id: x.id, user_id: x.user_id, title: x.title, owner: x.owner_name,
+        issuer: x.issuer || "", issued_at: x.issued_at, expires_at: x.expires_at,
+        status: x.status
+      })),
+      alerts: (results[14].data || []).map(x => ({
+        id: x.id, title: x.title, message: x.message, level: x.level,
+        target: x.target_group || "", target_user_id: x.target_user_id,
+        created_at: x.created_at, read: x.is_read
+      })),
+      messages: (results[15].data || []).map(x => ({
+        id: x.id, sender: x.sender_name, sender_id: x.sender_id,
+        text: x.message, created_at: x.created_at, mine: x.sender_id === u.id
+      })),
+      attachments: (results[16].data || []).map(x => ({
+        id: x.id, module: x.module, record_id: x.record_id, file_name: x.file_name,
+        file_path: x.file_path, mime_type: x.mime_type, file_size: Number(x.file_size || 0),
+        uploaded_by: x.uploaded_by, created_at: x.created_at
+      })),
+      chemicalProducts: (results[32].data || []).map(x => ({
+        id:x.id, name:x.name, category:x.category || "",
+        packagingType:x.packaging_type || "Outros",
+        unit:x.default_unit || "unidade",
+        active:x.active !== false, notes:x.notes || "", created_by:x.created_by,
+        created_at:x.created_at, updated_at:x.updated_at
+      })),
+      chemicals: (results[17].data || []).map(x => ({
+        id: x.id, productId: x.product_id || null, name: x.product_name, category: x.category || "", lot: x.lot || "",
+        unit: x.unit || "kg", quantity: Number(x.quantity || 0),
+        minimum: Number(x.minimum_quantity || 0), expiry_date: x.expiry_date,
+        location: x.location || "", supplier: x.supplier || "",
+        status: x.status || "Disponível", notes: x.notes || "",
+        created_by: x.created_by, updated_by: x.updated_by,
+        created_at: x.created_at, updated_at: x.updated_at
+      })),
+      chemicalMovements: (results[18].data || []).map(x => ({
+        id: x.id, inventory_id: x.inventory_id, movement_type: x.movement_type,
+        quantity: Number(x.quantity || 0), previous_balance: Number(x.previous_balance || 0),
+        new_balance: Number(x.new_balance || 0), reference: x.reference || "",
+        notes: x.notes || "", performed_by: x.performed_by,
+        chemicalProductId: x.chemical_product_id || null, truckId: x.truck_id || null,
+        created_at: x.created_at
+      })),
+      tankMovements: (results[19].data || []).map(x => ({
+        id: x.id, movement_type: x.movement_type, source_tank_id: x.source_tank_id,
+        destination_tank_id: x.destination_tank_id, operation_id: x.operation_id,
+        truckId: x.truck_id || null,
+        quantity: Number(x.quantity || 0), unit: x.unit, product: x.product || "",
+        lot: x.lot || "", reference: x.reference || "", notes: x.notes || "",
+        previousVolume: x.previous_volume === null || x.previous_volume === undefined ? null : Number(x.previous_volume),
+        finalVolume: x.final_volume === null || x.final_volume === undefined ? null : Number(x.final_volume),
+        direction: x.movement_direction || "",
+        fluidTypeId: x.fluid_type_id || null,
+        client: x.client || "",
+        vessel: x.vessel || "",
+        responsibleId: x.responsible_id || x.created_by || null,
+        movementAt: x.movement_at || x.created_at,
+        statusAfter: x.status_after || "",
+        created_by: x.created_by, created_at: x.created_at
+      })),
+      systemAlerts: [...(results[20].data || []), ...(results[21].data || [])],
+      systemErrors: results[22].data || [],
+      operationAllocations: (results[23].data || []).map(x => ({
+        id: x.id, operation_id: x.operation_id, direction: x.direction,
+        tank_id: x.tank_id, quantity: Number(x.quantity || 0), unit: x.unit,
+        display_order: Number(x.display_order || 0), created_by: x.created_by,
+        created_at: x.created_at, updated_at: x.updated_at
+      })),
+      handoverPendings: (results[24].data || []).map(x => ({
+        id: x.id, title: x.title, description: x.description || "",
+        category: x.category, responsible: x.responsible || "",
+        priority: x.priority, status: x.status, due_at: x.due_at,
+        created_by: x.created_by, completed_by: x.completed_by,
+        completed_at: x.completed_at, created_at: x.created_at, updated_at: x.updated_at
+      })),
+      handoverNotes: (results[25].data || []).map(x => ({
+        id: x.id, shift_date: x.shift_date, shift_type: x.shift_type,
+        observations: x.observations || "", updated_by: x.updated_by,
+        created_at: x.created_at, updated_at: x.updated_at
+      })),
+      alertCenter: (results[26].data || []).map(x => ({
+        id: x.alert_key, title: x.title, message: x.message || "", level: x.level || "Média",
+        category: x.category || "Sistema", entity_type: x.entity_type, entity_id: x.entity_id,
+        due_at: x.due_at, created_at: x.created_at, action_page: x.action_page || "alerts", automatic: true
+      })),
+      handoverApprovals: (results[27].data || []).map(x => ({
+        id:x.id, sequence_no:Number(x.sequence_no||0), shift_date:x.shift_date, shift_type:x.shift_type,
+        status:x.status, snapshot_json:x.snapshot_json||{}, snapshot_text:x.snapshot_text||"",
+        delivered_by:x.delivered_by, delivered_at:x.delivered_at, received_by:x.received_by,
+        received_at:x.received_at, reopened_by:x.reopened_by, reopened_at:x.reopened_at,
+        created_at:x.created_at, updated_at:x.updated_at
+      })),
+      shiftChecklist: (results[28].data || []).map(x => ({
+        id:x.id, shift_date:x.shift_date, shift_type:x.shift_type, item_key:x.item_key,
+        item_label:x.item_label, category:x.category, completed:x.completed,
+        notes:x.notes||"", completed_by:x.completed_by, completed_at:x.completed_at,
+        created_by:x.created_by, created_at:x.created_at, updated_at:x.updated_at
+      })),
+      auditLogs: (results[29].data || []).map(x => ({
+        id:x.id, table_name:x.table_name, record_id:x.record_id, action:x.action,
+        old_data:x.old_data, new_data:x.new_data, changed_by:x.changed_by, created_at:x.created_at
+      })),
+      feedback: (results[30].data || []).map(x => ({
+        id:x.id, category:x.category, page:x.page || "dashboard", rating:x.rating,
+        message:x.message, device_info:x.device_info || "", app_version:x.app_version || "",
+        status:x.status || "Novo", created_by:x.created_by, created_at:x.created_at, updated_at:x.updated_at
+      })),
+      truckItems: (results[31].data || []).map(item => ({
+        id:item.id, truckId:item.truck_id, chemicalProductId:item.chemical_product_id || null,
+        productName:item.product_name, lot:item.lot || "", quantity:Number(item.quantity || 0),
+        unit:item.unit, displayOrder:Number(item.display_order || 0),
+        created_at:item.created_at, updated_at:item.updated_at
+      })),
+      closings: (results[33].data || []).map(item => ({
+        id:item.id, date:item.closing_date, shift:item.shift, periodStart:item.period_start,
+        periodEnd:item.period_end, status:item.status, summary:item.summary || {},
+        notes:item.notes || "", closedBy:item.closed_by, closedAt:item.closed_at,
+        reopenedBy:item.reopened_by, reopenedAt:item.reopened_at,
+        created_at:item.created_at, updated_at:item.updated_at
+      })),
+      closingItems: (results[34].data || []).map(item => ({
+        id:item.id, closingId:item.closing_id, itemType:item.item_type, itemId:item.item_id,
+        itemName:item.item_name, unit:item.unit,
+        theoretical:Number(item.theoretical_quantity || 0),
+        measured:item.measured_quantity === null ? null : Number(item.measured_quantity),
+        variance:item.variance === null ? null : Number(item.variance),
+        variancePct:item.variance_pct === null ? null : Number(item.variance_pct),
+        status:item.status, created_at:item.created_at
+      })),
+      inventoryCounts: (results[35].data || []).map(item => ({
+        id:item.id, countedAt:item.counted_at, shift:item.shift, itemType:item.item_type,
+        itemId:item.item_id, measured:Number(item.measured_quantity || 0),
+        unit:item.unit, notes:item.notes || "", createdBy:item.created_by
+      }))
+    };
+    state.data.systemAlerts = [...state.data.systemAlerts, ...state.data.alertCenter]
+      .filter((item,index,all) => all.findIndex(other => String(other.id || other.alert_key || other.title) === String(item.id || item.alert_key || item.title)) === index);
+    state.lastSync = new Date();
+  }
+
+  function openApp() {
+    $("#loginView").classList.add("hidden");
+    $("#appView").classList.remove("hidden");
+
+    const profile = state.data.profile;
+    $("#userName").textContent = profile.name;
+    $("#userRole").textContent = roleDisplayName(profile.role);
+    $("#userInitials").textContent = profile.name.split(/\s+/).slice(0, 2).map(x => x[0]).join("").toUpperCase();
+
+    $$(".nav-item").forEach(button => {
+      button.classList.toggle("hidden", !moduleAllowed(button.dataset.page));
+    });
+
+    applyTheme(localStorage.getItem(THEME_KEY) || "light");
+    updateConnectionBadge();
+    renderAll();
+
+    const kiosk = role() === "tv";
+    document.body.classList.toggle("kiosk-mode", kiosk);
+    document.body.classList.toggle("homologation-mode", state.testMode);
+    const firstAllowed = $$(".nav-item").find(button => !button.classList.contains("hidden"))?.dataset.page || "dashboard";
+    const storedPage = localStorage.getItem("opscontrol_last_page");
+    const hashPage = String(location.hash || "").replace("#", "");
+    const requestedPage = hashPage || storedPage || state.page;
+    showPage(kiosk ? "tv" : (moduleAllowed(requestedPage) ? requestedPage : firstAllowed), { history: false });
+    subscribeRealtime();
+    startAutoRefresh();
+    setupMobilePullToRefresh();
+    renderMobileShell();
+    saveLocalDailyBackup();
+    syncOfflineQueue();
+    updateConnectionBadge();
+  }
+
+  async function logout() {
+    clearTimeout(state.refreshDebounce);
+    clearInterval(state.refreshTimer);
+    stopTvMode();
+    if (state.realtime) await state.client.removeChannel(state.realtime);
+    await state.client.auth.signOut();
+    location.reload();
+  }
+
+  function updateConnectionBadge() {
+    const badgeEl = $("#syncBadge");
+    if (!badgeEl) return;
+
+    const pendingOffline = offlineQueue().length;
+    if (!navigator.onLine) {
+      badgeEl.textContent = pendingOffline ? `Sem conexão • ${pendingOffline} pendente(s)` : "Sem conexão";
+      badgeEl.className = "status-badge neutral";
+      renderMobileShell();
+      return;
+    }
+
+    if (state.lastRefreshError) {
+      badgeEl.textContent = "Falha de sincronização";
+      badgeEl.className = "status-badge red";
+      renderMobileShell();
+      return;
+    }
+
+    if (state.realtimeStatus === "SUBSCRIBED") {
+      const time = state.lastSync ? state.lastSync.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" }) : "";
+      badgeEl.textContent = time ? `Atualizado ${time}` : "Tempo real ativo";
+      badgeEl.className = "status-badge online";
+      renderMobileShell();
+      return;
+    }
+
+    badgeEl.textContent = state.realtimeStatus === "CHANNEL_ERROR" || state.realtimeStatus === "TIMED_OUT"
+      ? "Tempo real indisponível"
+      : "Conectando...";
+    badgeEl.className = "status-badge neutral";
+    renderMobileShell();
+  }
+
+  function scheduleRealtimeRefresh() {
+    clearTimeout(state.refreshDebounce);
+    state.refreshDebounce = setTimeout(() => refreshRealtime("tempo real"), 700);
+  }
+
+  function subscribeRealtime() {
+    if (state.realtime) return;
+    state.realtime = state.client
+      .channel("opscontrol-professional-live")
+      .on("postgres_changes", { event: "*", schema: "public" }, scheduleRealtimeRefresh)
+      .subscribe(status => {
+        state.realtimeStatus = status;
+        updateConnectionBadge();
+      });
+  }
+
+  function startAutoRefresh() {
+    if (state.autoRefreshStarted) return;
+    state.autoRefreshStarted = true;
+
+    state.refreshTimer = setInterval(() => {
+      if (navigator.onLine && document.visibilityState === "visible") refreshRealtime("verificação automática");
+    }, 60000);
+
+    document.addEventListener("visibilitychange", () => {
+      if (document.visibilityState === "visible" && navigator.onLine) refreshRealtime("retorno ao aplicativo");
+    });
+  }
+
+  async function refreshRealtime(source = "tempo real", showToast = false) {
+    if (state.refreshing || !navigator.onLine) return false;
+    state.refreshing = true;
+    state.lastRefreshError = null;
+    updateConnectionBadge();
+
+    try {
+      await loadData();
+      if (state.data.profile.active === false) {
+        await state.client.auth.signOut();
+        location.reload();
+        return false;
+      }
+      renderAll();
+      updateConnectionBadge();
+      if (showToast) toast(`Dashboard atualizado às ${state.lastSync.toLocaleTimeString("pt-BR")}.`, "success");
+      return true;
+    } catch (error) {
+      state.lastRefreshError = error;
+      console.error(`Atualização (${source}):`, error);
+      updateConnectionBadge();
+      if (showToast) toast(`Falha ao atualizar: ${error.message}`, "error");
+      return false;
+    } finally {
+      state.refreshing = false;
+    }
+  }
+
+  function renderModuleSafely(name, pageId, renderer) {
+    try {
+      renderer();
+      return true;
+    } catch (error) {
+      console.error(`Falha ao renderizar ${name}:`, error);
+      const page = $(`#page-${pageId}`);
+      if (page) {
+        page.innerHTML = header(name, "O módulo encontrou uma inconsistência isolada.") +
+          `<div class="card module-error-card"><strong>Não foi possível carregar esta aba.</strong><p>${esc(error.message || "Erro desconhecido")}</p><button class="btn primary" data-action="refresh">Tentar novamente</button></div>`;
+      }
+      return false;
+    }
+  }
+
+  function renderAll() {
+    const modules = [
+      ["Dashboard", "dashboard", renderDashboard],
+      ["Qualidade dos Dados", "quality", renderQuality],
+      ["Saneamento de Dados", "sanitation", renderSanitation],
+      ["Painel TV", "tv", renderTv],
+      ["Operações", "operations", renderOperations],
+      ["Tanques e silos", "tanks", renderTanks],
+      ["Fluidos e granéis", "fluids", renderFluids],
+      ["Catálogo químico", "chemical-catalog", renderChemicalCatalog],
+      ["Inventário químico", "chemicals", renderChemicalInventory],
+      ["Carretas", "trucks", renderTrucks],
+      ["QHSE", "qhse", renderQhse],
+      ["Manutenção", "maintenance", renderMaintenance],
+      ["Certificados", "certificates", renderCertificates],
+      ["Alertas", "alerts", renderAlerts],
+      ["Relatórios", "reports", renderReports],
+      ["Auditoria", "audit", renderAudit],
+      ["Usuários", "users", renderUsersPage],
+      ["Configurações", "settings", renderSettings]
+    ];
+
+    modules.forEach(([name, pageId, renderer]) => renderModuleSafely(name, pageId, renderer));
+    const manualUnread = (state.data.alerts || []).filter(x => !x.read).length;
+    const alertCount = $("#alertCount");
+    if (alertCount) alertCount.textContent = manualUnread + (state.data.systemAlerts || []).length;
+    renderSidebarStatus();
+    startShellClock();
+    updateShellPageMeta(state.page);
+    renderMobileShell();
+  }
+
+  function statCard(title, value, unit, icon, detail = "") {
+    return `<div class="card stat-card pro-stat">
+      <div><small>${title}</small><h2>${value}</h2><span class="muted">${unit}</span>${detail ? `<em>${detail}</em>` : ""}</div>
+      <span class="stat-icon">${icon}</span>
+    </div>`;
+  }
+
+  function storageCard(title, value, capacity, unit, icon, tone) {
+    const pct = capacity > 0 ? Math.min(100, Math.max(0, value / capacity * 100)) : 0;
+    return `<div class="card storage-stat ${tone}">
+      <div class="storage-stat-top"><div><small>${title}</small><h2>${fmt.format(value)}</h2><span>${esc(unit)} armazenados</span></div><span class="storage-icon">${icon}</span></div>
+      <div class="storage-progress"><span style="width:${pct}%"></span></div>
+      <div class="storage-foot"><span>${fmt.format(pct)}% ocupado</span><strong>${fmt.format(Math.max(0, capacity-value))} ${esc(unit)} livres</strong></div>
+    </div>`;
+  }
+
+  function aggregateOperationVolume(operations, field) {
+    const totals = new Map();
+    operations.forEach(op => {
+      const label = String(op[field] || "Não informado").trim() || "Não informado";
+      const unit = String(op.unit || "").trim() || "-";
+      const key = `${label}|||${unit}`;
+      totals.set(key, (totals.get(key) || 0) + Number(op.executed || 0));
+    });
+    return [...totals.entries()].map(([key, value]) => {
+      const [label, unit] = key.split("|||");
+      return { label, unit, value };
+    }).sort((a, b) => b.value - a.value);
+  }
+
+
+  function tvOperationAllocations(operation) {
+    return state.data.operationAllocations
+      .filter(item => item.operation_id === operation.id)
+      .sort((a, b) => a.display_order - b.display_order)
+      .map(item => {
+        const tank = state.data.tanks.find(x => x.id === item.tank_id);
+        return `${tank?.name || "Equipamento"}: ${fmt.format(item.quantity)} ${item.unit}`;
+      });
+  }
+
+  function tvTankTile(tank) {
+    return industrialEquipmentCard(tank, {
+      tv:true,
+      interactive:false,
+      visualKey:`tv:${tank.id}`
+    });
+  }
+
+  function tvOperationTile(operation) {
+    const pct = operation.planned > 0 ? Math.min(100, Math.max(0, operation.executed / operation.planned * 100)) : 0;
+    const allocations = tvOperationAllocations(operation);
+    return `<div class="tv-operation-tile">
+      <div class="tv-operation-top"><div><small>${esc(operation.client)}</small><h3>${esc(operation.vessel)}</h3></div>${badge(operation.status)}</div>
+      <div class="tv-operation-title">${esc(operation.activity)} de ${esc(operation.product)}</div>
+      ${(operation.rig || operation.well || operation.ticketNumber) ? `<div class="tv-operation-meta">${operation.rig ? `Sonda ${esc(operation.rig)}` : ""}${operation.well ? ` • Poço ${esc(operation.well)}` : ""}${operation.ticketNumber ? ` • Ticket ${esc(operation.ticketNumber)}` : ""}</div>` : ""}
+      <div class="tv-operation-progress"><span style="width:${pct}%"></span></div>
+      <div class="tv-operation-values"><strong>${fmt.format(operation.executed)} / ${fmt.format(operation.planned)} ${esc(operation.unit)}</strong><span>${fmt.format(operationFlow(operation))} ${esc(operation.unit)}/h</span></div>
+      ${allocations.length ? `<div class="tv-operation-allocations">${allocations.map(item => `<span>${esc(item)}</span>`).join("")}</div>` : ""}
+      ${operation.occurrence ? `<div class="tv-operation-occurrence">⚠ ${esc(operation.occurrence)}</div>` : ""}
+    </div>`;
+  }
+
+  function tvOverviewSlide() {
+    const d = state.data;
+    const active = d.operations.filter(op => !["Concluída", "Cancelada"].includes(op.status));
+    const totalBbl = d.tanks.filter(t => t.unit === "bbl").reduce((sum, t) => sum + Number(t.volume || 0), 0);
+    const totalTon = d.tanks.filter(t => t.unit === "ton").reduce((sum, t) => sum + Number(t.volume || 0), 0);
+    const critical = [...d.systemAlerts, ...d.alerts.filter(x => !x.read)]
+      .filter(item => isCriticalAlert(item.level))
+      .slice(0, 6);
+
+    return `<div class="tv-overview">
+      <div class="tv-kpi-row">
+        <div><span>Etapa 1</span><strong>Operações</strong></div>
+        <div><span>Operações ativas</span><strong>${active.length}</strong></div>
+        <div><span>Fluidos armazenados</span><strong>${fmt.format(totalBbl)} bbl</strong></div>
+        <div><span>Granéis armazenados</span><strong>${fmt.format(totalTon)} ton</strong></div>
+        <div><span>Alertas críticos</span><strong>${critical.length}</strong></div>
+      </div>
+      <div class="tv-overview-body">
+        <div class="tv-operations-panel">
+          <div class="tv-panel-title"><h2>1° Operação</h2><span>${active.length} operação(ões) em andamento</span></div>
+          <div class="tv-operation-grid">${active.length ? active.slice(0, 8).map(tvOperationTile).join("") : `<div class="tv-empty-state">Nenhuma operação em andamento no momento.</div>`}</div>
+        </div>
+        <div class="tv-alerts-panel">
+          <div class="tv-panel-title"><h2>Atenção operacional</h2><span>Atualização automática</span></div>
+          <div class="tv-alert-list">${critical.length ? critical.map(item => `<div class="tv-alert-item"><div>${badge(item.level)}</div><strong>${esc(item.title)}</strong><p>${esc(item.message || "")}</p></div>`).join("") : `<div class="tv-empty-state compact">Nenhum alerta crítico.</div>`}</div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  function tvTanksSlide(phase, stepLabel) {
+    const tanks = state.data.tanks
+      .filter(item => item.phase === phase && !isSiloAsset(item))
+      .sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
+    const occupied = tanks.filter(item => Number(item.volume || 0) > 0).length;
+    return `<div class="tv-inventory-slide">
+      <div class="tv-panel-title large"><div><h2>${esc(stepLabel)} — Tanques ${esc(phase)}</h2><span>${occupied} de ${tanks.length} tanques / mix tanks com produto</span></div><strong>${state.data.profile.department || "B-Port LMP"}</strong></div>
+      <div class="tv-inventory-section">
+        <div class="tv-section-label">Tanques e Mix Tanks</div>
+        <div class="tv-tank-grid">${tanks.length ? tanks.map(tvTankTile).join("") : `<div class="tv-empty-state">Nenhum tanque cadastrado para ${esc(phase)}.</div>`}</div>
+      </div>
+    </div>`;
+  }
+
+  function tvSilosSlide() {
+    const phase1 = state.data.tanks
+      .filter(item => item.phase === "Phase #1" && isSiloAsset(item))
+      .sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
+    const phase2 = state.data.tanks
+      .filter(item => item.phase === "Phase #2" && isSiloAsset(item))
+      .sort((a, b) => Number(a.order || 0) - Number(b.order || 0));
+    const total = [...phase1, ...phase2];
+    const occupied = total.filter(item => Number(item.volume || 0) > 0).length;
+    return `<div class="tv-inventory-slide">
+      <div class="tv-panel-title large"><div><h2>4° Silos Phase #1 + Phase #2</h2><span>${occupied} de ${total.length} silos com produto</span></div><strong>${state.data.profile.department || "B-Port LMP"}</strong></div>
+      <div class="tv-inventory-section silos">
+        <div class="tv-section-label">Phase #1 — Silos</div>
+        <div class="tv-silo-grid">${phase1.length ? phase1.map(tvTankTile).join("") : `<div class="tv-empty-state compact">Nenhum silo cadastrado na Phase #1.</div>`}</div>
+      </div>
+      <div class="tv-inventory-section silos">
+        <div class="tv-section-label">Phase #2 — Silos</div>
+        <div class="tv-silo-grid">${phase2.length ? phase2.map(tvTankTile).join("") : `<div class="tv-empty-state compact">Nenhum silo cadastrado na Phase #2.</div>`}</div>
+      </div>
+    </div>`;
+  }
+
+  function updateTvClock() {
+    const clock = $("#tvClock");
+    const date = $("#tvDate");
+    if (!clock || !date) return;
+    const now = new Date();
+    clock.textContent = now.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    date.textContent = now.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "long", year: "numeric" });
+  }
+
+  function changeTvSlide(step = 1) {
+    state.tv.slide = (state.tv.slide + step + 4) % 4;
+    renderTv();
+  }
+
+  function startTvMode() {
+    clearInterval(state.tv.timer);
+    clearInterval(state.tv.clockTimer);
+    state.tv.clockTimer = setInterval(updateTvClock, 1000);
+    if (!state.tv.paused) {
+      state.tv.timer = setInterval(() => {
+        if (state.page === "tv" && document.visibilityState === "visible") changeTvSlide(1);
+      }, state.tv.intervalMs);
+    }
+    updateTvClock();
+  }
+
+  function stopTvMode() {
+    clearInterval(state.tv.timer);
+    clearInterval(state.tv.clockTimer);
+    state.tv.timer = null;
+    state.tv.clockTimer = null;
+  }
+
+  function renderTv() {
+    const page = $("#page-tv");
+    if (!page || !state.data) return;
+    const totalSlides = 4;
+    const slide = ((state.tv.slide % totalSlides) + totalSlides) % totalSlides;
+    const labels = ["1. Operações", "2. Tanques Phase #1", "3. Tanques Phase #2", "4. Silos Phases #1 e #2"];
+    const content = slide === 0
+      ? tvOverviewSlide()
+      : slide === 1
+        ? tvTanksSlide("Phase #1", "2° Etapa")
+        : slide === 2
+          ? tvTanksSlide("Phase #2", "3° Etapa")
+          : tvSilosSlide();
+
+    page.innerHTML = `<div class="tv-screen">
+      <div class="tv-topbar">
+        <div class="tv-brand"><span>OC</span><div><strong>OpsControl IA</strong><small>Painel Operacional — B-Port LMP</small></div></div>
+        <div class="tv-top-status"><span class="live-dot"></span><strong>Dados em tempo real</strong><small>Última sincronização: ${state.lastSync ? state.lastSync.toLocaleTimeString("pt-BR") : "-"}</small></div>
+        <div class="tv-clock"><strong id="tvClock">--:--:--</strong><span id="tvDate">--</span></div>
+      </div>
+      <div class="tv-content">${content}</div>
+      <div class="tv-footer">
+        <div class="tv-dots">${labels.map((label, index) => `<button class="${index === slide ? "active" : ""}" data-tv-slide="${index}"><span></span>${label}</button>`).join("")}</div>
+        <div class="tv-controls no-print">
+          <button class="btn secondary" data-action="tv-prev">‹ Anterior</button>
+          <button class="btn secondary" data-action="tv-toggle">${state.tv.paused ? "▶ Retomar" : "Ⅱ Pausar"}</button>
+          <button class="btn secondary" data-action="tv-next">Próximo ›</button>
+          <button class="btn primary" data-action="tv-fullscreen">${document.fullscreenElement ? "Sair da tela cheia" : "Tela cheia"}</button>
+        </div>
+      </div>
+    </div>`;
+    updateTvClock();
+    setTimeout(() => animateIndustrialEquipmentLevels(page), 0);
+  }
+
+
+
+  function dashboardRoleHome(d, activeOps) {
+    const currentRole = role();
+    const currentShift = handoverSnapshot();
+    const openPendings = (d.handoverPendings || []).filter(x => ["Pendente", "Em andamento"].includes(x.status));
+    const lowChemicals = (d.chemicals || []).filter(x => x.quantity <= x.minimum);
+    const openOrders = (d.maintenanceOrders || []).filter(x => !["Concluída", "Fechada", "Cancelada"].includes(x.status));
+    const openActions = (d.actionItems || []).filter(x => x.status !== "Concluído");
+    const todayTrucks = (d.trucks || []).filter(x => recordDateKey(x.date || x.created_at) === localDateKey());
+    const checklist = checklistForShift();
+    const checklistDone = checklist.filter(x => x.completed).length;
+    const qualityCount = dataQualityIssues().filter(x => x.severity !== "Baixa").length;
+
+    const action = (page, label, description, icon) => `<button class="role-home-action" data-page-link="${page}"><span>${icon}</span><div><strong>${esc(label)}</strong><small>${esc(description)}</small></div><b>›</b></button>`;
+    const create = (name, label, description, icon) => `<button class="role-home-action" data-action="${name}"><span>${icon}</span><div><strong>${esc(label)}</strong><small>${esc(description)}</small></div><b>+</b></button>`;
+
+    let title = `Olá, ${esc(d.profile.name.split(" ")[0])}`;
+    let subtitle = "Resumo operacional da planta";
+    let metrics = [];
+    let actions = [];
+
+    if (["operador", "user"].includes(currentRole)) {
+      title = `Turno operacional — ${esc(d.profile.name.split(" ")[0])}`;
+      subtitle = activeOps.length ? `${activeOps.length} operação(ões) exigindo acompanhamento` : "Nenhuma operação ativa neste momento";
+      metrics = [
+        ["Operações ativas", activeOps.length, "operations"],
+        ["Checklist do turno", `${checklistDone}/${checklist.length}`, "reports"],
+        ["Pendências", openPendings.length, "reports"]
+      ];
+      actions = [
+        create("new-operation", "Registrar operação", "Início, volume, paralisação ou conclusão", "⚓"),
+        action("tanks", "Consultar tancagem", "Saldo, produto e lote", "TK"),
+        action("reports", "Passagem do turno", "Checklist e pendências", "PS")
+      ];
+    } else if (currentRole === "lider") {
+      title = "Painel do líder de turno";
+      subtitle = "Operações, pendências e entrega da equipe";
+      metrics = [
+        ["Operações ativas", activeOps.length, "operations"],
+        ["Pendências abertas", openPendings.length, "reports"],
+        ["Qualidade dos dados", qualityCount, "quality"]
+      ];
+      actions = [
+        create("new-operation", "Nova operação", "Programar e distribuir tancagem", "⚓"),
+        action("reports", "Preparar passagem", "Checklist, atividades e pendências", "PS"),
+        action("quality", "Conferir lançamentos", "Inconsistências antes do fechamento", "DQ")
+      ];
+    } else if (currentRole === "logistica") {
+      title = "Painel da logística";
+      subtitle = "Carretas, estoques, lotes e documentação";
+      metrics = [
+        ["Carretas hoje", todayTrucks.length, "trucks"],
+        ["Químicos baixos", lowChemicals.length, "chemicals"],
+        ["Pendências", openPendings.length, "reports"]
+      ];
+      actions = [
+        create("new-truck", "Movimentar carreta", "Entrada, saída, NF e lote", "CR"),
+        action("chemicals", "Inventário químico", "Saldo, validade e FEFO", "QI"),
+        action("quality", "Conferir documentos", "NF, lote e rastreabilidade", "DQ")
+      ];
+    } else if (currentRole === "mecanico") {
+      title = "Painel da manutenção";
+      subtitle = "Equipamentos e ordens de serviço";
+      metrics = [
+        ["OS abertas", openOrders.length, "maintenance"],
+        ["Equipamentos parados", d.equipment.filter(x => String(x.status).toLowerCase().includes("parado")).length, "maintenance"],
+        ["Pendências do turno", openPendings.filter(x => x.category === "Manutenção").length, "reports"]
+      ];
+      actions = [
+        create("new-maintenance-order", "Abrir ordem de serviço", "Registrar falha ou preventiva", "OS"),
+        action("maintenance", "Ver equipamentos", "Horímetro e programação", "EQ"),
+        action("reports", "Pendências recebidas", "Itens do turno anterior", "PS")
+      ];
+    } else if (currentRole === "qhse") {
+      title = "Painel QHSE";
+      subtitle = "Riscos, ações, validade e conformidade";
+      metrics = [
+        ["Ações pendentes", openActions.length, "qhse"],
+        ["Alertas críticos", d.systemAlerts.filter(x => isCriticalAlert(x.level)).length, "alerts"],
+        ["Qualidade dos dados", qualityCount, "quality"]
+      ];
+      actions = [
+        create("new-qhse", "Novo registro QHSE", "Risco, inspeção, DDS ou ocorrência", "QS"),
+        action("qhse", "Acompanhar ações", "Responsáveis e prazos", "AC"),
+        action("quality", "Ver conformidade", "Campos obrigatórios e documentos", "DQ")
+      ];
+    } else {
+      title = currentRole === "supervisor" ? "Painel da supervisão" : "Visão administrativa";
+      subtitle = "Riscos, produtividade, qualidade e decisões";
+      metrics = [
+        ["Operações ativas", activeOps.length, "operations"],
+        ["Alertas críticos", d.systemAlerts.filter(x => isCriticalAlert(x.level)).length, "alerts"],
+        ["Inconsistências", dataQualityIssues().length, "quality"]
+      ];
+      actions = [
+        action("quality", "Qualidade e conciliação", "Validar dados antes do fechamento", "DQ"),
+        action("reports", "Relatórios gerenciais", "Indicadores e passagem", "RG"),
+        action("audit", "Auditoria", "Quem alterou e quando", "AU")
+      ];
+    }
+
+    return `<section class="role-home-panel role-${esc(currentRole)}">
+      <div class="role-home-heading"><div><small>MEU PAINEL</small><h2>${title}</h2><p>${subtitle}</p></div><button class="btn secondary" data-action="open-feedback">Dar feedback</button></div>
+      <div class="role-home-metrics">${metrics.map(([label, value, page]) => `<button data-page-link="${page}"><span>${esc(label)}</span><strong>${esc(value)}</strong></button>`).join("")}</div>
+      <div class="role-home-actions">${actions.join("")}</div>
+    </section>`;
+  }
+
+
+  const TANK_CLIENTS = ["Petrobras", "PRIO", "Equinor", "Interno", "A definir"];
+
+  function tankClientOptions(selected = "A definir") {
+    return TANK_CLIENTS.map(client =>
+      `<option value="${client}" ${client === selected ? "selected" : ""}>${client}</option>`
+    ).join("");
+  }
+
+  function tankClientClass(client = "A definir") {
+    return normalizeSearch(client).replace(/\s+/g, "-") || "a-definir";
+  }
+
+  function tankClientSummary(client) {
+    const items = (state.data.tanks || []).filter(item => (item.client || "A definir") === client);
+    const occupied = items.filter(item => Number(item.volume || 0) > 0);
+    const fluidVolume = occupied
+      .filter(item => !isSiloAsset(item))
+      .reduce((sum, item) => sum + Number(item.volume || 0), 0);
+    const bulkVolume = occupied
+      .filter(item => isSiloAsset(item))
+      .reduce((sum, item) => sum + Number(item.volume || 0), 0);
+    return { client, items, occupied, fluidVolume, bulkVolume };
+  }
+
+  function dashboardTankClientCards() {
+    return TANK_CLIENTS.map(client => {
+      const summary = tankClientSummary(client);
+      return `<article class="card dashboard-client-tank-card client-${tankClientClass(client)}">
+        <div class="dashboard-client-tank-head">
+          <span>${esc(client)}</span>
+          <strong>${summary.occupied.length}/${summary.items.length}</strong>
+        </div>
+        <small>equipamentos com saldo / cadastrados</small>
+        <div class="dashboard-client-tank-values">
+          <span>Fluidos<strong>${fmt.format(summary.fluidVolume)} bbl</strong></span>
+          <span>Granéis<strong>${fmt.format(summary.bulkVolume)} ton</strong></span>
+        </div>
+        <button class="btn small secondary" data-page-link="tanks">Abrir tancagem</button>
+      </article>`;
+    }).join("");
+  }
+
+
+  function mobileDashboardPriority(d, activeOps) {
+    const alerts = [];
+    const undefinedClients = d.tanks.filter(item => Number(item.volume || 0) > 0 && (!item.client || item.client === "A definir")).length;
+    const lowProducts = groupedChemicalInventory().filter(item => ["Baixo estoque", "Sem estoque", "Vencido"].includes(item.inventoryStatus)).length;
+    const trucksWithoutInvoice = d.trucks.filter(item => recordDateKey(item.date) === localDateKey() && !item.invoice).length;
+    const closing = currentClosing(localDateKey(), ensureHandoverSelection().shift);
+    const unreadCritical = d.alerts.filter(item => !item.read && isCriticalAlert(item.level)).length
+      + d.systemAlerts.filter(item => isCriticalAlert(item.level)).length;
+
+    if (unreadCritical) alerts.push({ icon: "⚠", text: `${unreadCritical} alerta(s) crítico(s)`, page: "alerts", tone: "critical" });
+    if (undefinedClients) alerts.push({ icon: "◫", text: `${undefinedClients} tanque(s) com cliente A definir`, page: "tanks", tone: "warning" });
+    if (lowProducts) alerts.push({ icon: "◈", text: `${lowProducts} produto(s) químico(s) exigem atenção`, page: "chemicals", tone: "warning" });
+    if (trucksWithoutInvoice) alerts.push({ icon: "🚛", text: `${trucksWithoutInvoice} carreta(s) de hoje sem NF`, page: "trucks", tone: "warning" });
+    if (!closing || closing.status !== "Fechado") alerts.push({ icon: "✓", text: "Fechamento do turno ainda pendente", page: "reports", tone: "info" });
+
+    return `<section class="mobile-dashboard-priority mobile-only-block">
+      <div class="mobile-priority-title"><div><small>AGORA</small><h2>Central operacional</h2></div><span>${activeOps.length} operação(ões) ativa(s)</span></div>
+      <div class="mobile-alert-strips">${alerts.slice(0, 5).map(item =>
+        `<button class="mobile-alert-strip ${item.tone}" data-page-link="${item.page}"><span>${item.icon}</span><strong>${esc(item.text)}</strong><b>›</b></button>`
+      ).join("") || `<div class="mobile-all-clear"><span>✓</span><strong>Nenhum alerta prioritário neste momento.</strong></div>`}</div>
+    </section>`;
+  }
+
+  function mobileOperationQuickMode() {
+    return `<section class="mobile-operation-mode mobile-only-block">
+      <div class="mobile-priority-title"><div><small>ACESSO RÁPIDO</small><h2>Modo operação</h2></div></div>
+      <div class="mobile-operation-grid">
+        <button data-action="new-operation"><span>⚓</span><strong>Nova operação</strong><small>Bombeio, fabricação ou backload</small></button>
+        <button data-page-link="tanks"><span>◫</span><strong>Atualizar tanque</strong><small>Cliente, produto e volume</small></button>
+        <button data-action="new-truck"><span>🚛</span><strong>Registrar carreta</strong><small>Entrada, saída e NF</small></button>
+        <button data-action="new-chemical"><span>◈</span><strong>Adicionar lote</strong><small>Inventário químico</small></button>
+        <button data-page-link="reports"><span>✓</span><strong>Fechar turno</strong><small>Conciliação e passagem</small></button>
+        <button data-action="mobile-quick"><span>＋</span><strong>Mais ações</strong><small>Abrir todos os atalhos</small></button>
+      </div>
+    </section>`;
+  }
+
+  function renderDashboard() {
+    const d = state.data;
+    const operations = filteredOperations();
+    const trucks = filteredTrucks();
+    const filtersActive = filterIsActive();
+
+    const storage = type => {
+      const items = d.tanks.filter(t => productClass(t.product, t.kind, t.volume) === type);
+      return {
+        volume: items.reduce((sum, item) => sum + Number(item.volume || 0), 0),
+        capacity: items.reduce((sum, item) => sum + Number(item.capacity || 0), 0)
+      };
+    };
+
+    const wbm = storage("wbm");
+    const brine = storage("brine");
+    const sbm = storage("sbm");
+    const olefin = storage("olefin");
+    const bulk = storage("bulk");
+    const genericVolume = d.tanks
+      .filter(t => productClass(t.product, t.kind, t.volume) === "generic")
+      .reduce((sum, item) => sum + Number(item.volume || 0), 0);
+
+    const activeOps = operations.filter(x => !["Concluída", "Cancelada"].includes(x.status));
+    const today = localDateKey();
+    const todayOps = d.operations.filter(x => recordDateKey(x.start_at || x.created_at) === today).length;
+    const todayTrucks = d.trucks.filter(x => recordDateKey(x.date) === today).length;
+    const periodOps = operations.length;
+    const periodTrucks = trucks.length;
+
+    const openMaintenance = d.maintenanceOrders.filter(x => !["Concluída", "Fechada", "Cancelada"].includes(x.status)).length;
+    const expiring = d.certificates.filter(x => {
+      const days = daysUntil(x.expires_at);
+      return days !== null && days >= 0 && days <= 60;
+    });
+    const pendingQhse = d.actionItems.filter(x => x.status !== "Concluído").length
+      + d.qhse.filter(x => x.status !== "Concluído").length;
+    const downtime = operations.reduce((sum, op) => sum + Number(op.paused_minutes || 0), 0);
+    const lowChemicals = d.chemicals.filter(x => x.quantity <= x.minimum).length;
+    const expiringChemicals = d.chemicals.filter(x => {
+      const days = daysUntil(x.expiry_date);
+      return days !== null && days >= 0 && days <= 60;
+    }).length;
+    const criticalAlerts = d.systemAlerts.filter(x => isCriticalAlert(x.level)).length
+      + d.alerts.filter(x => !x.read && isCriticalAlert(x.level)).length;
+
+    const byClient = aggregateOperationVolume(operations, "client").slice(0, 7);
+    const products = aggregateOperationVolume(operations, "product").slice(0, 7);
+    const maxClient = Math.max(...byClient.map(x => x.value), 1);
+
+    const clients = [...new Set(d.operations.map(x => x.client).filter(Boolean))].sort();
+    const productNames = [...new Set(d.operations.map(x => x.product).filter(Boolean))].sort();
+
+    const latestChange = latestTimestamp([
+      ...d.tanks.map(x => x.updated_at),
+      ...d.operations.map(x => x.updated_at || x.created_at),
+      ...d.chemicals.map(x => x.updated_at),
+      ...d.maintenanceOrders.map(x => x.closed_at || x.opened_at),
+      ...d.alerts.map(x => x.created_at)
+    ]);
+
+    const occupiedAssets = d.tanks.filter(x => Number(x.volume || 0) > 0).length;
+    const blockedAssets = d.tanks.filter(x => x.status === "Bloqueado").length;
+    const periodLabel = filtersActive ? "no filtro selecionado" : "hoje";
+    const operationCount = filtersActive ? periodOps : todayOps;
+    const truckCount = filtersActive ? periodTrucks : todayTrucks;
+
+    $("#page-dashboard").innerHTML =
+      header(MOBILE_PAGE_META.dashboard[0], "Informações priorizadas conforme o seu cargo.",
+        `<button class="btn secondary" data-export="operations">Exportar CSV</button>
+         <button class="btn secondary" data-action="refresh">↻ Atualizar agora</button>
+         <button class="btn primary" data-action="new-operation">+ Nova operação</button>`) +
+
+      mobileDashboardPriority(d, activeOps) +
+      mobileOperationQuickMode() +
+      dashboardRoleHome(d, activeOps) +
+      `<div class="dashboard-sync-strip">
+        <div><span class="live-dot"></span><strong>Atualização automática ativa</strong><small>Verificação em tempo real e a cada 60 segundos</small></div>
+        <div><span>Última sincronização</span><strong>${state.lastSync ? dateTime(state.lastSync) : "-"}</strong></div>
+        <div><span>Última alteração operacional</span><strong>${latestChange ? dateTime(latestChange) : "-"}</strong></div>
+      </div>
+
+      <div class="card dashboard-filters no-print">
+        <div><label>Data inicial</label><input id="filterStart" type="date" value="${esc(state.filters.start)}"></div>
+        <div><label>Data final</label><input id="filterEnd" type="date" value="${esc(state.filters.end)}"></div>
+        <div><label>Cliente</label><select id="filterClient"><option value="">Todos</option>${clients.map(x => `<option ${state.filters.client === x ? "selected" : ""}>${esc(x)}</option>`).join("")}</select></div>
+        <div><label>Produto</label><select id="filterProduct"><option value="">Todos</option>${productNames.map(x => `<option ${state.filters.product === x ? "selected" : ""}>${esc(x)}</option>`).join("")}</select></div>
+        <div class="filter-actions"><button class="btn primary" data-action="apply-dashboard-filters">Aplicar</button><button class="btn secondary" data-action="clear-dashboard-filters">Limpar</button></div>
+      </div>
+      ${filtersActive ? `<div class="dashboard-filter-notice">Os filtros afetam operações, carretas, tempo parado e rankings. A tancagem sempre mostra o saldo atual da planta.</div>` : ""}
+
+      <div class="grid four dashboard-primary-stats" style="margin-top:14px">
+        ${statCard(filtersActive ? "Operações no filtro" : "Operações hoje", fmt.format(operationCount), periodLabel, "⚓", activeOps.length ? `${activeOps.length} em andamento` : "Nenhuma em andamento")}
+        ${statCard(filtersActive ? "Carretas no filtro" : "Carretas hoje", fmt.format(truckCount), periodLabel, "🚛")}
+        ${statCard("Manutenções abertas", fmt.format(openMaintenance), "ordens pendentes", "⚙")}
+        ${statCard("Alertas críticos", fmt.format(criticalAlerts), "automáticos e não lidos", "⚠")}
+      </div>
+
+      <div class="section-title">Tancagem atual</div>
+      <div class="grid five dashboard-storage-grid">
+        ${storageCard("WBM", wbm.volume, wbm.capacity, "bbl", "💧", "wbm")}
+        ${storageCard("Brine", brine.volume, brine.capacity, "bbl", "●", "brine")}
+        ${storageCard("SBM", sbm.volume, sbm.capacity, "bbl", "●", "sbm")}
+        ${storageCard("Olefina", olefin.volume, olefin.capacity, "bbl", "◉", "olefin")}
+        ${storageCard("Granéis", bulk.volume, bulk.capacity, "ton", "◆", "bulk")}
+      </div>
+      ${genericVolume > 0 ? `<div class="dashboard-data-warning">Existem ${fmt.format(genericVolume)} bbl com produto não classificado. Informe ou vincule o produto para incluir esse volume no card correto.</div>` : ""}
+
+      <div class="section-title">Tancagem por cliente</div>
+      <div class="grid four dashboard-tank-client-grid">${dashboardTankClientCards()}</div>
+
+      <div class="grid two" style="margin-top:14px">
+        <div class="card"><h3>Operações em andamento</h3><p>${activeOps.length} operação(ões) ativa(s) ${filtersActive ? "no filtro" : ""}</p>
+          ${activeOps.length ? activeOps.slice(0, 6).map(op => {
+            const pct = op.planned ? Math.min(100, Math.round(op.executed / op.planned * 100)) : 0;
+            return `<div class="operation-mini"><div class="kpi-row"><div><strong>${esc(op.client)} • ${esc(op.vessel)}</strong><span class="muted">${esc(op.activity)} — ${esc(op.product)}</span></div>${badge(op.status)}</div><div class="progress"><span style="width:${pct}%"></span></div><small>${fmt.format(op.executed)} / ${fmt.format(op.planned)} ${esc(op.unit)} • ${fmt.format(operationFlow(op))} ${esc(op.unit)}/h</small></div>`;
+          }).join("") : `<div class="empty">Nenhuma operação ativa.</div>`}
+        </div>
+
+        <div class="card"><h3>Situação da planta</h3><div class="kpi-list" style="margin-top:15px">
+          <div class="kpi-row"><span>Equipamentos com produto</span><strong>${occupiedAssets} de ${d.tanks.length}</strong></div>
+          <div class="kpi-row"><span>Tanques/silos bloqueados</span><strong>${blockedAssets}</strong></div>
+          <div class="kpi-row"><span>Pendências QHSE</span><strong>${pendingQhse}</strong></div>
+          <div class="kpi-row"><span>Tempo parado ${filtersActive ? "no filtro" : "carregado"}</span><strong>${fmt.format(downtime / 60)} h</strong></div>
+          <div class="kpi-row"><span>Certificados a vencer</span><strong>${expiring.length}</strong></div>
+          <div class="kpi-row"><span>Químicos em baixo estoque</span><strong>${lowChemicals}</strong></div>
+          <div class="kpi-row"><span>Lotes químicos vencendo</span><strong>${expiringChemicals}</strong></div>
+        </div></div>
+      </div>
+
+      <div class="grid two" style="margin-top:14px">
+        <div class="card"><h3>Volume executado por cliente</h3><p>Valores separados por unidade para não misturar bbl e toneladas.</p><div class="bar-list">${byClient.length ? byClient.map(item => `<div class="bar-row"><div><span>${esc(item.label)} <em class="unit-chip">${esc(item.unit)}</em></span><strong>${fmt.format(item.value)}</strong></div><div class="bar-track"><span style="width:${item.value / maxClient * 100}%"></span></div></div>`).join("") : `<div class="empty">Sem operações no filtro.</div>`}</div></div>
+        <div class="card"><h3>Produtos mais movimentados</h3><p>Ranking por produto e unidade operacional.</p><div class="ranking-list">${products.length ? products.map((item, index) => `<div class="ranking-row"><span class="rank">${index + 1}</span><div><strong>${esc(item.label)}</strong><small>${fmt.format(item.value)} ${esc(item.unit)} movimentados</small></div></div>`).join("") : `<div class="empty">Sem movimentações no filtro.</div>`}</div></div>
+      </div>
+
+      <div class="card smart-query" style="margin-top:14px"><div><h3>Consulta inteligente</h3><p>Pergunte sobre volumes, clientes, carretas, tanques, químicos, certificados ou diesel.</p></div><div class="smart-input"><input id="smartQuestion" placeholder="Ex.: Quantos bbl de Brine temos?"><button class="btn primary" data-action="smart-query">Perguntar</button></div><div id="smartAnswer" class="smart-answer hidden"></div></div>`;
+  }
+
+
+
+  function dataQualityIssues() {
+    const d = state.data;
+    const issues = [];
+    const add = (severity, category, title, detail, page, entityType = "", entityId = "") => issues.push({
+      id: `${category}:${entityType}:${entityId}:${title}`,
+      severity, category, title, detail, page, entityType, entityId
+    });
+
+    d.tanks.forEach(tank => {
+      if (tank.volume > 0 && (!tank.client || tank.client === "A definir")) add("Média", "Tancagem", `${tank.name} com cliente a definir`, `${tank.product || "Produto não informado"} possui ${fmt.format(tank.volume)} ${tank.unit} sem cliente definido.`, "tanks", "tank", tank.id);
+      if (tank.volume > 0 && !tank.product) add("Alta", "Tancagem", `${tank.name} com saldo sem produto`, `${fmt.format(tank.volume)} ${tank.unit} precisam ser classificados.`, "tanks", "tank", tank.id);
+      if (tank.volume > 0 && !tank.lot) add("Média", "Tancagem", `${tank.name} sem lote`, `${tank.product || "Produto não informado"} possui saldo sem rastreabilidade de lote.`, "tanks", "tank", tank.id);
+      if (isSiloAsset(tank) && tank.volume > 0 && !(Number(tank.density) > 0)) add("Alta", "Tancagem", `${tank.name} sem densidade`, "A capacidade operacional do silo depende da densidade cadastrada.", "tanks", "tank", tank.id);
+      if (tank.capacity > 0 && tank.volume > tank.capacity + 0.001) add("Crítica", "Tancagem", `${tank.name} acima da capacidade`, `${fmt.format(tank.volume)} de ${fmt.format(tank.capacity)} ${tank.unit}.`, "tanks", "tank", tank.id);
+      const latest = d.tankHistory.filter(x => x.tank_id === tank.id).sort((a,b) => new Date(b.created_at)-new Date(a.created_at))[0];
+      if (latest && Math.abs(Number(latest.new_volume || 0) - Number(tank.volume || 0)) > 0.001) add("Alta", "Conciliação", `${tank.name} diferente do último histórico`, `Atual ${fmt.format(tank.volume)} ${tank.unit}; histórico ${fmt.format(latest.new_volume)} ${tank.unit}.`, "tanks", "tank", tank.id);
+    });
+
+    d.operations.forEach(op => {
+      const mode = tankMovementMode(op.activity);
+      const allocations = normalizedOperationAllocations(op);
+      const total = allocations.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+      if (!op.fluidTypeId) add("Alta", "Operações", `${op.vessel}: produto não vinculado`, `${op.product || "Produto não informado"} precisa ser selecionado no catálogo Fluidos e Granéis.`, "operations", "operation", op.id);
+      if (op.status === "Concluída" && !op.ticketNumber) add("Média", "Operações", `${op.vessel}: concluída sem ticket`, `${op.client} • ${op.activity} de ${op.product}.`, "operations", "operation", op.id);
+      if (op.status === "Concluída" && !op.end_at) add("Alta", "Operações", `${op.vessel}: concluída sem término`, `${op.client} • ${op.activity} de ${op.product}.`, "operations", "operation", op.id);
+      if (["Em andamento", "Paralisada", "Concluída"].includes(op.status) && !op.start_at) add("Alta", "Operações", `${op.vessel}: sem horário inicial`, `${op.client} • ${op.activity} de ${op.product}.`, "operations", "operation", op.id);
+      if (mode !== "none" && op.executed > 0 && !allocations.length) add("Crítica", "Operações", `${op.vessel}: sem rateio de tancagem`, `${fmt.format(op.executed)} ${op.unit} executados sem origem/destino distribuído.`, "operations", "operation", op.id);
+      if (mode !== "none" && allocations.length && Math.abs(total - op.executed) > 0.001) add("Alta", "Conciliação", `${op.vessel}: rateio diferente do executado`, `Executado ${fmt.format(op.executed)}; rateado ${fmt.format(total)} ${op.unit}.`, "operations", "operation", op.id);
+      if (op.executed > op.planned + 0.001 && op.planned > 0) add("Média", "Operações", `${op.vessel}: executado acima do planejado`, `${fmt.format(op.executed)} de ${fmt.format(op.planned)} ${op.unit}.`, "operations", "operation", op.id);
+    });
+
+    d.trucks.forEach(truck => {
+      if (truck.truckType !== "Plataforma" && ["Recebida","Concluída"].includes(truck.status) && !truck.stockApplied) add("Crítica","Logística",`${truck.plate || truck.invoice || "Carreta"}: estoque não aplicado`,"Abra a carreta e confirme produto, quantidade e equipamento.","trucks","truck",truck.id);
+      if (!["Bulk","Tank","Plataforma"].includes(truck.truckType)) add("Alta", "Logística", `${truck.plate || truck.product}: tipo não definido`, "Classifique a carreta como Bulk, Tank ou Plataforma.", "trucks", "truck", truck.id);
+      if (!truck.invoice) add("Média", "Logística", `${truck.plate || truck.product}: carreta sem NF`, `${truck.movement} • ${truck.truckType} • ${truck.product}.`, "trucks", "truck", truck.id);
+      if (truck.truckType !== "Plataforma" && !truck.fluidTypeId) add("Alta", "Logística", `${truck.plate || truck.product}: produto não vinculado`, "Selecione o produto cadastrado em Fluidos e Granéis.", "trucks", "truck", truck.id);
+      if (truck.truckType !== "Plataforma" && !truck.lot) add("Média", "Logística", `${truck.plate || truck.product}: carreta sem lote`, `${truck.product} sem lote informado.`, "trucks", "truck", truck.id);
+      if (truck.truckType === "Plataforma" && !(truck.items || []).length) add("Alta", "Logística", `${truck.plate || "Plataforma"}: sem produtos`, "Adicione os insumos e suas quantidades.", "trucks", "truck", truck.id);
+      if (!truck.plate) add("Baixa", "Logística", `Movimentação sem placa`, `${truck.product} • NF ${truck.invoice || "-"}.`, "trucks", "truck", truck.id);
+    });
+
+    d.chemicals.forEach(item => {
+      if (!item.productId) add("Alta","Químicos",`${item.name} sem Catálogo Químico`,"Vincule o lote a um nome oficial.","chemicals","chemical",item.id);
+      if (!item.lot) add("Alta", "Químicos", `${item.name} sem lote`, "O controle FEFO e a rastreabilidade ficam incompletos.", "chemicals", "chemical", item.id);
+      if (!item.expiry_date) add("Média", "Químicos", `${item.name} sem validade`, `Lote ${item.lot || "-"}.`, "chemicals", "chemical", item.id);
+      if (item.quantity < 0) add("Crítica", "Químicos", `${item.name} com saldo negativo`, `${fmt.format(item.quantity)} ${item.unit}.`, "chemicals", "chemical", item.id);
+      const movements = d.chemicalMovements.filter(x => x.inventory_id === item.id).sort((a,b) => new Date(a.created_at)-new Date(b.created_at));
+      const latest = movements.at(-1);
+      if (latest && Math.abs(Number(latest.new_balance) - Number(item.quantity)) > 0.001) add("Crítica", "Conciliação", `${item.name} diferente da movimentação`, `Estoque ${fmt.format(item.quantity)}; último saldo ${fmt.format(latest.new_balance)} ${item.unit}.`, "chemicals", "chemical", item.id);
+      movements.forEach((movement, index) => {
+        if (index === 0) return;
+        const previous = movements[index - 1];
+        if (Math.abs(Number(movement.previous_balance) - Number(previous.new_balance)) > 0.001) add("Alta", "Conciliação", `${item.name}: quebra na sequência de saldos`, `${dateTime(previous.created_at)} → ${dateTime(movement.created_at)}.`, "chemicals", "chemical", item.id);
+      });
+    });
+
+    d.certificates.forEach(item => {
+      if (!item.user_id) add("Média", "Documentação", `${item.title} sem usuário vinculado`, `${item.owner || "Colaborador não informado"}.`, "certificates", "certificate", item.id);
+      if (!item.expires_at) add("Média", "Documentação", `${item.title} sem validade`, `${item.owner || "-"}.`, "certificates", "certificate", item.id);
+    });
+
+    d.equipment.forEach(item => {
+      if (!item.location) add("Baixa", "Manutenção", `${item.name} sem localização`, `${item.category}.`, "maintenance", "equipment", item.id);
+      if (!item.next_maintenance_date && !item.maintenance_due_hourmeter) add("Média", "Manutenção", `${item.name} sem preventiva programada`, "Cadastre data ou horímetro para a próxima manutenção.", "maintenance", "equipment", item.id);
+    });
+
+    return issues.sort((a, b) => {
+      const rank = { "Crítica": 0, "Alta": 1, "Média": 2, "Baixa": 3 };
+      return (rank[a.severity] ?? 9) - (rank[b.severity] ?? 9) || a.category.localeCompare(b.category);
+    });
+  }
+
+  function reconciliationSummary() {
+    const d = state.data;
+    const chemicalOk = d.chemicals.filter(item => {
+      const latest = d.chemicalMovements.filter(x => x.inventory_id === item.id).sort((a,b) => new Date(b.created_at)-new Date(a.created_at))[0];
+      return !latest || Math.abs(Number(latest.new_balance) - Number(item.quantity)) <= 0.001;
+    }).length;
+    const tankOk = d.tanks.filter(tank => {
+      const latest = d.tankHistory.filter(x => x.tank_id === tank.id).sort((a,b) => new Date(b.created_at)-new Date(a.created_at))[0];
+      return !latest || Math.abs(Number(latest.new_volume || 0) - Number(tank.volume || 0)) <= 0.001;
+    }).length;
+    const operationOk = d.operations.filter(op => {
+      const mode = tankMovementMode(op.activity);
+      if (mode === "none" || op.executed <= 0) return true;
+      const total = normalizedOperationAllocations(op).reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+      return Math.abs(total - op.executed) <= 0.001;
+    }).length;
+    return {
+      tankOk, tankTotal: d.tanks.length,
+      chemicalOk, chemicalTotal: d.chemicals.length,
+      operationOk, operationTotal: d.operations.length
+    };
+  }
+
+  function renderQuality() {
+    const issues = dataQualityIssues();
+    const summary = reconciliationSummary();
+    const critical = issues.filter(x => ["Crítica", "Alta"].includes(x.severity));
+    const categories = [...new Set(issues.map(x => x.category))];
+    const cards = issues.map(item => `<article class="card quality-issue-card ${statusClass(item.severity)}">
+      <div class="quality-issue-top"><span>${esc(item.category)}</span>${badge(item.severity)}</div>
+      <h3>${esc(item.title)}</h3><p>${esc(item.detail)}</p>
+      <footer><button class="btn small secondary" data-quality-page="${item.page}" data-quality-type="${item.entityType}" data-quality-id="${item.entityId}">Corrigir registro</button></footer>
+    </article>`).join("");
+
+    $("#page-quality").innerHTML =
+      header("Qualidade dos dados", "Verificação automática de rastreabilidade, conciliação e campos obrigatórios.",
+        `<button class="btn secondary" data-action="refresh">↻ Recalcular</button><button class="btn primary" data-export="quality">Exportar pendências</button>`) +
+      `<div class="quality-score-card card"><div><small>ÍNDICE DE QUALIDADE</small><strong>${Math.max(0, Math.round(100 - Math.min(100, issues.reduce((sum, item) => sum + ({Crítica:8,Alta:5,Média:2,Baixa:1}[item.severity] || 1), 0))))}%</strong><span>${issues.length} ponto(s) encontrado(s)</span></div><div class="quality-score-bars"><span>Críticos/altos<strong>${critical.length}</strong></span><span>Categorias<strong>${categories.length}</strong></span><span>Última análise<strong>${new Date().toLocaleTimeString("pt-BR")}</strong></span></div></div>
+      <div class="section-title">Conciliação automática</div>
+      <div class="grid three reconciliation-grid">
+        <div class="card reconciliation-card"><span>Tanques e silos</span><strong>${summary.tankOk}/${summary.tankTotal}</strong><small>Saldo atual igual ao último histórico</small><div class="progress"><span style="width:${summary.tankTotal ? summary.tankOk / summary.tankTotal * 100 : 100}%"></span></div></div>
+        <div class="card reconciliation-card"><span>Inventário químico</span><strong>${summary.chemicalOk}/${summary.chemicalTotal}</strong><small>Saldo igual à última movimentação</small><div class="progress"><span style="width:${summary.chemicalTotal ? summary.chemicalOk / summary.chemicalTotal * 100 : 100}%"></span></div></div>
+        <div class="card reconciliation-card"><span>Operações com rateio</span><strong>${summary.operationOk}/${summary.operationTotal}</strong><small>Rateio igual ao volume executado</small><div class="progress"><span style="width:${summary.operationTotal ? summary.operationOk / summary.operationTotal * 100 : 100}%"></span></div></div>
+      </div>
+      ${latestClosingReconciliationPanel()}
+      <div class="section-title">Pendências encontradas</div>
+      <div class="quality-filter-chips">${categories.map(category => `<span>${esc(category)} <strong>${issues.filter(x => x.category === category).length}</strong></span>`).join("") || `<span>Nenhuma pendência</span>`}</div>
+      <div class="quality-issues-grid">${cards || `<div class="card quality-all-good"><strong>✓ Dados consistentes</strong><p>Nenhuma inconsistência automática foi encontrada.</p></div>`}</div>`;
+  }
+
+
+  function sanitationIssues() {
+    const issues=[];
+    const add=(type,title,detail,page,id="")=>issues.push({type,title,detail,page,id});
+    state.data.operations.filter(item=>!item.fluidTypeId).forEach(item=>add("Operação",`${item.vessel}: produto sem vínculo`,item.product||"Produto não informado","operations",item.id));
+    state.data.trucks.filter(item=>["Bulk","Tank"].includes(item.truckType)&&!item.fluidTypeId).forEach(item=>add("Carreta",`${item.plate||item.invoice||"Carreta"}: produto sem vínculo`,item.product,"trucks",item.id));
+    state.data.chemicals.filter(item=>!item.productId).forEach(item=>add("Químico",`${item.name}: lote sem catálogo`,`Lote ${item.lot||"-"}`,"chemicals",item.id));
+    state.data.tanks.filter(item=>item.volume>0&&!item.fluidTypeId).forEach(item=>add("Tancagem",`${item.name}: saldo sem produto vinculado`,`${fmt.format(item.volume)} ${item.unit}`,"tanks",item.id));
+    state.data.fluids.filter(item=>["granel","insumo"].includes(String(item.type).toLowerCase())&&Number(item.density)>10).forEach(item=>add("Densidade",`${item.name}: densidade fora do padrão`,`${fmt.format(item.density)} ${item.densityUnit}`,"fluids",item.id));
+    return issues;
+  }
+
+  function renderSanitation() {
+    const issues=sanitationIssues();
+    const grouped=[...new Set(issues.map(item=>item.type))];
+    $("#page-sanitation").innerHTML=header("Saneamento de Dados","Localize registros antigos sem vínculo e corrija sem alterar saldos.",`<button class="btn secondary" data-action="refresh">↻ Reanalisar</button>`)+
+      `<div class="card sanitation-intro"><strong>Correções automáticas já aplicadas</strong><p>Os lotes químicos existentes foram vinculados ao novo Catálogo Químico pelo nome. Esta tela mostra apenas o que ainda exige decisão humana.</p></div>
+      <div class="grid four">${grouped.map(type=>statCard(type,issues.filter(item=>item.type===type).length,"pendência(s)","!")).join("")||statCard("Pendências",0,"dados vinculados","✓")}</div>
+      <div class="section-title">Registros que exigem conferência</div><div class="sanitation-grid">${issues.map(item=>`<article class="card sanitation-card"><div>${badge(item.type)}<h3>${esc(item.title)}</h3><p>${esc(item.detail)}</p></div><button class="btn small primary" data-sanitation-page="${item.page}" data-sanitation-id="${item.id}">Abrir registro</button></article>`).join("")||`<div class="card quality-all-good"><strong>✓ Base saneada</strong><p>Nenhum vínculo antigo pendente foi encontrado.</p></div>`}</div>`;
+  }
+
+  function planningAssessment(operation) {
+    const allocations = normalizedOperationAllocations(operation);
+    const mode = tankMovementMode(operation.activity);
+    const expected = Number(operation.planned || 0);
+    const allocated = allocations.reduce((sum,item)=>sum+Number(item.quantity||0),0);
+    const issues = [];
+    if (mode !== "none" && !allocations.length) issues.push("Nenhum tanque ou silo reservado");
+    if (mode !== "none" && allocations.length && Math.abs(allocated-expected)>0.001) issues.push(`Rateio ${fmt.format(allocated)} de ${fmt.format(expected)} ${operation.unit}`);
+    allocations.forEach(item => {
+      const tank=state.data.tanks.find(t=>t.id===item.tank_id); if(!tank){issues.push("Equipamento não localizado");return;}
+      if(item.direction==="source" && Number(item.quantity)>Number(tank.volume)) issues.push(`${tank.name}: saldo insuficiente`);
+      if(item.direction==="destination" && Number(item.quantity)>Number(tank.capacity-tank.volume)) issues.push(`${tank.name}: capacidade insuficiente`);
+      if(String(tank.unit).toLowerCase()!==String(operation.unit).toLowerCase()) issues.push(`${tank.name}: unidade diferente`);
+    });
+    return { allocations, allocated, issues, ready: issues.length===0 && mode!=="none" };
+  }
+
+  function planningCard(operation) {
+    const check=planningAssessment(operation); const start=operation.start_at?dateTime(operation.start_at):"Sem horário";
+    return `<div class="planning-card ${check.issues.length?"risk":"ready"}">
+      <div class="planning-card-head"><div><small>${esc(operation.client)}</small><h3>${esc(operation.vessel)}</h3></div>${badge(check.issues.length?"Atenção":"Pronta")}</div>
+      <p>${esc(operation.activity)} de <strong>${esc(operation.product)}</strong></p>
+      <div class="planning-operation-meta">${operation.rig ? `<span>Sonda: ${esc(operation.rig)}</span>` : ""}${operation.well ? `<span>Poço: ${esc(operation.well)}</span>` : ""}${operation.ticketNumber ? `<span>Ticket: ${esc(operation.ticketNumber)}</span>` : ""}</div>
+      <div class="planning-kpis"><span>Previsto<strong>${fmt.format(operation.planned)} ${esc(operation.unit)}</strong></span><span>Reservado<strong>${fmt.format(check.allocated)} ${esc(operation.unit)}</strong></span><span>Início<strong>${esc(start)}</strong></span></div>
+      <div class="planning-assets">${check.allocations.map(item=>{const t=state.data.tanks.find(x=>x.id===item.tank_id);return `<span>${esc(t?.name||"-")}: ${fmt.format(item.quantity)} ${esc(item.unit)}</span>`}).join("")||"<span>Sem equipamentos reservados</span>"}</div>
+      ${check.issues.length?`<div class="planning-issues">${check.issues.map(x=>`<span>⚠ ${esc(x)}</span>`).join("")}</div>`:`<div class="planning-ok">✓ Saldo e capacidade conferidos</div>`}
+      <button class="btn small primary" data-edit-operation="${operation.id}">Abrir planejamento</button>
+    </div>`;
+  }
+
+
+  function renderOperations() {
+    const operations = filteredOperations();
+    const rows = operations.map(op => {
+      const pct = op.planned ? Math.min(100, Math.round(op.executed / op.planned * 100)) : 0;
+      const flow = operationFlow(op);
+      const canEdit = isAdmin() || !op.locked || hasRole(["supervisor"]);
+      const tankStatus = op.tank_movement_applied ? "Aplicada" : op.apply_tank_movement ? "Preparada" : "Manual";
+      return `<tr>
+        <td><strong>${esc(op.client)}</strong><br><small>${esc(op.vessel)}</small><br><small>Sonda: ${esc(op.rig || "-")} • Poço: ${esc(op.well || "-")}</small><br><small>Ticket: ${esc(op.ticketNumber || "-")} • OS: ${esc(op.service_order || "-")}</small></td>
+        <td>${esc(op.activity)}<br><small>${esc(op.product)} • ${esc(op.lot || "-")}</small></td>
+        <td>${fmt.format(op.executed)} / ${fmt.format(op.planned)} ${esc(op.unit)}<div class="progress"><span style="width:${pct}%"></span></div></td>
+        <td><strong>${fmt.format(flow)} ${esc(op.unit)}/h</strong><br><small>${fmt.format(operationHours(op))} h líquidas</small></td>
+        <td>${operationAllocationHtml(op)}<div style="margin-top:6px">${badge(tankStatus)}</div></td>
+        <td>${badge(op.status)}${op.locked ? `<br><span class="tag">🔒 Encerrada</span>` : ""}</td>
+        <td>${dateTime(op.start_at)}<br><small>${op.end_at ? `Fim: ${dateTime(op.end_at)}` : "Sem término"}</small></td>
+        <td><div class="row-actions">
+          <button class="btn small secondary" data-operation-timeline="${op.id}">Timeline</button>
+          <button class="btn small secondary" data-attachments="operation:${op.id}" data-attachment-title="${esc(op.vessel)}">📎 ${attachmentCount("operation", op.id)}</button>
+          ${hasRole(["supervisor", "lider", "operador"]) && op.status === "Concluída" && !op.tank_movement_applied && tankMovementMode(op.activity) !== "none" ? `<button class="btn small soft" data-apply-operation-tank="${op.id}">Aplicar na tancagem</button>` : ""}
+          ${canEdit ? `<button class="btn small primary" data-edit-operation="${op.id}">Editar</button>` : ""}
+        </div></td>
+      </tr>`;
+    }).join("");
+
+    const mobile = operations.map(op => `<div class="card mobile-record-card">
+      <div class="mobile-record-head"><div><strong>${esc(op.client)}</strong><small>${esc(op.vessel)} • ${esc(op.activity)}</small></div>${badge(op.status)}</div>
+      <div class="operation-mobile-meta">${op.rig ? `<span>Sonda <strong>${esc(op.rig)}</strong></span>` : ""}${op.well ? `<span>Poço <strong>${esc(op.well)}</strong></span>` : ""}${op.ticketNumber ? `<span>Ticket <strong>${esc(op.ticketNumber)}</strong></span>` : ""}</div>
+      <div class="mobile-record-grid"><span>Produto<strong>${esc(op.product)}</strong></span><span>Executado<strong>${fmt.format(op.executed)} ${esc(op.unit)}</strong></span><span>Vazão<strong>${fmt.format(operationFlow(op))} ${esc(op.unit)}/h</strong></span><span>Tancagem<strong>${normalizedOperationAllocations(op).length} equipamento(s)</strong></span></div>
+      <div class="mobile-allocation-summary">${operationAllocationHtml(op)}</div>
+      <div class="row-actions"><button class="btn small secondary" data-operation-timeline="${op.id}">Timeline</button>${isAdmin() || !op.locked || hasRole(["supervisor"]) ? `<button class="btn small primary" data-edit-operation="${op.id}">Editar</button>` : ""}</div>
+    </div>`).join("");
+
+    $("#page-operations").innerHTML =
+      header("Operações", "Planejamento, rateio por vários tanques/silos, vazão, timeline e documentos.",
+        `<button class="btn secondary" data-export="operations">Exportar CSV</button><button class="btn primary" data-action="new-operation">+ Nova operação</button>`) +
+      `<div class="section-title">Planejamento operacional</div><div class="planning-grid">${state.data.operations.filter(op=>op.status==="Programada").sort((a,b)=>new Date(a.start_at||"2999-01-01")-new Date(b.start_at||"2999-01-01")).slice(0,8).map(planningCard).join("")||`<div class="card empty">Nenhuma operação programada.</div>`}</div>
+       <div class="section-title">Controle das operações</div>
+       <div class="card table-wrap desktop-record-table"><table class="data-table"><thead><tr><th>Cliente / Embarcação</th><th>Atividade / Produto</th><th>Progresso</th><th>Vazão</th><th>Distribuição da tancagem</th><th>Status</th><th>Período</th><th>Ações</th></tr></thead><tbody>${rows || `<tr><td colspan="8" class="empty">Nenhuma operação cadastrada.</td></tr>`}</tbody></table></div><div class="mobile-record-list">${mobile || `<div class="empty">Nenhuma operação cadastrada.</div>`}</div>`;
+  }
+
+
+  function setOperationStep(form, step = 1) {
+    if (!form) return;
+    const target = Math.max(1, Math.min(4, Number(step || 1)));
+    form.dataset.step = String(target);
+    form.querySelectorAll("[data-operation-step]").forEach(section => section.classList.toggle("active", Number(section.dataset.operationStep) === target));
+    form.querySelectorAll("[data-operation-step-indicator]").forEach(indicator => {
+      const value = Number(indicator.dataset.operationStepIndicator);
+      indicator.classList.toggle("active", value === target);
+      indicator.classList.toggle("done", value < target);
+    });
+    updateOperationReview(form);
+  }
+
+  function validateOperationStep(form, step) {
+    if (step === 1) {
+      if (!form.elements.client?.value.trim()) throw new Error("Informe o cliente.");
+      if (!form.elements.vessel?.value.trim()) throw new Error("Informe a embarcação.");
+    }
+    if (step === 2) {
+      if (!form.elements.fluid_type_id?.value) throw new Error("Selecione o fluido ou granel.");
+      const planned = parseTankVolume(form.elements.planned?.value || "");
+      if (!Number.isFinite(planned) || planned < 0) throw new Error("Informe uma quantidade planejada válida.");
+    }
+    if (step === 3) {
+      const mode = tankMovementMode(form.elements.activity?.value || "");
+      const apply = form.elements.apply_tank_movement?.checked;
+      if (mode !== "none" && apply) collectOperationAllocations(form);
+    }
+    return true;
+  }
+
+  function updateOperationReview(form) {
+    const review = form?.querySelector("[data-operation-review]");
+    if (!review) return;
+    const product = state.data.fluids.find(item => item.id === form.elements.fluid_type_id?.value);
+    const allocations = [...form.querySelectorAll("[data-operation-allocation-row]")].map(row => {
+      const tank = state.data.tanks.find(item => item.id === row.querySelector("[data-allocation-tank]")?.value);
+      const qty = row.querySelector("[data-allocation-quantity]")?.value || "0";
+      return tank ? `${tank.name}: ${qty} ${form.elements.unit?.value || ""}` : "";
+    }).filter(Boolean);
+    review.innerHTML = `<div><span>Cliente / embarcação</span><strong>${esc(form.elements.client?.value || "-")} • ${esc(form.elements.vessel?.value || "-")}</strong></div><div><span>Atividade / produto</span><strong>${esc(form.elements.activity?.value || "-")} • ${esc(product?.name || "-")}</strong></div><div><span>Planejado / executado</span><strong>${esc(form.elements.planned?.value || "0")} / ${esc(form.elements.executed?.value || "0")} ${esc(form.elements.unit?.value || "")}</strong></div><div><span>Tancagem</span><strong>${esc(allocations.join(" | ") || "Sem rateio")}</strong></div>`;
+  }
+
+  function operationForm(op = {}) {
+    const responsibleOptions = state.data.users.map(user => `<option value="${user.id}" ${op.responsible_id === user.id ? "selected" : ""}>${esc(user.name)}</option>`).join("");
+    const applied = op.tank_movement_applied === true && !isAdmin();
+    const activity = op.activity || "Bombeio";
+    const mode = tankMovementMode(activity);
+    const direction = mode === "out" ? "source" : "destination";
+    const linkedProduct = state.data.fluids.find(item => item.id === op.fluidTypeId);
+    const legacyUnlinked = Boolean(op.product && !linkedProduct);
+    const unit = linkedProduct?.unit || op.unit || "bbl";
+    const allocations = normalizedOperationAllocations(op);
+    const initialRows = allocations.length ? allocations.map(item => operationAllocationRow(item,item.direction||direction,unit,applied,op.fluidTypeId||"")).join("") : mode!=="none" ? operationAllocationRow({},direction,unit,applied,op.fluidTypeId||"") : "";
+    const nav = `<div class="operation-stepper-head">${[["1","Identificação"],["2","Serviço"],["3","Tancagem"],["4","Conclusão"]].map(([n,label]) => `<span data-operation-step-indicator="${n}" class="${n==="1"?"active":""}"><b>${n}</b><small>${label}</small></span>`).join("")}</div>`;
+    return `<form id="operationForm" data-id="${op.id || ""}" data-step="1" data-allocation-mode="${mode}" data-allocation-locked="${applied}" novalidate>${nav}
+      <section class="operation-step active" data-operation-step="1"><div class="form-grid">
+        <div><label>Cliente *</label><input name="client" required value="${esc(op.client || "")}"></div>
+        <div><label>Embarcação *</label><input name="vessel" required value="${esc(op.vessel || "")}"></div>
+        <div><label>Sonda</label><input name="rig" value="${esc(op.rig || "")}" placeholder="Ex.: NS-58"></div>
+        <div><label>Poço</label><input name="well" value="${esc(op.well || "")}" placeholder="Ex.: 7-WAH-12D-RJS"></div>
+        <div><label>Número do ticket</label><input name="ticket_number" value="${esc(op.ticketNumber || "")}"></div>
+        <div><label>Ordem de serviço</label><input name="service_order" value="${esc(op.service_order || "")}"></div>
+        <div class="wide"><label>Responsável</label><select name="responsible_id"><option value="">Não definido</option>${responsibleOptions}</select></div>
+      </div><div class="operation-step-actions"><span></span><button type="button" class="btn primary" data-action="operation-next-step">Próximo: serviço</button></div></section>
+      <section class="operation-step" data-operation-step="2"><div class="form-grid">
+        <div><label>Atividade *</label><select name="activity" ${applied?"disabled":""}>${["Bombeio","Backload","Fabricação","Tratamento","Carregamento","Descarga"].map(value => `<option ${activity===value?"selected":""}>${value}</option>`).join("")}</select>${applied?`<input type="hidden" name="activity" value="${esc(activity)}">`:""}</div>
+        <div class="wide operation-catalog-field"><div class="catalog-linked-heading"><div><label>Fluido ou granel *</label><small>Produto do catálogo oficial.</small></div>${applied?"":`<button type="button" class="btn small secondary" data-action="open-fluid-catalog">Abrir catálogo</button>`}</div><select name="fluid_type_id" data-operation-product-select required ${applied?"disabled":""}><option value="">Selecione o produto cadastrado</option>${operationCatalogOptions(op)}</select>${applied?`<input type="hidden" name="fluid_type_id" value="${esc(op.fluidTypeId || "")}">`:""}<small class="field-help" data-operation-product-category>${linkedProduct?`${esc(linkedProduct.type)} • unidade ${esc(linkedProduct.unit)}`:"Selecione um produto cadastrado."}</small>${legacyUnlinked?`<div class="message warning"><strong>Produto antigo não vinculado:</strong> ${esc(op.product)}.</div>`:""}</div>
+        <div><label>Lote</label><input name="lot" value="${esc(op.lot || "")}" ${applied?"readonly":""}></div>
+        <div><label>Unidade</label><input name="unit" value="${esc(unit)}" readonly></div>
+        <div><label>Quantidade planejada *</label><input name="planned" type="text" inputmode="decimal" value="${op.planned ?? 0}"></div>
+        <div><label>Quantidade executada</label><input name="executed" type="text" inputmode="decimal" value="${op.executed ?? 0}" ${applied?"readonly":""}></div>
+      </div><div class="operation-step-actions"><button type="button" class="btn secondary" data-action="operation-prev-step">Voltar</button><button type="button" class="btn primary" data-action="operation-next-step">Próximo: tancagem</button></div></section>
+      <section class="operation-step" data-operation-step="3"><div class="form-grid">
+        <div class="wide tank-automation-box"><div class="check-line"><input id="applyTankMovement" name="apply_tank_movement" type="checkbox" data-applied="${applied}" ${op.apply_tank_movement||applied?"checked":""} ${applied?"disabled":""}><label for="applyTankMovement">Atualizar a volumetria automaticamente ao concluir</label></div><small id="operationTankHint" class="field-help"></small>${applied?`<div class="info-box">Movimentação aplicada em ${dateTime(op.tank_movement_applied_at)}.</div>`:""}</div>
+        <div class="wide operation-allocation-field ${mode==="none"?"hidden":""}"><div class="operation-allocation-heading"><div><strong data-operation-allocation-title>${mode==="out"?"Distribuição da saída":"Distribuição da entrada"}</strong><small>Informe quanto saiu ou entrou em cada equipamento.</small></div>${applied?"":`<button type="button" class="btn small soft" data-add-operation-allocation>+ Adicionar equipamento</button>`}</div><div class="operation-allocation-list" data-operation-allocation-list>${initialRows}</div><div class="operation-allocation-summary" data-operation-allocation-summary></div></div>
+      </div><div class="operation-step-actions"><button type="button" class="btn secondary" data-action="operation-prev-step">Voltar</button><button type="button" class="btn primary" data-action="operation-next-step">Próximo: conclusão</button></div></section>
+      <section class="operation-step" data-operation-step="4"><div class="form-grid">
+        <div><label>Início</label><input name="start_at" type="datetime-local" value="${toLocalInput(op.start_at)}"></div>
+        <div><label>Término</label><input name="end_at" type="datetime-local" value="${toLocalInput(op.end_at)}"></div>
+        <div><label>Tempo parado (minutos)</label><input name="paused_minutes" type="number" min="0" value="${op.paused_minutes ?? 0}"></div>
+        <div><label>Status</label><select name="status">${["Programada","Em andamento","Paralisada","Concluída","Cancelada"].map(value => `<option ${op.status===value?"selected":""}>${value}</option>`).join("")}</select></div>
+        <div class="wide"><label>Ocorrência</label><textarea name="occurrence">${esc(op.occurrence || "")}</textarea></div>
+        <div class="wide"><label>Observações</label><textarea name="notes">${esc(op.notes || "")}</textarea></div>
+        <div class="wide operation-review-card" data-operation-review></div>
+        <div class="wide"><label>Documentos ou fotos</label><input name="attachment" type="file" accept=".pdf,image/jpeg,image/png,image/webp,image/heic,image/heif" multiple capture="environment"></div>
+        ${hasRole(["supervisor"])?`<div class="wide check-line"><input id="lockOperation" name="locked" type="checkbox" ${op.locked?"checked":""}><label for="lockOperation">Bloquear edição após o encerramento</label></div>`:""}
+      </div><div class="operation-step-actions"><button type="button" class="btn secondary" data-action="operation-prev-step">Voltar</button><button class="btn primary">Salvar operação</button></div></section>
+    </form>`;
+  }
+
+
+
+  const TANK_OPERATIONAL_STATUSES = [
+    "Operacional",
+    "Disponível",
+    "Em fabricação",
+    "Recebendo",
+    "Bombeando",
+    "Reservado",
+    "Bloqueado",
+    "Em manutenção",
+    "Vazio"
+  ];
+
+  function normalizeTankOperationalStatus(status = "", volume = 0) {
+    const legacy = {
+      "Em uso": "Operacional",
+      "Liberado": "Disponível",
+      "Manutenção": "Em manutenção",
+      "Limpeza": "Em manutenção"
+    };
+    let value = legacy[status] || status || "Disponível";
+    if (Number(volume || 0) <= 0 && !["Bloqueado", "Em manutenção", "Reservado"].includes(value)) value = "Vazio";
+    if (Number(volume || 0) > 0 && value === "Vazio") value = "Disponível";
+    return TANK_OPERATIONAL_STATUSES.includes(value) ? value : "Disponível";
+  }
+
+  function tankStatusOptions(status, volume) {
+    const selected = normalizeTankOperationalStatus(status, volume);
+    return TANK_OPERATIONAL_STATUSES.map(value =>
+      `<option value="${value}" ${value === selected ? "selected" : ""}>${value}</option>`
+    ).join("");
+  }
+
+  function officialTankCapacityBy(name = "", phase = "", kind = "", fallback = 0) {
+    if (String(kind).toLowerCase() === "silo") return Number(fallback || 0);
+    if (["M-01", "M-02", "M-03", "M-04"].includes(String(name).toUpperCase().trim())) return 500;
+    if (phase === "Phase #1") return 1000;
+    if (phase === "Phase #2") return 1500;
+    return Number(fallback || 0);
+  }
+
+  function syncOfficialTankCapacity(form, applySuggestion = false) {
+    if (!form) return;
+    const name = form.elements.name?.value || form.dataset.tankName || "";
+    const phase = form.elements.phase?.value || "";
+    const kind = form.elements.kind?.value || form.dataset.tankKind || "";
+    const silo = String(kind).toLowerCase() === "silo";
+    if (form.elements.unit) form.elements.unit.value = silo ? "ton" : "bbl";
+    const suggested = officialTankCapacityBy(name, phase, kind, Number(form.elements.capacity?.value || 0));
+    const help = form.querySelector("[data-official-capacity-help]");
+    const button = form.querySelector('[data-action="apply-official-capacity"]');
+    if (button) button.classList.toggle("hidden", silo);
+    if (help) {
+      help.textContent = silo
+        ? "Nos silos, a capacidade máxima em toneladas pode ser informada manualmente ou calculada usando volume físico × densidade."
+        : ["M-01","M-02","M-03","M-04"].includes(String(name).toUpperCase().trim())
+          ? `Sugestão padrão: 500 bbl para ${name || "Mix Tank"}.`
+          : `Sugestão padrão: ${fmt.format(suggested)} bbl para ${phase || "a fase selecionada"}.`;
+    }
+    if (applySuggestion && !silo && form.elements.capacity) {
+      form.elements.capacity.value = String(suggested).replace(".", ",");
+      toast(`Capacidade sugerida de ${fmt.format(suggested)} bbl aplicada.`, "success");
+    }
+    syncSiloCapacityPreview(form);
+  }
+
+  function tankActiveOperation(tank) {
+    const allocations = state.data?.operationAllocations || [];
+    const operations = state.data?.operations || [];
+    for (const allocation of allocations.filter(item => item.tank_id === tank.id)) {
+      const operation = operations.find(item => item.id === allocation.operation_id);
+      if (!operation || ["Concluída", "Cancelada"].includes(operation.status)) continue;
+      return { operation, allocation };
+    }
+    const direct = operations.find(operation =>
+      !["Concluída", "Cancelada"].includes(operation.status)
+      && (operation.source_tank_id === tank.id || operation.destination_tank_id === tank.id)
+    );
+    if (!direct) return null;
+    return {
+      operation: direct,
+      allocation: {
+        direction: direct.source_tank_id === tank.id ? "source" : "destination"
+      }
+    };
+  }
+
+  function tankEffectiveStatus(tank) {
+    const live = tankActiveOperation(tank);
+    if (live) {
+      const activity = normalizeSearch(live.operation.activity || "");
+      if (live.allocation.direction === "source" || activity.includes("bombeio") || activity.includes("carregamento")) return "Bombeando";
+      if (activity.includes("fabricacao") || activity.includes("fabricação")) return "Em fabricação";
+      if (live.allocation.direction === "destination" || activity.includes("backload") || activity.includes("descarga")) return "Recebendo";
+    }
+    return normalizeTankOperationalStatus(tank.status, tank.volume);
+  }
+
+  function tankFluidFamily(tank) {
+    const linked = (state.data?.fluids || []).find(item => item.id === tank.fluidTypeId);
+    const explicitType = normalizeSearch(tank.fluidTypeLabel || "");
+    const linkedType = explicitType || normalizeSearch(linked?.type || "");
+    const fallback = productClass(tank.product, tank.kind, tank.volume);
+    if (isSiloAsset(tank)) {
+      return {
+        key: "bulk",
+        label: linked?.type || "Granel",
+        material: bulkMaterialClass(tank.product)
+      };
+    }
+    if (linkedType.includes("brine") || linkedType.includes("salmoura")) return { key: "brine", label: "Brine", material: "brine" };
+    if (linkedType.includes("sbm") || linkedType.includes("sintetico")) return { key: "sbm", label: "SBM", material: "sbm" };
+    if (linkedType.includes("olef")) return { key: "olefin", label: "Olefina", material: "olefin" };
+    if (linkedType.includes("wbm") || linkedType.includes("water")) return { key: "wbm", label: "WBM", material: "wbm" };
+    const labels = {
+      wbm: "WBM",
+      brine: "Brine",
+      sbm: "SBM",
+      olefin: "Olefina",
+      empty: "Vazio",
+      generic: linked?.type || "Fluido"
+    };
+    return { key: fallback, label: labels[fallback] || linked?.type || "Fluido", material: fallback };
+  }
+
+  function bulkMaterialClass(product = "") {
+    const value = normalizeSearch(product);
+    if (value.includes("barita")) return "barite";
+    if (value.includes("bentonita")) return "bentonite";
+    if (value.includes("calcita")) return "calcite";
+    if (value.includes("cimento")) return "cement";
+    return "bulk";
+  }
+
+  function tankLevelAlert(volume, capacity, status) {
+    const pct = Number(capacity || 0) > 0 ? Number(volume || 0) / Number(capacity || 0) * 100 : 0;
+    if (["Bloqueado", "Em manutenção"].includes(status)) return { key: "critical", label: status };
+    if (pct > 90) return { key: "high", label: "Nível alto" };
+    if (Number(volume || 0) > 0 && pct < 10) return { key: "low", label: "Nível baixo" };
+    return null;
+  }
+
+  function tankFlowIndicator(status) {
+    if (status === "Recebendo" || status === "Recebendo produto") return `<span class="industrial-flow-indicator incoming"><b>↓</b> Entrada</span>`;
+    if (status === "Bombeando") return `<span class="industrial-flow-indicator outgoing"><b>→</b> Saída</span>`;
+    if (status === "Em fabricação") return `<span class="industrial-flow-indicator manufacturing"><b>+</b> Fabricação</span>`;
+    return "";
+  }
+
+  function industrialStatusChip(status) {
+    return `<span class="industrial-status-chip status-${normalizeSearch(status).replace(/\s+/g, "-")}">${esc(status)}</span>`;
+  }
+
+  function industrialLevelStart(key, target, forceZero = false) {
+    if (forceZero) return 0;
+    return state.visual.tankLevels.has(key) ? Number(state.visual.tankLevels.get(key) || 0) : 0;
+  }
+
+  function industrialEquipmentFigure(tank, options = {}) {
+    const silo = isSiloAsset(tank);
+    const volume = Number(tank.volume || 0);
+    const capacity = Number(tank.capacity || 0);
+    const pct = capacity > 0 ? Math.max(0, Math.min(100, volume / capacity * 100)) : 0;
+    const family = tankFluidFamily(tank);
+    const status = tankEffectiveStatus(tank);
+    const danger = ["Bloqueado", "Em manutenção"].includes(status);
+    const key = options.visualKey || `${options.demo ? "demo" : options.tv ? "tv" : "real"}:${tank.id}`;
+    const start = industrialLevelStart(key, pct, options.forceZero === true);
+    const material = danger ? "danger" : family.material;
+
+    return `<div class="industrial-equipment-figure ${silo ? "industrial-silo-figure" : "industrial-tank-figure"} ${danger ? "danger" : ""}">
+      <div class="industrial-equipment-label">${esc(tank.name)}</div>
+      ${tankFlowIndicator(status)}
+      ${silo ? `
+        <div class="industrial-silo-frame">
+          <div class="industrial-silo-shell">
+            <div class="industrial-silo-inner">
+              <div class="industrial-level-fill material-${material} bulk-static-texture"
+                data-industrial-level data-level-key="${esc(key)}" data-level-target="${pct.toFixed(3)}"
+                style="height:${start.toFixed(3)}%"></div>
+              <span class="industrial-level-percent">${fmt.format(pct)}%</span>
+            </div>
+          </div>
+          <div class="industrial-silo-outlet"></div>
+          <div class="industrial-silo-legs"><i></i><i></i></div>
+        </div>
+      ` : `
+        <div class="industrial-tank-frame">
+          <div class="industrial-tank-neck"></div>
+          <div class="industrial-tank-shell">
+            <div class="industrial-tank-inner">
+              <div class="industrial-level-fill material-${material}"
+                data-industrial-level data-level-key="${esc(key)}" data-level-target="${pct.toFixed(3)}"
+                style="height:${start.toFixed(3)}%"></div>
+              <span class="industrial-level-percent">${fmt.format(pct)}%</span>
+              <span class="industrial-level-mark mark-75">75</span>
+              <span class="industrial-level-mark mark-50">50</span>
+              <span class="industrial-level-mark mark-25">25</span>
+            </div>
+          </div>
+          <div class="industrial-tank-feet"><i></i><i></i></div>
+        </div>
+      `}
+      <div class="industrial-figure-caption"><strong>${fmt.format(volume)}</strong><span>/ ${fmt.format(capacity)} ${esc(tank.unit)}</span></div>
+    </div>`;
+  }
+
+  function industrialEquipmentCard(tank, options = {}) {
+    const volume = Number(tank.volume || 0);
+    const capacity = Number(tank.capacity || 0);
+    const pct = capacity > 0 ? Math.max(0, Math.min(100, volume / capacity * 100)) : 0;
+    const family = tankFluidFamily(tank);
+    const status = tankEffectiveStatus(tank);
+    const alert = tankLevelAlert(volume, capacity, status);
+    const updater = state.data?.users?.find(user => user.id === tank.updated_by)?.name || tank.updatedByName || "Não informado";
+    const density = tank.density !== null && tank.density !== undefined
+      ? `${fmt.format(tank.density)} ${esc(tank.densityUnit || (isSiloAsset(tank) ? "t/m³" : "ppg"))}`
+      : "Não informada";
+    const search = [tank.name, tank.phase, tank.client, tank.product, tank.lot, status, family.label].filter(Boolean).join(" ");
+    const detailMode = options.detail === true;
+    const tvMode = options.tv === true;
+    const demoMode = options.demo === true;
+    const interactive = options.interactive !== false && !tvMode;
+
+    return `<article class="industrial-equipment-card ${isSiloAsset(tank) ? "silo" : "tank"} ${alert ? `alert-${alert.key}` : ""} ${detailMode ? "detail-mode" : ""} ${tvMode ? "tv-mode" : ""}"
+      data-industrial-equipment-card data-tank-card data-tank-id="${esc(tank.id)}"
+      data-demo="${demoMode ? "true" : "false"}" data-client="${esc(tank.client || "A definir")}"
+      data-phase="${esc(tank.phase)}" data-kind="${isSiloAsset(tank) ? "silo" : "tanque"}"
+      data-occupied="${volume > 0 ? "true" : "false"}" data-search="${esc(search)}">
+      <div class="industrial-card-top">
+        <div>
+          <small>${esc(tank.phase)}</small>
+          <h3>${esc(tank.name)}</h3>
+        </div>
+        ${industrialStatusChip(status)}
+      </div>
+
+      <div class="industrial-card-body">
+        ${industrialEquipmentFigure(tank, options)}
+        <div class="industrial-equipment-data">
+          <div class="industrial-product-title">
+            <span>${esc(family.label)}</span>
+            <strong>${esc(tank.product || "Sem produto")}</strong>
+          </div>
+          <div class="industrial-data-grid">
+            <span>Volume atual<strong>${fmt.format(volume)} ${esc(tank.unit)}</strong></span>
+            <span>Capacidade<strong>${fmt.format(capacity)} ${esc(tank.unit)}</strong></span>
+            <span>Ocupação<strong>${fmt.format(pct)}%</strong></span>
+            <span>Cliente<strong>${esc(tank.client || "A definir")}</strong></span>
+            <span>Densidade / peso<strong>${density}</strong></span>
+            <span>Lote<strong>${esc(tank.lot || "-")}</strong></span>
+          </div>
+          ${alert ? `<div class="industrial-level-alert ${alert.key}"><span>!</span><strong>${esc(alert.label)}</strong></div>` : ""}
+          ${!tvMode ? `<div class="industrial-update-meta"><span>${dateTime(tank.updated_at)}</span><strong>${esc(updater)}</strong></div>` : ""}
+        </div>
+      </div>
+
+      ${interactive ? `<div class="industrial-card-actions">
+        ${hasRole(["supervisor", "lider", "operador", "logistica"]) && !demoMode ? `<button class="btn small primary" data-edit-tank="${tank.id}">Atualizar</button>` : ""}
+        ${canEditTankStructure() && !demoMode ? `<button class="btn small secondary structure-card-button" data-edit-tank-structure="${tank.id}">Editar estrutura</button>` : ""}
+        <button class="btn small secondary" data-industrial-details="${tank.id}" data-demo="${demoMode ? "true" : "false"}">Detalhes e histórico</button>
+        ${!demoMode ? `<button class="btn small secondary desktop-industrial-action" data-tank-history="${tank.id}">Histórico</button><button class="btn small secondary desktop-industrial-action" data-asset-qr="tank:${tank.id}">QR</button>` : ""}
+      </div>` : ""}
+      ${!tvMode ? `<small class="industrial-card-click-hint">Toque no cartão para abrir os detalhes.</small>` : ""}
+    </article>`;
+  }
+
+  function animateIndustrialEquipmentLevels(scope = document) {
+    requestAnimationFrame(() => requestAnimationFrame(() => {
+      $$("[data-industrial-level]", scope).forEach(element => {
+        const target = Math.max(0, Math.min(100, Number(element.dataset.levelTarget || 0)));
+        element.style.height = `${target}%`;
+        state.visual.tankLevels.set(element.dataset.levelKey, target);
+      });
+    }));
+  }
+
+  function industrialDemoTanks() {
+    const now = new Date().toISOString();
+    return [
+      { id:"demo-tk01", name:"TK-01", phase:"Phase #1", kind:"Tanque", capacity:1000, volume:750, unit:"bbl", product:"WBM", fluidTypeId:null, fluidTypeLabel:"WBM", density:9.2, densityUnit:"ppg", lot:"DEMO-WBM-01", status:"Operacional", client:"Petrobras", updated_at:now, updatedByName:"Demonstração" },
+      { id:"demo-tks05", name:"TK-S05", phase:"Phase #2", kind:"Tanque", capacity:1500, volume:870, unit:"bbl", product:"SBM", fluidTypeId:null, fluidTypeLabel:"SBM", density:9.6, densityUnit:"ppg", lot:"DEMO-SBM-05", status:"Bombeando", client:"PRIO", updated_at:now, updatedByName:"Demonstração" },
+      { id:"demo-m01", name:"M-01", phase:"Phase #1", kind:"Mix Tank", capacity:500, volume:180, unit:"bbl", product:"Brine", fluidTypeId:null, fluidTypeLabel:"Brine", density:9.9, densityUnit:"ppg", lot:"DEMO-BRINE-01", status:"Recebendo produto", client:"Equinor", updated_at:now, updatedByName:"Demonstração" },
+      { id:"demo-silo2", name:"Silo 2", phase:"Phase #1", kind:"Silo", capacity:120, volume:98.4, unit:"ton", product:"Barita", fluidTypeId:null, fluidTypeLabel:"Granel", density:2.162, densityUnit:"t/m³", lot:"DEMO-BARITA-02", status:"Operacional", client:"A definir", updated_at:now, updatedByName:"Demonstração" }
+    ];
+  }
+
+  function industrialDemoPanel() {
+    return `<div class="industrial-demo-notice"><strong>Demonstração funcional</strong><span>Os quatro cartões abaixo usam dados fictícios e o mesmo componente aplicado aos equipamentos reais.</span></div>
+      <div class="industrial-equipment-grid demo-grid">${industrialDemoTanks().map(item =>
+        industrialEquipmentCard(item, { demo:true, interactive:true, forceZero:true, visualKey:`demo:${item.id}` })
+      ).join("")}</div>`;
+  }
+
+  function tankVolumeAuditTable(tank) {
+    const rows = (state.data.tankHistory || [])
+      .filter(item => item.tank_id === tank.id)
+      .sort((a,b) => new Date(b.created_at) - new Date(a.created_at))
+      .slice(0, 30);
+    return `<div class="section-title">Histórico de volume</div>
+      <div class="table-wrap industrial-history-table"><table class="data-table">
+        <thead><tr><th>Data e hora</th><th>Movimento</th><th>Anterior</th><th>Movimentado</th><th>Final</th><th>Responsável</th></tr></thead>
+        <tbody>${rows.map(item => {
+          const user = state.data.users.find(user => user.id === item.changed_by)?.name || "Sistema";
+          const moved = item.moved_quantity !== null && item.moved_quantity !== undefined
+            ? Number(item.moved_quantity)
+            : Math.abs(Number(item.new_volume || 0) - Number(item.previous_volume || 0));
+          const direction = item.movement_direction || (Number(item.new_volume || 0) >= Number(item.previous_volume || 0) ? "Entrada" : "Saída");
+          return `<tr>
+            <td>${dateTime(item.created_at)}</td>
+            <td><strong>${esc(item.movement_type || direction || "Atualização")}</strong><small>${esc(direction)}</small></td>
+            <td>${fmt.format(Number(item.previous_volume || 0))} ${esc(tank.unit)}</td>
+            <td>${fmt.format(moved)} ${esc(tank.unit)}</td>
+            <td>${fmt.format(Number(item.new_volume || 0))} ${esc(tank.unit)}</td>
+            <td>${esc(user)}</td>
+          </tr>`;
+        }).join("") || `<tr><td colspan="6" class="empty">Nenhuma movimentação registrada.</td></tr>`}</tbody>
+      </table></div>`;
+  }
+
+  function industrialEquipmentDetails(tank, demo = false) {
+    const card = industrialEquipmentCard(tank, {
+      demo,
+      detail:true,
+      interactive:false,
+      forceZero:true,
+      visualKey:`detail:${demo ? "demo" : "real"}:${tank.id}`
+    });
+    if (demo) return `<div class="industrial-demo-notice"><strong>Dados fictícios</strong><span>Esta visualização existe apenas para demonstrar o componente.</span></div>${card}`;
+    return `<div class="industrial-detail-card-wrap">${card}</div>${tankVolumeAuditTable(tank)}${completeTankTimelineHtml(tank)}`;
+  }
+
+  function tankMobileFilterBar() {
+    const filters = state.mobile.tankFilters;
+    const clientButtons = ["Todos", ...TANK_CLIENTS].map(value =>
+      `<button class="${filters.client === value ? "active" : ""}" data-tank-client-filter="${value}">${esc(value)}</button>`
+    ).join("");
+    const viewButtons = ["Todos", "Phase #1", "Phase #2", "Tanques", "Silos", "Vazios"].map(value =>
+      `<button class="${filters.view === value ? "active" : ""}" data-tank-view-filter="${value}">${esc(value)}</button>`
+    ).join("");
+    return `<div class="mobile-tank-filter-shell mobile-only-block">
+      <div class="mobile-tank-search"><span>⌕</span><input id="mobileTankSearch" type="search" value="${esc(filters.query)}" placeholder="Buscar tanque, produto, lote ou cliente"></div>
+      <div class="mobile-filter-scroll">${clientButtons}</div>
+      <div class="mobile-filter-scroll secondary">${viewButtons}</div>
+    </div>`;
+  }
+
+  function tankCardMatchesMobileFilters(card) {
+    if (window.innerWidth > 820) return true;
+    const filters = state.mobile.tankFilters;
+    const clientOk = filters.client === "Todos" || card.dataset.client === filters.client;
+    let viewOk = true;
+    if (filters.view === "Phase #1" || filters.view === "Phase #2") viewOk = card.dataset.phase === filters.view;
+    if (filters.view === "Tanques") viewOk = card.dataset.kind !== "silo";
+    if (filters.view === "Silos") viewOk = card.dataset.kind === "silo";
+    if (filters.view === "Vazios") viewOk = card.dataset.occupied === "false";
+    const query = normalizeSearch(filters.query || "");
+    const searchOk = !query || normalizeSearch(card.dataset.search || "").includes(query);
+    return clientOk && viewOk && searchOk;
+  }
+
+  function applyTankMobileFilters() {
+    const cards = $$("[data-tank-card]");
+    cards.forEach(card => { card.hidden = !tankCardMatchesMobileFilters(card); });
+    $$("[data-tank-phase]").forEach(section => {
+      const visible = $$("[data-tank-card]", section).some(card => !card.hidden);
+      section.hidden = window.innerWidth <= 820 && !visible;
+    });
+    const visibleCount = cards.filter(card => !card.hidden).length;
+    const empty = $("#tankFilterEmpty");
+    if (empty) {
+      empty.classList.toggle("hidden", visibleCount > 0);
+      empty.querySelector("strong").textContent = visibleCount ? "" : "Nenhum equipamento encontrado";
+    }
+    const count = $("#tankFilterCount");
+    if (count) count.textContent = `${visibleCount} equipamento(s)`;
+  }
+
+  function filterLinkedSelectOptions(input) {
+    const form = input.closest("form");
+    const targetName = input.dataset.targetSelect;
+    const select = form?.elements?.[targetName];
+    if (!select) return;
+    const query = normalizeSearch(input.value || "");
+    [...select.options].forEach((option, index) => {
+      if (index === 0 || option.selected) {
+        option.hidden = false;
+        option.disabled = false;
+        return;
+      }
+      const match = !query || normalizeSearch(option.textContent).includes(query);
+      option.hidden = !match;
+      option.disabled = !match;
+    });
+  }
+
+
+  const INDUSTRIAL_PAGE_META = {
+    dashboard:["Painel","Visão Geral"], operations:["Operações","Controle operacional"], tanks:["Tanques e Silos","Visão Geral"],
+    trucks:["Carretas","Logística e recebimentos"], maintenance:["Manutenção","Equipamentos e ordens"], qhse:["QHSE","Segurança e qualidade"],
+    reports:["Relatórios","Indicadores e fechamento"], audit:["Histórico","Auditoria do sistema"], users:["Usuários","Perfis e permissões"],
+    settings:["Configurações","Sistema e ambiente"], tv:["Painel TV","Operação em tela cheia"], quality:["Qualidade dos Dados","Pendências e consistência"],
+    sanitation:["Saneamento","Correções de dados"], fluids:["Fluidos e Granéis","Catálogo operacional"], "chemical-catalog":["Catálogo Químico","Produtos e embalagens"],
+    chemicals:["Inventário Químico","Lotes e saldos"], certificates:["Certificados","Documentos e validade"], alerts:["Alertas e Chat","Comunicação operacional"]
+  };
+
+  function roleDisplayName(value = "") {
+    const labels={admin:"Administrador",supervisor:"Supervisor",lider:"Líder de Operações",operador:"Operador de Planta",logistica:"Logística",mecanico:"Mecânico",qhse:"QHSE",tv:"Painel TV",user:"Usuário"};
+    return labels[value] || value || "Usuário";
+  }
+
+  function updateShellPageMeta(page = state.page) {
+    const meta=INDUSTRIAL_PAGE_META[page] || [page,"Visão Geral"];
+    if ($("#topbarPageTitle")) $("#topbarPageTitle").textContent=meta[0];
+    if ($("#topbarPageSubtitle")) $("#topbarPageSubtitle").textContent=meta[1];
+    if ($("#mobilePageTitle")) $("#mobilePageTitle").textContent=meta[0];
+    if ($("#mobilePageSubtitle")) $("#mobilePageSubtitle").textContent=meta[1];
+  }
+
+  function updateShellClock() {
+    const now=new Date();
+    if ($("#shellTime")) $("#shellTime").textContent=now.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
+    if ($("#shellDate")) $("#shellDate").textContent=now.toLocaleDateString("pt-BR");
+  }
+
+  function startShellClock() {
+    updateShellClock();
+    if (state.shellClockTimer) return;
+    state.shellClockTimer=setInterval(updateShellClock,1000);
+  }
+
+  function sidebarStatusCounts() {
+    const statuses=["Operacional","Em fabricação","Recebendo","Bombeando","Em manutenção","Bloqueado"];
+    return statuses.map(status=>({status,count:(state.data?.tanks||[]).filter(t=>tankEffectiveStatus(t)===status).length}));
+  }
+
+  function renderSidebarStatus() {
+    const panel=$("#sidebarStatusPanel");
+    if (!panel) return;
+    panel.innerHTML=sidebarStatusCounts().map(item=>`<div><span class="sidebar-status-dot status-${normalizeSearch(item.status).replace(/\s+/g,"-")}"></span><small>${esc(item.status)}</small><strong>${item.count}</strong></div>`).join("");
+  }
+
+  function ensureTankPageState() {
+    state.tankPage ||= {source:"real",view:"cards",filters:{type:"Todos",product:"Todos",area:"Todos",client:"Todos",status:"Todos",query:""}};
+    return state.tankPage;
+  }
+
+  function equipmentDemoData() {
+    const at="2026-07-15T12:42:00-03:00";
+    return [
+      {id:"demo-tk01",name:"TK-01",phase:"Phase #1",kind:"Tanque",product:"WBM",description:"WBDF04 10.2 ppg",client:"Equinor",volume:750,capacity:1000,unit:"bbl",density:10.2,densityUnit:"ppg",specificGravity:1.23,lot:"WBDF-150726-01",status:"Operacional",updated_at:"2026-07-15T09:40:00-03:00",updatedByName:"Vanderson R."},
+      {id:"demo-tks05",name:"TK-S05",phase:"Phase #2",kind:"Tanque",product:"SBM",description:"Rheliant 9.6 ppg",client:"Petrobras",volume:870,capacity:1500,unit:"bbl",density:9.6,densityUnit:"ppg",specificGravity:1.15,lot:"SBM-150726-03",status:"Operacional",updated_at:"2026-07-15T09:41:00-03:00",updatedByName:"Vanderson R."},
+      {id:"demo-m01",name:"M-01",phase:"Mix Tank",kind:"Mix Tank",product:"Brine",description:"NaCl 9.9 ppg",client:"Interno",volume:180,capacity:500,unit:"bbl",density:9.9,densityUnit:"ppg",specificGravity:1.19,lot:"BR-150726-02",status:"Em fabricação",updated_at:"2026-07-15T09:38:00-03:00",updatedByName:"Vanderson R."},
+      {id:"demo-tk12",name:"TK-12",phase:"Phase #1",kind:"Tanque",product:"Olefina",description:"Olefina Sintética",client:"Interno",volume:200,capacity:1000,unit:"bbl",density:6.6,densityUnit:"ppg",specificGravity:0.79,lot:"OL-150726-01",status:"Recebendo",updated_at:"2026-07-15T09:42:00-03:00",updatedByName:"Vanderson R."},
+      {id:"demo-silo2",name:"SILO 2",phase:"Phase #1",kind:"Silo",product:"Barita",description:"Barita SG 4.1",client:"A definir",volume:98.4,capacity:120,unit:"ton",density:2.162,densityUnit:"t/m³",specificGravity:4.10,lot:"BT-150726",status:"Disponível",updated_at:"2026-07-15T09:39:00-03:00",updatedByName:"Vanderson R."},
+      {id:"demo-silo1",name:"SILO 1",phase:"Phase #1",kind:"Silo",product:"Bentonita",description:"Bentonita",client:"A definir",volume:27,capacity:120,unit:"ton",density:2.30,densityUnit:"t/m³",specificGravity:2.30,lot:"BN-150726",status:"Disponível",updated_at:"2026-07-15T09:37:00-03:00",updatedByName:"Vanderson R."},
+      {id:"demo-siloa",name:"SILO A",phase:"Phase #2",kind:"Silo",product:"Calcita",description:"Calcita M 20",client:"A definir",volume:60,capacity:100,unit:"ton",density:2.75,densityUnit:"t/m³",specificGravity:2.75,lot:"CA-150726",status:"Bombeando",updated_at:"2026-07-15T09:36:00-03:00",updatedByName:"Vanderson R."},
+      {id:"demo-silod",name:"SILO D",phase:"Phase #2",kind:"Silo",product:"Cimento",description:"Cimento CPA",client:"A definir",volume:0,capacity:80,unit:"ton",density:0.94,densityUnit:"t/m³",specificGravity:0.94,lot:"CM-150726",status:"Em manutenção",updated_at:"2026-07-15T09:35:00-03:00",updatedByName:"Vanderson R."}
+    ];
+  }
+
+  function equipmentDataset() {
+    return ensureTankPageState().source==="demo" ? equipmentDemoData() : (state.data?.tanks||[]);
+  }
+
+  function equipmentLinkedProduct(tank) {
+    return (state.data?.fluids||[]).find(f=>f.id===tank.fluidTypeId) || null;
+  }
+
+  function equipmentDescription(tank) {
+    return tank.description || equipmentLinkedProduct(tank)?.description || tank.product || "Sem produto";
+  }
+
+  function equipmentSpecificGravity(tank) {
+    if (tank.specificGravity!==null && tank.specificGravity!==undefined) return Number(tank.specificGravity);
+    const linked=equipmentLinkedProduct(tank);
+    if (linked?.specificGravity!==null && linked?.specificGravity!==undefined) return Number(linked.specificGravity);
+    if (tank.density!==null && tank.density!==undefined && String(tank.densityUnit||"").toLowerCase()==="ppg") return Number(tank.density)/8.345404;
+    return null;
+  }
+
+  function equipmentProductKey(tank) {
+    const value=normalizeSearch(`${tank.product||""} ${equipmentDescription(tank)} ${equipmentLinkedProduct(tank)?.type||""}`);
+    if (isSiloAsset(tank)) {
+      if (value.includes("barita")) return "barite";
+      if (value.includes("bentonita")) return "bentonite";
+      if (value.includes("calcita")) return "calcite";
+      if (value.includes("cimento")) return "cement";
+      if (value.includes("kcl")) return "kcl";
+      return "bulk";
+    }
+    if (value.includes("wbm") || value.includes("wbdf") || value.includes("water based")) return "wbm";
+    if (value.includes("brine") || value.includes("nacl") || value.includes("salmoura")) return "brine";
+    if (value.includes("sbm") || value.includes("rheliant") || value.includes("sintetico")) return "sbm";
+    if (value.includes("olefina")) return "olefin";
+    if (value.includes("agua")) return "water";
+    return Number(tank.volume||0)>0 ? "unknown" : "empty";
+  }
+
+  function equipmentProductLabel(tank) {
+    const key=equipmentProductKey(tank);
+    return ({wbm:"WBM",brine:"Brine",sbm:"SBM",olefin:"Olefina",water:"Água",barite:"Barita",bentonite:"Bentonita",calcite:"Calcita",cement:"Cimento",kcl:"KCL",bulk:"Granel",unknown:"Fluido",empty:"Vazio"})[key] || tank.product || "Produto";
+  }
+
+  function equipmentStatus(tank) {
+    const raw=tankEffectiveStatus(tank);
+    return raw==="Recebendo produto" ? "Recebendo" : raw;
+  }
+
+  function equipmentLevelState(tank) {
+    const pct=Number(tank.capacity||0)>0 ? Math.max(0,Math.min(100,Number(tank.volume||0)/Number(tank.capacity)*100)) : 0;
+    const status=equipmentStatus(tank);
+    if (status==="Bloqueado") return {key:"blocked",label:"Bloqueado",pct};
+    if (status==="Em manutenção") return {key:"maintenance",label:"Manutenção",pct};
+    if (pct===0) return {key:"empty",label:"Vazio",pct};
+    if (pct<10) return {key:"critical-low",label:"Nível crítico baixo",pct};
+    if (pct<20) return {key:"low",label:"Nível baixo",pct};
+    if (pct>=100) return {key:"maximum",label:"Capacidade máxima",pct};
+    if (pct>90) return {key:"critical-high",label:"Nível crítico alto",pct};
+    if (pct>=80) return {key:"high",label:"Nível alto",pct};
+    return {key:"normal",label:"Nível normal",pct};
+  }
+
+  function equipmentUpdater(tank) {
+    return tank.updatedByName || state.data?.users?.find(u=>u.id===tank.updated_by)?.name || "Não informado";
+  }
+
+  function equipmentDateParts(value) {
+    if (!value) return {date:"-",time:"-"};
+    const date=new Date(value);
+    return {date:date.toLocaleDateString("pt-BR"),time:date.toLocaleTimeString("pt-BR",{hour:"2-digit",minute:"2-digit"})};
+  }
+
+  function equipmentStatusTag(status) {
+    return `<span class="equipment-status-tag status-${normalizeSearch(status).replace(/\s+/g,"-")}">${esc(status.toUpperCase())}</span>`;
+  }
+
+  function technicalEquipmentVisual(tank, options={}) {
+    const silo=isSiloAsset(tank), mix=String(tank.kind).toLowerCase().includes("mix");
+    const level=equipmentLevelState(tank), key=equipmentProductKey(tank);
+    const visualKey=options.visualKey || `${options.demo?"demo":"real"}:${tank.id}`;
+    const start=state.visual.tankLevels.has(visualKey)?Number(state.visual.tankLevels.get(visualKey)||0):0;
+    const status=equipmentStatus(tank);
+    const scale=[100,75,50,25,0].map(value=>`<span style="bottom:${value}%">${value}%</span>`).join("");
+    const material=`<div class="reference-material material-${key}" data-industrial-level data-level-key="${esc(visualKey)}" data-level-target="${level.pct.toFixed(3)}" style="height:${start}%"><i></i></div>`;
+    const flow=status==="Recebendo"
+      ? `<span class="reference-flow flow-in">↓ RECEBENDO</span>`
+      : status==="Bombeando"
+        ? `<span class="reference-flow flow-out">↑ BOMBEANDO</span>`
+        : "";
+
+    if (silo) {
+      return `<div class="reference-equipment reference-silo">
+        <div class="reference-scale">${scale}</div>
+        ${flow}
+        <div class="reference-silo-roof"><b></b></div>
+        <div class="reference-silo-cylinder">
+          <div class="reference-metal-bands"></div>
+          <div class="reference-view-window">
+            ${material}
+            <span class="reference-logo">slb</span>
+          </div>
+        </div>
+        <div class="reference-silo-cone">
+          <div class="reference-cone-material material-${key}" style="height:${Math.min(100,level.pct*1.5)}%"></div>
+        </div>
+        <div class="reference-silo-outlet"></div>
+        <div class="reference-silo-legs"><i></i><i></i></div>
+      </div>`;
+    }
+
+    return `<div class="reference-equipment ${mix?"reference-mix":"reference-tank"}">
+      <div class="reference-scale">${scale}</div>
+      ${flow}
+      <div class="reference-tank-cap">${mix?`<i class="reference-mix-marker"></i>`:""}<b></b></div>
+      <div class="reference-tank-cylinder">
+        <div class="reference-metal-bands"></div>
+        <div class="reference-view-window">
+          ${material}
+          <span class="reference-logo">slb</span>
+        </div>
+      </div>
+      <div class="reference-tank-ring"></div>
+      <div class="reference-tank-feet"><i></i><i></i></div>
+    </div>`;
+  }
+
+  function equipmentCardV3(tank, options={}) {
+    const demo=options.demo===true, level=equipmentLevelState(tank), status=equipmentStatus(tank), parts=equipmentDateParts(tank.updated_at);
+    const sg=equipmentSpecificGravity(tank); const silo=isSiloAsset(tank);
+    return `<article class="equipment-card-v3 level-${level.key} ${silo?"silo":"fluid"}" data-equipment-card data-tank-card data-tank-id="${esc(tank.id)}" data-demo="${demo?"true":"false"}">
+      <div class="equipment-card-head"><div><small>${esc(tank.phase||"-")}</small><h3>${esc(tank.name)}</h3></div>${equipmentStatusTag(status)}</div>
+      <div class="equipment-card-main reference-card-main">
+        ${technicalEquipmentVisual(tank,{demo,visualKey:`${demo?"demo":"real"}:${tank.id}`})}
+        <div class="equipment-card-info reference-card-info">
+          <div class="equipment-product"><span>${esc(equipmentProductLabel(tank))}</span><strong>${esc(equipmentDescription(tank))}</strong><small>Cliente: ${esc(tank.client||"A definir")}</small></div>
+          <div class="equipment-volume"><strong>${fmt.format(Number(tank.volume||0))}</strong><span>/ ${fmt.format(Number(tank.capacity||0))} ${esc(tank.unit)}</span><b>${fmt.format(level.pct)}%</b></div>
+          <div class="equipment-card-metrics">
+            <span>${silo?"Peso / densidade":"Densidade"}<strong>${tank.density!==null&&tank.density!==undefined?`${fmt.format(tank.density)} ${esc(tank.densityUnit||"")}`:"-"}</strong></span>
+            <span>SG<strong>${sg!==null?fmt.format(sg):"-"}</strong></span>
+            <span>Lote<strong>${esc(tank.lot||"-")}</strong></span>
+          </div>
+        </div>
+      </div>
+      <div class="equipment-card-update"><span><b>${parts.date}</b>${parts.time}</span><span><b>Responsável</b>${esc(equipmentUpdater(tank))}</span></div>
+      ${level.key!=="normal"?`<div class="equipment-alert-label alert-${level.key}"><span>!</span>${esc(level.label)}</div>`:""}
+      <div class="equipment-card-actions no-print">
+        ${!demo&&hasRole(["supervisor","lider","operador","logistica"])?`<button class="btn small primary" data-action="open-tank-movement" data-tank-id="${tank.id}">Movimentar</button>`:""}
+        <button class="btn small secondary" data-action="open-equipment-details" data-tank-id="${tank.id}" data-demo="${demo?"true":"false"}">Detalhes</button>
+        ${!demo&&canEditTankStructure()?`<button class="btn small secondary" data-edit-tank-structure="${tank.id}">Estrutura</button>`:""}
+      </div>
+    </article>`;
+  }
+
+  function equipmentListRow(tank, demo=false) {
+    const level=equipmentLevelState(tank), sg=equipmentSpecificGravity(tank), parts=equipmentDateParts(tank.updated_at);
+    return `<article class="equipment-list-row level-${level.key}" data-equipment-card data-tank-id="${esc(tank.id)}" data-demo="${demo?"true":"false"}">
+      <div class="equipment-list-visual">${technicalEquipmentVisual(tank,{demo,visualKey:`list:${demo?"demo":"real"}:${tank.id}`})}</div>
+      <div><small>${esc(tank.phase)}</small><strong>${esc(tank.name)}</strong><span>${esc(equipmentProductLabel(tank))} • ${esc(equipmentDescription(tank))}</span></div>
+      <div><small>Cliente</small><strong>${esc(tank.client||"A definir")}</strong><span>Lote ${esc(tank.lot||"-")}</span></div>
+      <div><small>Volume</small><strong>${fmt.format(tank.volume)} / ${fmt.format(tank.capacity)} ${esc(tank.unit)}</strong><span>${fmt.format(level.pct)}%</span></div>
+      <div><small>Densidade / SG</small><strong>${tank.density!==null?fmt.format(tank.density):"-"} ${esc(tank.densityUnit||"")}</strong><span>SG ${sg!==null?fmt.format(sg):"-"}</span></div>
+      <div>${equipmentStatusTag(equipmentStatus(tank))}<span>${parts.date} ${parts.time}</span><small>${esc(equipmentUpdater(tank))}</small></div>
+      <button class="btn small secondary" data-action="open-equipment-details" data-tank-id="${tank.id}" data-demo="${demo?"true":"false"}">Abrir</button>
+    </article>`;
+  }
+
+  function tankFilterOptions(items,key,label) {
+    const values=[...new Set(items.map(item=>key(item)).filter(Boolean))].sort((a,b)=>String(a).localeCompare(String(b)));
+    return `<option value="Todos">${label}</option>${values.map(value=>`<option value="${esc(value)}">${esc(value)}</option>`).join("")}`;
+  }
+
+  function filteredEquipmentData() {
+    const page=ensureTankPageState(), f=page.filters;
+    return equipmentDataset().filter(t=>{
+      const type=isSiloAsset(t)?"Silo":String(t.kind).includes("Mix")?"Mix Tank":"Tanque";
+      const status=equipmentStatus(t), product=equipmentProductLabel(t);
+      const q=normalizeSearch(f.query||"");
+      return (f.type==="Todos"||f.type===type)&&(f.product==="Todos"||f.product===product)&&(f.area==="Todos"||f.area===t.phase)&&(f.client==="Todos"||f.client===(t.client||"A definir"))&&(f.status==="Todos"||f.status===status)&&(!q||normalizeSearch(`${t.name} ${t.product} ${equipmentDescription(t)} ${t.lot} ${t.client}`).includes(q));
+    });
+  }
+
+  function tankPageFilters(items) {
+    const page=ensureTankPageState(), f=page.filters;
+    return `<div class="tanks-page-filters">
+      <div class="tanks-search"><span>⌕</span><input id="tankPageSearch" value="${esc(f.query)}" placeholder="Buscar equipamento, produto, lote ou cliente"></div>
+      <select data-tank-page-filter="type">${tankFilterOptions(items,t=>isSiloAsset(t)?"Silo":String(t.kind).includes("Mix")?"Mix Tank":"Tanque","Todos os tipos")}</select>
+      <select data-tank-page-filter="product">${tankFilterOptions(items,equipmentProductLabel,"Todos os produtos")}</select>
+      <select data-tank-page-filter="area">${tankFilterOptions(items,t=>t.phase,"Todas as áreas")}</select>
+      <select data-tank-page-filter="client">${tankFilterOptions(items,t=>t.client||"A definir","Todos os clientes")}</select>
+      <select data-tank-page-filter="status">${tankFilterOptions(items,equipmentStatus,"Todos os status")}</select>
+    </div>`;
+  }
+
+  function selectTankFilterValues() {
+    const f=ensureTankPageState().filters;
+    $$('[data-tank-page-filter]').forEach(select=>{select.value=f[select.dataset.tankPageFilter]||"Todos"});
+  }
+
+  function statusLegend() {
+    return ["Operacional","Em fabricação","Recebendo","Bombeando","Disponível","Em manutenção","Bloqueado","Vazio"].map(status=>`<span><i class="legend-${normalizeSearch(status).replace(/\s+/g,"-")}"></i>${status}</span>`).join("");
+  }
+
+  function equipmentSection(title,icon,items,demo) {
+    const page=ensureTankPageState();
+    return `<section class="equipment-section-v3"><div class="equipment-section-head"><div><span>${icon}</span><div><small>MONITORAMENTO</small><h2>${title}</h2></div></div><b>${items.length} equipamento(s)</b></div>
+      <div class="${page.view==="list"?"equipment-list-v3":"equipment-grid-v3"}">${items.map(t=>page.view==="list"?equipmentListRow(t,demo):equipmentCardV3(t,{demo})).join("")||`<div class="empty industrial-empty">Nenhum equipamento corresponde aos filtros.</div>`}</div></section>`;
+  }
+
+  function equipmentRecentOperations(tank) {
+    return (state.data.operations||[]).filter(op=>op.source_tank_id===tank.id||op.destination_tank_id===tank.id||(state.data.operationAllocations||[]).some(a=>a.operation_id===op.id&&a.tank_id===tank.id)).sort((a,b)=>new Date(b.updated_at||b.created_at)-new Date(a.updated_at||a.created_at)).slice(0,8);
+  }
+
+  function equipmentDetailsPanel(tank,demo=false) {
+    const movements=(state.data.tankMovements||[]).filter(m=>m.source_tank_id===tank.id||m.destination_tank_id===tank.id).sort((a,b)=>new Date(b.movementAt||b.created_at)-new Date(a.movementAt||a.created_at)).slice(0,12);
+    const operations=demo?[]:equipmentRecentOperations(tank);
+    return `<div class="equipment-detail-layout">
+      <div class="equipment-detail-hero">${technicalEquipmentVisual(tank,{demo,visualKey:`detail:${demo?"demo":"real"}:${tank.id}`})}<div><small>${esc(tank.phase)}</small><h2>${esc(tank.name)}</h2>${equipmentStatusTag(equipmentStatus(tank))}<p>${esc(equipmentDescription(tank))}</p></div></div>
+      <div class="equipment-detail-kpis"><span>Produto<strong>${esc(equipmentProductLabel(tank))}</strong></span><span>Volume<strong>${fmt.format(tank.volume)} / ${fmt.format(tank.capacity)} ${esc(tank.unit)}</strong></span><span>Ocupação<strong>${fmt.format(equipmentLevelState(tank).pct)}%</strong></span><span>Cliente<strong>${esc(tank.client||"A definir")}</strong></span><span>Densidade<strong>${tank.density!==null?`${fmt.format(tank.density)} ${esc(tank.densityUnit||"")}`:"-"}</strong></span><span>SG<strong>${equipmentSpecificGravity(tank)!==null?fmt.format(equipmentSpecificGravity(tank)):"-"}</strong></span><span>Lote<strong>${esc(tank.lot||"-")}</strong></span><span>Responsável<strong>${esc(equipmentUpdater(tank))}</strong></span></div>
+      ${!demo?`<div class="equipment-detail-actions"><button class="btn primary" data-action="open-tank-movement" data-tank-id="${tank.id}">Atualizar volume</button><button class="btn secondary" data-edit-tank="${tank.id}">Alterar produto/status</button><button class="btn secondary" data-action="open-tank-observation" data-tank-id="${tank.id}">Adicionar observação</button>${canEditTankStructure()?`<button class="btn secondary" data-edit-tank-structure="${tank.id}">Editar estrutura</button>`:""}</div>`:`<div class="industrial-demo-notice"><strong>Demonstração visual</strong><span>Os botões de edição ficam desativados para dados fictícios.</span></div>`}
+      <div class="section-title">Movimentações recentes</div><div class="equipment-detail-timeline">${movements.map(m=>`<div><span class="movement-${normalizeSearch(m.direction||"").replace(/\s+/g,"-")}">${m.direction==="Entrada"?"↓":"↑"}</span><div><strong>${esc(m.movement_type)} • ${fmt.format(m.quantity)} ${esc(m.unit)}</strong><small>${dateTime(m.movementAt||m.created_at)} • ${esc(state.data.users.find(u=>u.id===(m.responsibleId||m.created_by))?.name||"Sistema")}</small><p>${esc(m.notes||m.reference||"Sem observação")}</p></div><b>${m.previousVolume!==null?`${fmt.format(m.previousVolume)} → ${fmt.format(m.finalVolume)} ${esc(m.unit)}`:""}</b></div>`).join("")||`<div class="empty">Nenhuma movimentação registrada.</div>`}</div>
+      <div class="section-title">Operações vinculadas</div><div class="equipment-linked-operations">${operations.map(op=>`<article><span>${esc(op.activity)}</span><strong>${esc(op.client)} • ${esc(op.vessel)}</strong><small>${esc(op.service_order||op.ticketNumber||"Sem referência")} • ${esc(op.status)}</small></article>`).join("")||`<div class="empty">Nenhuma operação vinculada.</div>`}</div>
+      ${demo?"":tankVolumeAuditTable(tank)}
+    </div>`;
+  }
+
+  function tankMovementDirection(type) {
+    if (["Recebimento","Fabricação","Backload"].includes(type)) return "Entrada";
+    if (["Bombeio","Esvaziamento"].includes(type)) return "Saída";
+    return "Entrada";
+  }
+
+  function tankMovementFormV3(tank) {
+    const types=["Recebimento","Bombeio","Fabricação","Transferência interna","Backload","Ajuste de inventário","Esvaziamento","Correção manual"];
+    const products=(state.data.fluids||[]).filter(f=>f.active!==false && (isSiloAsset(tank)?["granel","insumo"].includes(String(f.type||"").toLowerCase()):!["granel","insumo"].includes(String(f.type||"").toLowerCase())));
+    const operations=(state.data.operations||[]).filter(op=>!["Cancelada"].includes(op.status)).slice(0,100);
+    const now=toLocalInput(new Date().toISOString());
+    return `<form id="tankMovementForm" data-tank-id="${tank.id}" data-unit="${esc(tank.unit)}" data-capacity="${tank.capacity}" data-previous="${tank.volume}">
+      <div class="movement-form-summary"><span>Equipamento<strong>${esc(tank.name)}</strong></span><span>Volume anterior<strong>${fmt.format(tank.volume)} ${esc(tank.unit)}</strong></span><span>Capacidade<strong>${fmt.format(tank.capacity)} ${esc(tank.unit)}</strong></span></div>
+      <div class="form-grid">
+        <div><label>Tipo de movimentação *</label><select name="movement_type" required>${types.map(x=>`<option>${x}</option>`).join("")}</select></div>
+        <div><label>Efeito no saldo *</label><select name="direction"><option>Entrada</option><option>Saída</option></select><small class="field-help" data-direction-help>Recebimento adiciona ao saldo.</small></div>
+        <div><label>Quantidade movimentada *</label><input name="quantity" type="text" inputmode="decimal" required placeholder="0,00"></div>
+        <div><label>Volume final</label><input name="final_volume" value="${fmt.format(tank.volume)} ${esc(tank.unit)}" disabled><small class="field-help" data-movement-validation></small></div>
+        <div><label>Produto *</label><select name="fluid_type_id" required><option value="">Selecione...</option>${products.map(f=>`<option value="${f.id}" ${f.id===tank.fluidTypeId?"selected":""}>${esc(f.name)}</option>`).join("")}</select></div>
+        <div><label>Cliente *</label><select name="client">${tankClientOptions(tank.client||"A definir")}</select></div>
+        <div><label>Lote</label><input name="lot" value="${esc(tank.lot||"")}"></div>
+        <div><label>Status após movimentação</label><select name="status_after">${TANK_OPERATIONAL_STATUSES.map(s=>`<option value="${s}" ${normalizeTankOperationalStatus(tank.status,tank.volume)===s?"selected":""}>${s}</option>`).join("")}</select></div>
+        <div><label>Operação vinculada</label><select name="operation_id"><option value="">Sem operação</option>${operations.map(op=>`<option value="${op.id}">${esc(op.client)} • ${esc(op.vessel)} • ${esc(op.service_order||op.ticketNumber||op.activity)}</option>`).join("")}</select></div>
+        <div><label>Embarcação</label><input name="vessel" placeholder="Preenchida pela operação ou manualmente"></div>
+        <div><label>Responsável *</label><input value="${esc(state.data.profile.name)}" disabled><input type="hidden" name="responsible_id" value="${state.user.id}"></div>
+        <div><label>Data e hora *</label><input name="movement_at" type="datetime-local" required value="${now}"></div>
+        <div class="wide"><label>Observação</label><textarea name="notes" placeholder="Referência, motivo ou informação operacional"></textarea></div>
+      </div>${formActions("Registrar movimentação")}
+    </form>`;
+  }
+
+  function tankObservationForm(tank) {
+    return `<form id="tankObservationForm" data-tank-id="${tank.id}"><div class="form-grid"><div class="wide"><label>Equipamento</label><input value="${esc(tank.name)}" disabled></div><div class="wide"><label>Observação *</label><textarea name="notes" required placeholder="Descreva a condição, pendência ou informação operacional"></textarea></div><div><label>Responsável</label><input value="${esc(state.data.profile.name)}" disabled></div><div><label>Data e hora *</label><input name="observed_at" type="datetime-local" required value="${toLocalInput(new Date().toISOString())}"></div></div>${formActions("Adicionar observação")}</form>`;
+  }
+
+  function updateTankMovementPreview(form) {
+    if (!form) return;
+    const type=form.elements.movement_type.value;
+    if (["Recebimento","Fabricação","Backload","Bombeio","Esvaziamento"].includes(type)) {
+      form.elements.direction.value=tankMovementDirection(type);
+      form.elements.direction.disabled=true;
+    } else form.elements.direction.disabled=false;
+    const previous=Number(form.dataset.previous||0), capacity=Number(form.dataset.capacity||0), qty=parseOptionalDecimal(form.elements.quantity.value)||0;
+    const direction=form.elements.direction.value;
+    const final=direction==="Entrada"?previous+qty:previous-qty;
+    form.elements.final_volume.value=`${fmt.format(final)} ${form.dataset.unit}`;
+    const validation=form.querySelector('[data-movement-validation]');
+    validation.textContent=final<0?"Saldo insuficiente.":final>capacity?"Acima da capacidade máxima.":`${fmt.format(Math.max(0,capacity-final))} ${form.dataset.unit} livres após a movimentação.`;
+    validation.classList.toggle("invalid",final<0||final>capacity);
+    const statuses={Recebimento:"Recebendo",Bombeio:"Bombeando",Fabricação:"Em fabricação",Esvaziamento:final===0?"Vazio":"Operacional"};
+    if (statuses[type]) form.elements.status_after.value=statuses[type];
+    const help=form.querySelector('[data-direction-help]'); if(help) help.textContent=`${type} será registrado como ${direction.toLowerCase()} no saldo.`;
+  }
+
+  async function saveTankMovementForm(form) {
+    const payload=Object.fromEntries(new FormData(form));
+    const qty=parseOptionalDecimal(payload.quantity);
+    if (!Number.isFinite(qty)||qty<=0) throw new Error("Informe uma quantidade maior que zero.");
+    if (!payload.responsible_id) throw new Error("Movimentação sem responsável.");
+    if (!payload.movement_at) throw new Error("Informe data e hora.");
+    const previous=Number(form.dataset.previous||0),capacity=Number(form.dataset.capacity||0);
+    const direction=form.elements.direction.value;
+    const final=direction==="Entrada"?previous+qty:previous-qty;
+    if (final<0) throw new Error("O volume final não pode ser negativo.");
+    if (final>capacity) throw new Error("O volume final não pode ultrapassar a capacidade.");
+    showMobileSaveProgress("Registrando movimentação",`${fmt.format(previous)} → ${fmt.format(final)} ${form.dataset.unit}`,"loading");
+    const {data,error}=await state.client.rpc("save_tank_movement_v2",{tid:form.dataset.tankId,mtype:payload.movement_type,dir:direction,qty,fid:payload.fluid_type_id||null,cli:payload.client,lot:payload.lot?.trim()||null,opid:payload.operation_id||null,vessel:payload.vessel?.trim()||null,notes:payload.notes?.trim()||null,mat:new Date(payload.movement_at).toISOString(),st:payload.status_after||null});
+    if(error) throw error;
+    showMobileSaveProgress("Movimentação confirmada",`${fmt.format(Number(data.final_volume))} ${data.unit}`,"success",1500);
+    return data;
+  }
+
+  function renderUsersPage() {
+    const users=state.data.users||[];
+    $("#page-users").innerHTML=header("Usuários","Perfis, funções e permissões do sistema.",isAdmin()?`<button class="btn primary" data-action="new-user">+ Novo usuário</button>`:"")+`<div class="industrial-users-grid">${users.map(user=>`<article class="card industrial-user-card"><div class="user-avatar">${esc(user.name.split(/\s+/).slice(0,2).map(x=>x[0]).join("").toUpperCase())}</div><div><strong>${esc(user.name)}</strong><span>${esc(user.email)}</span><small>${esc(roleDisplayName(user.role))} • ${esc(user.department||"Sem setor")}</small></div>${badge(user.active?"Ativo":"Inativo")}${isAdmin()?`<button class="btn small secondary" data-edit-user="${user.id}">Gerenciar</button>`:""}</article>`).join("")||`<div class="empty">Nenhum usuário.</div>`}</div>`;
+  }
+
+  function renderTanks() {
+    const page=ensureTankPageState(), all=equipmentDataset(), filtered=filteredEquipmentData(), demo=page.source==="demo";
+    const fluids=filtered.filter(t=>!isSiloAsset(t)), silos=filtered.filter(isSiloAsset);
+    const alerts=filtered.filter(t=>!["normal","empty"].includes(equipmentLevelState(t).key)).length;
+    $("#page-tanks").innerHTML=`<div class="tanks-page-v3">
+      <div class="tanks-page-heading"><div><small>GESTÃO DE TANCAGEM</small><h1>Tanques e Silos</h1><p>Monitoramento em tempo real da tancagem da planta</p></div><div class="tanks-heading-actions"><span class="auto-update-active"><i></i>Atualização automática ativa</span><button class="btn secondary" data-action="refresh-tank-page">↻ Atualizar dados</button><div class="view-switch"><button class="${page.view==="cards"?"active":""}" data-action="tank-view-cards">▦</button><button class="${page.view==="list"?"active":""}" data-action="tank-view-list">☷</button></div></div></div>
+      <div class="tank-source-switch"><button class="${!demo?"active":""}" data-action="tank-source-real">Dados reais do Supabase</button><button class="${demo?"active":""}" data-action="tank-source-demo">Demonstração completa</button>${demo?`<span>DADOS FICTÍCIOS • 8 EQUIPAMENTOS</span>`:`<span>REALTIME • ${all.length} EQUIPAMENTOS</span>`}</div>
+      ${tankPageFilters(all)}
+      <div class="tank-page-summary"><span><small>Equipamentos visíveis</small><strong>${filtered.length}</strong></span><span><small>Tanques e Mix Tanks</small><strong>${fluids.length}</strong></span><span><small>Silos de granéis</small><strong>${silos.length}</strong></span><span><small>Alertas</small><strong>${alerts}</strong></span></div>
+      ${equipmentSection("TANQUES DE FLUIDOS","◫",fluids,demo)}
+      ${equipmentSection("SILOS DE GRANÉIS","▱",silos,demo)}
+      <footer class="tanks-page-footer"><div class="status-legend">${statusLegend()}</div><div><span>Última atualização: <strong>${state.lastSync?dateTime(state.lastSync):dateTime(new Date())}</strong></span><span class="footer-connection ${navigator.onLine?"online":"offline"}"><i></i>${navigator.onLine?"Conectado":"Sem conexão"}</span><button class="btn small secondary" data-action="refresh-tank-page">Atualizar</button><b>${alerts} alerta(s)</b></div></footer>
+    </div>`;
+    selectTankFilterValues();
+    updateShellPageMeta("tanks");
+    setTimeout(()=>animateIndustrialEquipmentLevels($("#page-tanks")),0);
+  }
+
+  function tankCard(tank) { return equipmentCardV3(tank,{demo:false}); }
+
+  function tankHistoryVisual(tank, history) {
+    const ordered=[...history].sort((a,b)=>new Date(a.created_at)-new Date(b.created_at)).slice(-30);
+    const points=ordered.map(item=>Number(item.new_volume||0));
+    const max=Math.max(Number(tank.capacity||0),...points,1); const width=720,height=210,pad=28;
+    const coords=points.map((value,index)=>({x:pad+(index*(width-pad*2)/Math.max(1,points.length-1)),y:height-pad-(value/max*(height-pad*2)),value}));
+    const poly=coords.map(p=>`${p.x},${p.y}`).join(" ");
+    const last=coords.at(-1);
+    return `<div class="tank-history-visual"><div class="history-chart-head"><div><strong>Evolução do volume</strong><span>Últimas ${ordered.length} alterações</span></div><div><strong>${fmt.format(tank.volume)} ${esc(tank.unit)}</strong><span>Atual</span></div></div>
+      ${ordered.length?`<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Evolução do volume"><line x1="${pad}" y1="${height-pad}" x2="${width-pad}" y2="${height-pad}" class="chart-axis"/><line x1="${pad}" y1="${pad}" x2="${pad}" y2="${height-pad}" class="chart-axis"/><polyline points="${poly}" class="history-line" fill="none"/>${coords.map((p,i)=>`<circle cx="${p.x}" cy="${p.y}" r="${i===coords.length-1?5:3}" class="history-point"><title>${fmt.format(p.value)} ${esc(tank.unit)} — ${dateTime(ordered[i].created_at)}</title></circle>`).join("")}${last?`<text x="${Math.min(width-80,last.x+8)}" y="${Math.max(18,last.y-8)}">${fmt.format(last.value)} ${esc(tank.unit)}</text>`:""}</svg>`:`<div class="empty">Sem histórico suficiente para o gráfico.</div>`}
+      <div class="history-summary-grid"><span>Capacidade<strong>${fmt.format(tank.capacity)} ${esc(tank.unit)}</strong></span><span>Cliente atual<strong>${esc(tank.client || "A definir")}</strong></span><span>Produto atual<strong>${esc(tank.product||"-")}</strong></span><span>Densidade<strong>${tank.density?`${fmt.format(tank.density)} ${esc(tank.densityUnit||"")}`:"-"}</strong></span></div></div>`;
+  }
+
+
+
+  function completeTankTimeline(tank) {
+    const entries=[];
+    state.data.tankHistory.filter(item=>item.tank_id===tank.id).forEach(item=>{
+      const user=state.data.users.find(x=>x.id===item.changed_by)?.name||"Sistema";
+      const clientChanged = item.previous_client !== null && item.previous_client !== undefined
+        && item.new_client !== null && item.new_client !== undefined
+        && item.previous_client !== item.new_client;
+      const productChanged = (item.previous_product || "") !== (item.new_product || "");
+      const moved = item.moved_quantity !== null && item.moved_quantity !== undefined
+        ? Number(item.moved_quantity)
+        : Math.abs(Number(item.new_volume || 0)-Number(item.previous_volume || 0));
+      const movementType = item.movement_type || (Number(item.new_volume || 0)>Number(item.previous_volume || 0) ? "Entrada" : Number(item.new_volume || 0)<Number(item.previous_volume || 0) ? "Saída" : "Atualização");
+      const title = moved > 0
+        ? `${movementType}: ${fmt.format(moved)} ${tank.unit}`
+        : clientChanged && !productChanged
+          ? `Cliente: ${item.previous_client || "A definir"} → ${item.new_client || "A definir"}`
+          : `Atualização: ${item.previous_product||"Vazio"} → ${item.new_product||"Vazio"}`;
+      const clientDetail = clientChanged ? `Cliente ${item.previous_client || "A definir"} → ${item.new_client || "A definir"}` : "";
+      entries.push({
+        time:item.created_at,
+        title,
+        meta:`${user} • ${fmt.format(item.previous_volume||0)} → ${fmt.format(item.new_volume||0)} ${tank.unit}`,
+        detail:[clientDetail,item.notes||`Lote ${item.previous_lot||"-"} → ${item.new_lot||"-"}`].filter(Boolean).join(" • ")
+      });
+    });
+    state.data.tankMovements.filter(item=>item.source_tank_id===tank.id||item.destination_tank_id===tank.id).forEach(item=>{
+      const direction=item.source_tank_id===tank.id?"Saída":"Entrada";
+      const operation=state.data.operations.find(op=>op.id===item.operation_id);
+      const truck=state.data.trucks.find(entry=>entry.id===item.truckId);
+      const source=state.data.tanks.find(x=>x.id===item.source_tank_id)?.name;
+      const destination=state.data.tanks.find(x=>x.id===item.destination_tank_id)?.name;
+      entries.push({
+        time:item.created_at,
+        title:`${esc(item.movement_type || direction)}: ${fmt.format(item.quantity)} ${item.unit}`,
+        meta:`${item.product||"-"} • ${direction}`,
+        detail:[
+          source&&destination?`${source} → ${destination}`:"",
+          operation?`${operation.client} / ${operation.vessel}${operation.ticketNumber?` • Ticket ${operation.ticketNumber}`:""}`:"",
+          truck?`Carreta ${truck.plate||truck.invoice||truck.id}${truck.invoice?` • NF ${truck.invoice}`:""}`:"",
+          item.reference||""
+        ].filter(Boolean).join(" • ")
+      });
+    });
+    return entries.sort((a,b)=>new Date(b.time)-new Date(a.time));
+  }
+
+  function completeTankTimelineHtml(tank) {
+    const rows=completeTankTimeline(tank).map(entry=>`<div class="timeline-item"><span class="timeline-dot"></span><div><strong>${esc(entry.title)}</strong><small>${dateTime(entry.time)} • ${esc(entry.meta)}</small><p>${esc(entry.detail||"")}</p></div></div>`).join("");
+    return `${tankHistoryVisual(tank,state.data.tankHistory.filter(item=>item.tank_id===tank.id))}<div class="section-title">Linha do tempo integrada</div><div class="timeline professional-timeline">${rows||`<div class="empty">Nenhuma movimentação registrada.</div>`}</div>`;
+  }
+
+  function tankTransferForm() {
+    const sourceOptions = state.data.tanks.filter(tank => tank.volume > 0).map(tank => `<option value="${tank.id}">${esc(tank.name)} — ${fmt.format(tank.volume)} ${esc(tank.unit)} — ${esc(tank.product || "Sem produto")}</option>`).join("");
+    const destinationOptions = state.data.tanks.map(tank => `<option value="${tank.id}">${esc(tank.name)} — livre ${fmt.format(Math.max(0, tank.capacity - tank.volume))} ${esc(tank.unit)} — ${esc(tank.product || "Vazio")}</option>`).join("");
+    return `<form id="tankTransferForm"><div class="form-grid">
+      <div class="wide"><label>Origem *</label><select name="source_tank_id" required><option value="">Selecione</option>${sourceOptions}</select></div>
+      <div class="wide"><label>Destino *</label><select name="destination_tank_id" required><option value="">Selecione</option>${destinationOptions}</select></div>
+      <div><label>Quantidade *</label><input name="quantity" type="text" inputmode="decimal" required placeholder="Ex.: 250"></div>
+      <div><label>Referência</label><input name="reference" placeholder="OS, operação ou motivo"></div>
+      <div class="wide"><label>Observações</label><textarea name="notes"></textarea></div>
+    </div><div id="transferPreview" class="info-box">Selecione a origem, o destino e a quantidade.</div>${formActions("Confirmar transferência")}</form>`;
+  }
+
+  function updateTransferPreview(form) {
+    if (!form) return;
+    const source = state.data?.tanks?.find(t => t.id === form.elements.source_tank_id?.value);
+    const destination = state.data?.tanks?.find(t => t.id === form.elements.destination_tank_id?.value);
+    const quantity = parseTankVolume(form.elements.quantity?.value);
+    const box = form.querySelector("#transferPreview");
+    if (!box) return;
+    if (!source || !destination || !Number.isFinite(quantity) || quantity <= 0) {
+      box.textContent = "Selecione a origem, o destino e a quantidade.";
+      return;
+    }
+    const destinationCapacity = isSiloAsset(destination) && source.density
+      ? siloOperationalCapacity(defaultSiloPhysicalCapacity(destination), destination.density || source.density)
+      : destination.capacity;
+    const capacityText = isSiloAsset(destination) && destinationCapacity
+      ? ` | capacidade operacional: ${fmt.format(destinationCapacity)} ton`
+      : "";
+    box.textContent = `${source.name}: ${fmt.format(source.volume)} → ${fmt.format(source.volume - quantity)} ${source.unit} | ${destination.name}: ${fmt.format(destination.volume)} → ${fmt.format(destination.volume + quantity)} ${destination.unit}${capacityText}`;
+  }
+
+
+
+  function isSiloAsset(value) {
+    const kind = typeof value === "object" ? value?.kind : value;
+    return String(kind || "").toLowerCase().includes("silo");
+  }
+
+  function siloOperationalCapacity(physicalCapacityM3, density) {
+    const physical = Number(physicalCapacityM3);
+    const densityValue = Number(density);
+    if (!Number.isFinite(physical) || physical <= 0 || !Number.isFinite(densityValue) || densityValue <= 0) return null;
+    return Math.round(physical * densityValue * 1000) / 1000;
+  }
+
+  function defaultSiloPhysicalCapacity(tank) {
+    if (Number(tank?.physicalCapacityM3) > 0) return Number(tank.physicalCapacityM3);
+    const currentCapacity = Number(tank?.capacity || 0);
+    return currentCapacity > 0 ? currentCapacity / 2.162 : 69.380204;
+  }
+
+  function defaultDensityUnit(category = "", kind = "") {
+    const categoryText = String(category || "").toLowerCase();
+    const kindText = String(kind || "").toLowerCase();
+    return kindText.includes("silo") || ["granel", "insumo"].includes(categoryText) ? "t/m³" : "ppg";
+  }
+
+  function compatibleTankFluids(tank) {
+    const isSilo = isSiloAsset(tank);
+    return (state.data.fluids || [])
+      .filter(item => item.active !== false || item.id === tank.fluidTypeId)
+      .filter(item => {
+        if (item.id === tank.fluidTypeId) return true;
+        const category = String(item.type || "").toLowerCase();
+        return isSilo ? ["granel", "insumo"].includes(category) : !["granel", "insumo"].includes(category);
+      })
+      .sort((a, b) => `${a.type} ${a.name}`.localeCompare(`${b.type} ${b.name}`, "pt-BR"));
+  }
+
+  function activeCompatibleTankProducts(tank) {
+    return compatibleTankFluids(tank).filter(item => item.active !== false);
+  }
+
+  function catalogProductOptions(tank) {
+    const groups = new Map();
+    compatibleTankFluids(tank).forEach(item => {
+      const group = item.type || "Outros";
+      if (!groups.has(group)) groups.set(group, []);
+      groups.get(group).push(item);
+    });
+
+    return [...groups.entries()].map(([group, items]) =>
+      `<optgroup label="${esc(group)}">${items.map(item => `
+        <option value="${item.id}"
+          data-product="${esc(item.name)}"
+          data-density="${item.density || ""}"
+          data-density-unit="${esc(item.densityUnit || defaultDensityUnit(item.type, tank.kind))}"
+          ${tank.fluidTypeId === item.id ? "selected" : ""}>
+          ${esc(item.name)}${item.density ? ` — ${fmt.format(item.density)} ${esc(item.densityUnit || defaultDensityUnit(item.type, tank.kind))}` : ""}
+        </option>`).join("")}</optgroup>`
+    ).join("");
+  }
+
+  function syncSiloCapacityPreview(form) {
+    if (!form) return;
+    const kind = form.elements.kind?.value || form.dataset.tankKind || "";
+    const isSilo = isSiloAsset(kind);
+    form.dataset.tankKind = kind;
+    [...form.querySelectorAll("[data-silo-capacity-wrap]")].forEach(element => element.classList.toggle("hidden", !isSilo));
+    const preview = form.querySelector("[data-silo-capacity-preview]");
+    const suggestedField = form.elements.operational_capacity;
+    const capacityLabel = form.querySelector("[data-capacity-label]");
+    if (capacityLabel) capacityLabel.textContent = isSilo ? "Capacidade máxima (ton) *" : "Capacidade máxima (bbl) *";
+    if (form.elements.unit) form.elements.unit.value = isSilo ? "ton" : "bbl";
+    if (!isSilo) {
+      preview?.classList.add("hidden");
+      return;
+    }
+    const physical = parseOptionalDecimal(form.elements.physical_capacity_m3?.value);
+    const density = parseOptionalDecimal(form.elements.density?.value);
+    const suggested = siloOperationalCapacity(physical, density);
+    const currentVolume = parseOptionalDecimal(form.elements.volume?.value) ?? 0;
+    if (form.elements.density_unit) form.elements.density_unit.value = "t/m³";
+    if (suggestedField) suggestedField.value = suggested === null ? "" : fmt.format(suggested);
+    if (!preview) return;
+    preview.classList.remove("hidden");
+    if (suggested === null) {
+      preview.classList.remove("silo-capacity-danger");
+      preview.innerHTML = `<strong>Cálculo auxiliar do silo</strong><span>Informe volume físico e densidade para obter uma sugestão. A capacidade máxima continua editável.</span>`;
+      return;
+    }
+    const configured = parseOptionalDecimal(form.elements.capacity?.value) ?? 0;
+    const exceeded = currentVolume > configured;
+    preview.classList.toggle("silo-capacity-danger", exceeded);
+    preview.innerHTML = `<strong>Sugestão calculada: ${fmt.format(suggested)} ton</strong><span>${fmt.format(physical)} m³ × ${fmt.format(density)} t/m³</span><span>Capacidade informada: ${fmt.format(configured)} ton${exceeded ? ` • volume atual excede em ${fmt.format(currentVolume-configured)} ton` : ""}</span>`;
+  }
+
+  function syncTankCatalogFields(form) {
+    if (!form) return;
+    const select = form.elements.fluid_type_id;
+    const option = select?.selectedOptions?.[0];
+    const densityInput = form.elements.density;
+    const densityUnit = form.elements.density_unit;
+    const tankKind = form.elements.kind?.value || form.dataset.tankKind || "";
+
+    if (!select || !option) return;
+
+    if (!select.value) {
+      if (densityInput) densityInput.value = "";
+      if (densityUnit) densityUnit.value = defaultDensityUnit("", tankKind);
+      syncSiloCapacityPreview(form);
+      return;
+    }
+
+    if (densityInput) densityInput.value = option.dataset.density || "";
+    if (densityUnit) densityUnit.value = option.dataset.densityUnit || defaultDensityUnit("", tankKind);
+    syncSiloCapacityPreview(form);
+  }
+
+  function syncFluidDensityUnit(form) {
+    if (!form) return;
+    const category = form.elements.type?.value || "";
+    const densityUnit = form.elements.density_unit;
+    if (densityUnit) densityUnit.value = defaultDensityUnit(category, "");
+  }
+
+  function tankForm(tank, editStructure = false) {
+    const admin = canEditTankStructure() && editStructure;
+    const editToken = crypto.randomUUID();
+    const silo = isSiloAsset(tank);
+    const linkedFluid = (state.data.fluids || []).find(item => item.id === tank.fluidTypeId);
+    const unlinkedCurrent = Boolean(tank.product && !linkedFluid);
+    const currentDensity = tank.density ?? linkedFluid?.density ?? "";
+    const currentDensityUnit = silo ? "t/m³" : (tank.densityUnit || linkedFluid?.densityUnit || defaultDensityUnit(linkedFluid?.type, tank.kind));
+    const physicalCapacity = defaultSiloPhysicalCapacity(tank);
+    const calculatedCapacity = siloOperationalCapacity(physicalCapacity, currentDensity) ?? tank.capacity;
+    const officialCapacity = officialTankCapacityBy(tank.name, tank.phase, tank.kind, tank.capacity);
+
+    return `<form id="tankForm"
+      data-id="${tank.id}"
+      data-tank-id="${tank.id}"
+      data-tank-name="${esc(tank.name)}"
+      data-tank-updated-at="${esc(tank.updated_at || "")}"
+      data-edit-token="${editToken}"
+      data-admin-full="${admin ? "true" : "false"}"
+      data-tank-kind="${esc(tank.kind)}"
+      novalidate>
+      <input type="hidden" name="id" value="${tank.id}" data-immutable-id>
+      <div class="tank-target-lock">
+        <span>Equipamento selecionado</span>
+        <strong>${esc(tank.name)}</strong>
+        <small>${esc(tank.phase)} • ${esc(tank.kind)} • ID ${esc(tank.id.slice(0, 8))}</small>
+      </div>
+      <div class="form-grid">
+        ${admin ? `
+          <div><label>Nome do equipamento *</label><input name="name" required autocomplete="off" autocapitalize="characters" spellcheck="false" value="${esc(tank.name)}"><small class="field-help">O nome precisa ser exclusivo, por exemplo TK-12 ou SILO A.</small></div>
+          <div><label>Fase *</label><select name="phase">${["Phase #1", "Phase #2"].map(x => `<option ${tank.phase === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
+          <div><label>Tipo *</label><select name="kind" data-tank-kind-select>${["Tanque", "Mix Tank", "Silo"].map(x => `<option ${tank.kind === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
+          <div><label>Ordem de exibição</label><input name="display_order" type="number" min="0" step="1" value="${tank.order ?? 0}"></div>
+          <div class="wide structure-capacity-editor">
+            <label data-capacity-label>${silo ? "Capacidade máxima (ton) *" : "Capacidade máxima (bbl) *"}</label>
+            <input name="capacity" type="text" inputmode="decimal" required value="${String(tank.capacity).replace(".", ",")}">
+            <small class="field-help" data-official-capacity-help>${silo ? "Capacidade manual em toneladas. O cálculo por densidade é apenas uma sugestão." : `Sugestão padrão: ${fmt.format(officialCapacity)} bbl.`}</small>
+            <div class="structure-capacity-tools">
+              <button type="button" class="btn small secondary ${silo ? "hidden" : ""}" data-action="apply-official-capacity">Aplicar capacidade sugerida</button>
+              <button type="button" class="btn small secondary ${silo ? "" : "hidden"}" data-action="apply-calculated-silo-capacity">Usar cálculo m³ × densidade</button>
+            </div>
+          </div>
+          <div data-silo-capacity-wrap class="${silo ? "" : "hidden"}">
+            <label>Volume físico do silo (m³)</label>
+            <input name="physical_capacity_m3" type="text" inputmode="decimal" value="${physicalCapacity ? String(physicalCapacity).replace(".", ",") : ""}">
+            <small class="field-help">Campo auxiliar para cálculo; a capacidade máxima acima pode ser ajustada manualmente.</small>
+          </div>
+          <div>
+            <label>Unidade</label>
+            <input value="${silo ? "ton" : "bbl"}" disabled data-structure-unit-display>
+            <input type="hidden" name="unit" value="${silo ? "ton" : "bbl"}">
+          </div>
+          <div data-silo-capacity-wrap class="${silo ? "" : "hidden"}">
+            <label>Capacidade calculada pela densidade</label>
+            <input name="operational_capacity" value="${fmt.format(calculatedCapacity)}" disabled>
+            <small class="field-help">Sugestão automática, sem substituir o valor informado até você confirmar.</small>
+          </div>
+        ` : `
+          <div><label>Tanque ou silo</label><input value="${esc(tank.name)}" disabled></div>
+          ${silo ? `
+            <div><label>Volume físico</label><input value="${fmt.format(physicalCapacity)} m³" disabled></div>
+            <input type="hidden" name="physical_capacity_m3" value="${physicalCapacity}">
+          ` : `
+            <div><label>Capacidade</label><input value="${fmt.format(tank.capacity)} ${esc(tank.unit)}" disabled></div>
+          `}
+        `}
+
+        <div><label>Cliente *</label><select name="client" required>${tankClientOptions(tank.client || "A definir")}</select><small class="field-help">Cliente responsável pelo produto armazenado neste equipamento.</small></div>
+        <div><label>Status operacional</label><select name="status">${tankStatusOptions(tank.status, tank.volume)}</select><small class="field-help">Bombeando e Recebendo produto exibem indicadores direcionais no cartão.</small></div>
+        <div>
+          <label>Volume atual (${esc(tank.unit)}) *</label>
+          <input name="volume" type="text" inputmode="decimal" autocomplete="off" value="${String(tank.volume).replace(".", ",")}" required>
+          <small class="field-help">${silo ? "Saldo do granel em toneladas." : "Ex.: 850 ou 850,50."}</small>
+        </div>
+
+        <div class="wide catalog-linked-field">
+          <div class="catalog-linked-heading">
+            <div>
+              <label>Produto vinculado *</label>
+              <small>Selecione um produto cadastrado na aba Fluidos e Granéis.</small>
+            </div>
+            <div class="catalog-linked-actions">
+              <button type="button" class="btn small secondary" data-action="refresh-tank-products">Atualizar lista</button>
+              <button type="button" class="btn small secondary" data-action="open-fluid-catalog">Abrir catálogo</button>
+            </div>
+          </div>
+          <div class="linked-select-search"><span>⌕</span><input type="search" data-target-select="fluid_type_id" placeholder="Buscar produto no catálogo"></div>
+          <select name="fluid_type_id" data-tank-product-select>
+            <option value="" ${!tank.fluidTypeId ? "selected" : ""}>${tank.volume > 0 ? "Selecione o produto cadastrado" : "Sem produto — equipamento vazio"}</option>
+            ${catalogProductOptions(tank)}
+          </select>
+          ${unlinkedCurrent ? `<div class="message warning catalog-link-warning"><strong>Produto antigo não vinculado:</strong> ${esc(tank.product)}. Selecione o cadastro correto antes de salvar.</div>` : ""}
+          <div class="tank-product-availability">
+            <strong>${activeCompatibleTankProducts(tank).length}</strong>
+            <span>produto(s) ativo(s) compatível(eis) com ${esc(tank.name)}</span>
+          </div>
+          ${activeCompatibleTankProducts(tank).length === 0 ? `<div class="message warning"><strong>Nenhum produto disponível.</strong> Cadastre ou ative um produto compatível em Fluidos e Granéis.</div>` : ""}
+          <small class="field-help">${silo ? "Neste silo aparecem somente produtos classificados como Granel ou Insumo." : "Neste tanque aparecem somente WBM, Brine, SBM, Olefina e outros fluidos."}</small>
+        </div>
+
+        <div>
+          <label>Densidade</label>
+          <input name="density" type="text" inputmode="decimal" value="${currentDensity === "" ? "" : String(currentDensity).replace(".", ",")}" placeholder="${silo ? "Ex.: 2,162" : "Ex.: 9,7"}" ${admin ? "" : "readonly"}>
+          ${admin ? "" : `<small class="field-help">Carregada automaticamente do cadastro do produto.</small>`}
+        </div>
+        <div>
+          <label>Unidade da densidade</label>
+          <select name="density_unit" ${(silo || !admin) ? "disabled" : ""}>
+            <option value="ppg" ${currentDensityUnit === "ppg" ? "selected" : ""}>ppg</option>
+            <option value="t/m³" ${currentDensityUnit === "t/m³" ? "selected" : ""}>t/m³</option>
+          </select>
+          ${(silo || !admin) ? `<input type="hidden" name="density_unit" value="${esc(currentDensityUnit)}">` : ""}
+        </div>
+
+        <div class="wide silo-capacity-preview ${silo ? "" : "hidden"}" data-silo-capacity-preview>
+          <strong>${fmt.format(calculatedCapacity)} ton de capacidade operacional</strong>
+          <span>${fmt.format(physicalCapacity)} m³ × ${currentDensity === "" ? "densidade não informada" : `${fmt.format(currentDensity)} t/m³`}</span>
+          <span>${fmt.format(Math.max(0, calculatedCapacity-tank.volume))} ton disponíveis.</span>
+        </div>
+
+        <div class="wide"><label>Lote</label><input name="lot" value="${esc(tank.lot)}"></div>
+        ${admin
+          ? `<div class="wide admin-edit-notice structure-edit-notice"><strong>Edição estrutural — Administrador/Supervisor</strong><span>Nome, capacidade, densidade, fase, tipo, ordem e conteúdo podem ser alterados. A capacidade padrão é apenas uma sugestão.</span></div>`
+          : `<div class="wide info-box content-update-notice"><strong>Atualização operacional segura</strong><span>Cliente, produto, lote, volume e status serão alterados. Densidade e capacidade serão calculadas pelo cadastro oficial; nome e estrutura não serão enviados.</span></div>`}
+      </div>
+
+      <div id="tankSaveMessage" class="message hidden"></div>
+      <div class="form-actions">
+        <button type="button" class="btn secondary" data-close-modal>Cancelar</button>
+        <button type="button" class="btn primary" data-action="save-tank-volume"
+          data-tank-id="${tank.id}"
+          data-tank-name="${esc(tank.name)}"
+          data-edit-token="${editToken}">${admin ? "Salvar estrutura e conteúdo" : `Salvar somente em ${esc(tank.name)}`}</button>
+      </div>
+    </form>`;
+  }
+
+
+  async function toggleFluidCatalogActive(id, nextActive) {
+    if (!canManageFluidCatalog()) return toast("Seu perfil não pode alterar o catálogo.", "error");
+    const item = state.data.fluids.find(product => product.id === id);
+    if (!item) return toast("Produto não encontrado.", "error");
+
+    if (state.testMode) {
+      addTestLog("fluid-status", { id, name: item.name, active: nextActive });
+      return toast("Alteração simulada na homologação local.", "success");
+    }
+
+    const { data, error } = await state.client.rpc("save_fluid_catalog_item", {
+      p_id: item.id,
+      p_name: item.name,
+      p_category: item.type,
+      p_default_unit: item.unit,
+      p_density_value: item.density || null,
+      p_density_unit: item.densityUnit || defaultDensityUnit(item.type),
+      p_active: Boolean(nextActive)
+    });
+
+    if (error) throw error;
+    const saved = Array.isArray(data) ? data[0] : data;
+    if (!saved?.id || saved.active !== Boolean(nextActive)) {
+      throw new Error("O Supabase não confirmou a alteração do status.");
+    }
+
+    await loadData();
+    renderFluids();
+    renderTanks();
+    renderMobileShell();
+    toast(nextActive ? `${item.name} ativado e liberado na tancagem.` : `${item.name} desativado e removido das novas seleções.`, "success");
+  }
+
+  function fluidCatalogCard(item) {
+    const category = String(item.type || "Outros");
+    const bulk = ["granel", "insumo"].includes(category.toLowerCase());
+    return `<article class="card catalog-product-card ${bulk ? "catalog-bulk-card" : "catalog-fluid-card"}">
+      <div class="catalog-product-top">
+        <span class="catalog-product-icon">${bulk ? "◆" : "●"}</span>
+        <div><strong>${esc(item.name)}</strong><small>${esc(category)}</small></div>
+        ${badge(item.active ? "Ativo" : "Inativo")}
+      </div>
+      <div class="catalog-product-details">
+        <span>Unidade<strong>${esc(item.unit || (bulk ? "ton" : "bbl"))}</strong></span>
+        <span>Densidade<strong>${item.density ? `${fmt.format(item.density)} ${esc(item.densityUnit || defaultDensityUnit(item.type))}` : "Não informada"}</strong></span>
+      </div>
+      <div class="row-actions">
+        <button class="btn small secondary" data-attachments="fluid:${item.id}" data-attachment-title="${esc(item.name)}">Anexos (${attachmentCount("fluid", item.id)})</button>
+        ${canManageFluidCatalog() ? `<button class="btn small ${item.active ? "danger-soft" : "success-soft"}" data-toggle-fluid-active="${item.id}" data-next-active="${item.active ? "false" : "true"}">${item.active ? "Desativar" : "Ativar agora"}</button><button class="btn small primary" data-edit-fluid="${item.id}">Editar</button>` : ""}
+      </div>
+    </article>`;
+  }
+
+  function renderFluids() {
+    const products = state.data.fluids || [];
+    const fluids = products.filter(item => !["granel", "insumo"].includes(String(item.type || "").toLowerCase()));
+    const bulks = products.filter(item => ["granel", "insumo"].includes(String(item.type || "").toLowerCase()));
+    const activeFluids = fluids.filter(item => item.active !== false).length;
+    const activeBulks = bulks.filter(item => item.active !== false).length;
+
+    $("#page-fluids").innerHTML =
+      header("Fluidos e Granéis", "Cadastre os produtos uma vez e selecione-os depois nos tanques e silos.",
+        canManageFluidCatalog()
+          ? `<button class="btn secondary" data-action="new-bulk">+ Cadastrar granel</button><button class="btn primary" data-action="new-fluid">+ Cadastrar fluido</button>`
+          : "") +
+      `<div class="catalog-link-flow card">
+        <span class="catalog-flow-step"><b>1</b><strong>Cadastre aqui</strong><small>Nome, classificação, unidade e densidade.</small></span>
+        <span class="catalog-flow-arrow">→</span>
+        <span class="catalog-flow-step"><b>2</b><strong>Atualize a tancagem</strong><small>Abra o tanque ou silo desejado.</small></span>
+        <span class="catalog-flow-arrow">→</span>
+        <span class="catalog-flow-step"><b>3</b><strong>Selecione no menu</strong><small>O sistema salva o vínculo com o cadastro.</small></span>
+      </div>
+
+      <div class="catalog-summary-grid">
+        <button class="card catalog-summary fluid-summary" data-page-link="tanks"><span>Fluidos ativos</span><strong>${activeFluids}</strong><small>Aparecem somente nos tanques e mix tanks.</small></button>
+        <button class="card catalog-summary bulk-summary" data-page-link="tanks"><span>Granéis ativos</span><strong>${activeBulks}</strong><small>Aparecem somente nos silos.</small></button>
+      </div>
+
+      <section class="catalog-section">
+        <div class="catalog-section-heading"><div><span class="catalog-section-icon fluid">●</span><div><h2>Fluidos</h2><p>WBM, Brine, SBM, Olefina e outros produtos líquidos.</p></div></div>${canManageFluidCatalog() ? `<button class="btn small primary" data-action="new-fluid">Adicionar fluido</button>` : ""}</div>
+        <div class="catalog-product-grid">${fluids.map(fluidCatalogCard).join("") || `<div class="card empty">Nenhum fluido cadastrado.</div>`}</div>
+      </section>
+
+      <section class="catalog-section catalog-bulk-section">
+        <div class="catalog-section-heading"><div><span class="catalog-section-icon bulk">◆</span><div><h2>Granéis</h2><p>Barita, Bentonita, Calcita e outros produtos armazenados em silos.</p></div></div>${canManageFluidCatalog() ? `<button class="btn small primary" data-action="new-bulk">Adicionar granel</button>` : ""}</div>
+        <div class="catalog-product-grid">${bulks.map(fluidCatalogCard).join("") || `<div class="card empty">Nenhum granel cadastrado.</div>`}</div>
+      </section>`;
+  }
+
+
+
+  const CHEMICAL_PACKAGING_ORDER = ["Big Bags", "Sacarias", "Tambores", "Bombonas", "Outros"];
+
+  function chemicalPackagingMeta(type = "Outros") {
+    const map = {
+      "Big Bags": { icon: "◆", defaultUnit: "Big Bag", description: "Produtos acondicionados em Big Bags" },
+      "Sacarias": { icon: "▤", defaultUnit: "sacos", description: "Produtos acondicionados em sacos" },
+      "Tambores": { icon: "●", defaultUnit: "tambores", description: "Produtos acondicionados em tambores" },
+      "Bombonas": { icon: "⬟", defaultUnit: "bombonas", description: "Produtos acondicionados em bombonas" },
+      "Outros": { icon: "▦", defaultUnit: "unidade", description: "Outras formas de acondicionamento" }
+    };
+    return map[type] || map.Outros;
+  }
+
+  function inferChemicalPackaging(product = {}) {
+    if (CHEMICAL_PACKAGING_ORDER.includes(product.packagingType)) return product.packagingType;
+    const unit = normalizeSearch(product.unit || "");
+    if (unit.includes("big bag") || unit.includes("bigbag")) return "Big Bags";
+    if (unit.includes("saco") || unit.includes("sacaria")) return "Sacarias";
+    if (unit.includes("tambor")) return "Tambores";
+    if (unit.includes("bombona")) return "Bombonas";
+    return "Outros";
+  }
+
+  function chemicalPackagingOptions(selected = "Outros") {
+    return CHEMICAL_PACKAGING_ORDER.map(type =>
+      `<option value="${type}" ${type === selected ? "selected" : ""}>${type}</option>`
+    ).join("");
+  }
+
+  function chemicalUnitOptions(selected = "unidade") {
+    const values = ["Big Bag", "big bag", "saco", "sacos", "tambor", "tambores", "bombona", "bombonas", "kg", "L", "unidade"];
+    const unique = [...new Set([selected, ...values].filter(Boolean))];
+    return unique.map(value => `<option value="${esc(value)}" ${value === selected ? "selected" : ""}>${esc(value)}</option>`).join("");
+  }
+
+  function syncChemicalPackagingFields(form, forceUnit = false) {
+    if (!form) return;
+    const packaging = form.elements.packaging_type?.value || "Outros";
+    const unit = form.elements.unit;
+    const meta = chemicalPackagingMeta(packaging);
+    if (unit && (forceUnit || !unit.value)) unit.value = meta.defaultUnit;
+    const hint = form.querySelector("[data-packaging-hint]");
+    if (hint) hint.textContent = `${meta.description}. Unidade sugerida: ${meta.defaultUnit}.`;
+  }
+
+  function packagingSummaryCards(groups) {
+    return CHEMICAL_PACKAGING_ORDER.map(type => {
+      const items = groups.filter(item => item.packagingType === type);
+      const totalLots = items.reduce((sum, item) => sum + item.lots.length, 0);
+      const meta = chemicalPackagingMeta(type);
+      return `<article class="card packaging-summary-card" data-packaging-summary="${esc(type)}">
+        <span class="packaging-summary-icon">${meta.icon}</span>
+        <div><small>${esc(type)}</small><strong>${items.length}</strong><span>${totalLots} lote(s)</span></div>
+      </article>`;
+    }).join("");
+  }
+
+  function chemicalInventorySection(type, items) {
+    if (!items.length) return "";
+    const meta = chemicalPackagingMeta(type);
+    const cards = items.map(item => {
+      const nextLot = item.nextLot;
+      return `<article class="card chemical-product-stock-card packaging-${normalizeSearch(type).replace(/\s+/g, "-")} ${item.active ? "" : "inactive"}">
+        <div class="chemical-product-stock-head"><div><span>${esc(item.category || "Produto químico")}</span><h3>${esc(item.name)}</h3><small class="chemical-packaging-tag">${meta.icon} ${esc(type)}</small></div>${badge(item.inventoryStatus)}</div>
+        <div class="chemical-total-value"><small>Saldo total</small><strong>${fmt.format(item.total)} ${esc(item.unit)}</strong><span>Soma de ${item.lots.length} lote(s)</span></div>
+        <div class="chemical-product-stock-grid">
+          <span>Lotes<strong>${item.lots.length}</strong></span>
+          <span>Mínimo total<strong>${fmt.format(item.minimum)} ${esc(item.unit)}</strong></span>
+          <span>Próximo FEFO<strong>${nextLot ? esc(nextLot.lot || "Sem lote") : "-"}</strong></span>
+          <span>Próxima validade<strong>${nextLot ? dateOnly(nextLot.expiry_date) : "-"}</strong></span>
+        </div>
+        <div class="row-actions">${canManageChemicals() ? `<button class="btn small primary" data-new-chemical-lot="${item.id}">+ Adicionar lote</button>` : ""}<button class="btn small secondary" data-chemical-lots="${item.id}">Ver e movimentar lotes</button>${canManageChemicals() ? `<button class="btn small secondary" data-edit-chemical-product="${item.id}">Editar produto</button>` : ""}</div>
+      </article>`;
+    }).join("");
+    return `<section class="chemical-packaging-section" data-packaging-section="${esc(type)}">
+      <div class="chemical-packaging-section-head">
+        <div class="chemical-packaging-section-icon">${meta.icon}</div>
+        <div><h2>${esc(type)}</h2><p>${esc(meta.description)} • ${items.length} produto(s)</p></div>
+      </div>
+      <div class="chemical-product-stock-grid-list">${cards}</div>
+    </section>`;
+  }
+
+  function chemicalProductForm(item = {}) {
+    const packagingType = inferChemicalPackaging(item);
+    const unit = item.unit || chemicalPackagingMeta(packagingType).defaultUnit;
+    return `<form id="chemicalProductForm" data-id="${item.id || ""}">
+      <div class="form-grid">
+        <div class="wide"><label>Nome do produto químico *</label><input name="name" required value="${esc(item.name || "")}" placeholder="Ex.: Duo Vis"></div>
+        <div><label>Categoria</label><input name="category" value="${esc(item.category || "")}" placeholder="Ex.: Aditivo, Polímero"></div>
+        <div><label>Tipo de embalagem *</label><select name="packaging_type" required>${chemicalPackagingOptions(packagingType)}</select><small class="field-help" data-packaging-hint>${esc(chemicalPackagingMeta(packagingType).description)}.</small></div>
+        <div><label>Unidade padrão *</label><select name="unit" required>${chemicalUnitOptions(unit)}</select></div>
+        <div><label>Status</label><select name="active"><option value="true" ${item.active !== false ? "selected" : ""}>Ativo</option><option value="false" ${item.active === false ? "selected" : ""}>Inativo</option></select></div>
+        <div class="wide packaging-preview-card"><span>${chemicalPackagingMeta(packagingType).icon}</span><div><strong>Organização do inventário</strong><small>O produto aparecerá dentro da seção ${esc(packagingType)}.</small></div></div>
+        <div class="wide"><label>Observações</label><textarea name="notes">${esc(item.notes || "")}</textarea></div>
+      </div>${formActions(item.id ? "Salvar produto" : "Cadastrar produto")}
+    </form>`;
+  }
+
+  function renderChemicalCatalog() {
+    const products = groupedChemicalInventory();
+    const active = products.filter(item => item.active).length;
+    const rows = products.map(item => `<article class="card chemical-catalog-card ${item.active ? "" : "inactive"}">
+      <div class="mobile-record-head"><div><strong>${esc(item.name)}</strong><small>${esc(item.category || "Produto químico")}</small></div>${badge(item.active ? "Ativo" : "Inativo")}</div>
+      <div class="mobile-record-grid"><span>Saldo total<strong>${fmt.format(item.total)} ${esc(item.unit)}</strong></span><span>Embalagem<strong>${esc(item.packagingType)}</strong></span><span>Lotes<strong>${item.lots.length}</strong></span><span>Unidade padrão<strong>${esc(item.unit)}</strong></span></div>
+      ${item.notes ? `<p>${esc(item.notes)}</p>` : ""}
+      <div class="row-actions">${canManageChemicals() ? `<button class="btn small primary" data-new-chemical-lot="${item.id}">+ Adicionar lote</button><button class="btn small secondary" data-edit-chemical-product="${item.id}">Editar produto</button>` : ""}<button class="btn small secondary" data-chemical-lots="${item.id}">Ver lotes</button></div>
+    </article>`).join("");
+    $("#page-chemical-catalog").innerHTML =
+      header("Catálogo Químico", "Um único cadastro por produto. As quantidades ficam separadas por lote no inventário.",
+        canManageChemicals() ? `<button class="btn primary" data-action="new-chemical-product">+ Novo produto químico</button>` : "") +
+      `<div class="grid three"><div class="card stat-card"><div><small>Produtos cadastrados</small><h2>${products.length}</h2><span class="muted">um cadastro por nome</span></div></div><div class="card stat-card"><div><small>Produtos ativos</small><h2>${active}</h2><span class="muted">disponíveis para carretas</span></div></div><div class="card stat-card"><div><small>Lotes no inventário</small><h2>${state.data.chemicals.length}</h2><span class="muted">quantidades separadas</span></div></div></div>
+      <div class="catalog-link-flow card"><span class="catalog-flow-step"><b>1</b><strong>Cadastre o produto</strong><small>Uma única vez.</small></span><span class="catalog-flow-arrow">→</span><span class="catalog-flow-step"><b>2</b><strong>Adicione os lotes</strong><small>Quantidade, validade e localização.</small></span><span class="catalog-flow-arrow">→</span><span class="catalog-flow-step"><b>3</b><strong>Veja o total</strong><small>Soma automática dos lotes.</small></span></div>
+      <div class="chemical-catalog-grid">${rows || `<div class="card empty">Nenhum produto químico cadastrado.</div>`}</div>`;
+  }
+
+
+  function groupedChemicalInventory() {
+    const products = state.data.chemicalProducts || [];
+    const lots = state.data.chemicals || [];
+    return products.map(product => {
+      const productLots = lots
+        .filter(lot => lot.productId === product.id)
+        .sort((a, b) => (a.expiry_date || "9999-12-31").localeCompare(b.expiry_date || "9999-12-31") || String(a.lot || "").localeCompare(String(b.lot || "")));
+      const total = productLots.reduce((sum, lot) => sum + Number(lot.quantity || 0), 0);
+      const minimum = productLots.reduce((sum, lot) => sum + Number(lot.minimum || 0), 0);
+      const availableLots = productLots.filter(lot => Number(lot.quantity || 0) > 0);
+      const expiredLots = availableLots.filter(lot => { const days = daysUntil(lot.expiry_date); return days !== null && days < 0; });
+      const expiringLots = availableLots.filter(lot => { const days = daysUntil(lot.expiry_date); return days !== null && days >= 0 && days <= 60; });
+      const nextLot = availableLots[0] || null;
+      let status = product.active === false ? "Inativo" : "Disponível";
+      if (expiredLots.length) status = "Vencido";
+      else if (minimum > 0 && total <= minimum) status = "Baixo estoque";
+      else if (expiringLots.length) status = "Próximo vencimento";
+      else if (!productLots.length || total <= 0) status = "Sem estoque";
+      const packagingType = inferChemicalPackaging(product);
+      return { ...product, packagingType, lots: productLots, total, minimum, expiredLots, expiringLots, nextLot, inventoryStatus: status };
+    }).sort((a, b) => {
+      const packageOrder = CHEMICAL_PACKAGING_ORDER.indexOf(a.packagingType) - CHEMICAL_PACKAGING_ORDER.indexOf(b.packagingType);
+      return packageOrder || a.name.localeCompare(b.name);
+    });
+  }
+
+  function chemicalLotsModal(productId) {
+    const group = groupedChemicalInventory().find(item => item.id === productId);
+    if (!group) return `<div class="empty">Produto químico não localizado.</div>`;
+    const rows = group.lots.map((lot, index) => {
+      const days = daysUntil(lot.expiry_date);
+      return `<article class="chemical-lot-row">
+        <div class="chemical-lot-rank">${index + 1}</div>
+        <div class="chemical-lot-main">
+          <strong>${esc(lot.lot || "Sem lote")}</strong>
+          <small>${fmt.format(lot.quantity)} ${esc(lot.unit)} • ${esc(lot.location || "Sem localização")}</small>
+          <span>Validade: ${dateOnly(lot.expiry_date)}${days !== null ? ` • ${days < 0 ? `${Math.abs(days)} dias vencido` : `${days} dias restantes`}` : ""}</span>
+        </div>
+        <div class="chemical-lot-status">${badge(chemicalDisplayStatus(lot))}</div>
+        <div class="row-actions">
+          ${canManageChemicals() ? `<button class="btn small primary" data-chemical-move="${lot.id}">Movimentar</button><button class="btn small secondary" data-edit-chemical="${lot.id}">Editar lote</button>` : ""}
+          <button class="btn small secondary" data-chemical-history="${lot.id}">Histórico</button>
+          <button class="btn small secondary" data-attachments="chemical:${lot.id}" data-attachment-title="${esc(group.name)} — ${esc(lot.lot || "Sem lote")}">Anexos (${attachmentCount("chemical", lot.id)})</button>
+        </div>
+      </article>`;
+    }).join("");
+    return `<div class="chemical-product-total-card"><span>Saldo total de ${esc(group.name)}</span><strong>${fmt.format(group.total)} ${esc(group.unit)}</strong><small>${esc(group.packagingType)} • ${group.lots.length} lote(s) cadastrado(s)</small></div>
+      <div class="row-actions chemical-lot-modal-actions">${canManageChemicals() ? `<button class="btn primary" data-new-chemical-lot="${group.id}">+ Adicionar lote</button>` : ""}<button class="btn secondary" data-edit-chemical-product="${group.id}">Editar produto</button></div>
+      <div class="chemical-lot-list">${rows || `<div class="empty">Nenhum lote cadastrado para este produto.</div>`}</div>`;
+  }
+
+  function truckInventoryLabel(item) {
+    if (item.truckType === "Plataforma") return "Sem vínculo com inventário";
+    if (item.stockApplied) {
+      const tankName = item.tankId ? state.data.tanks.find(tank => tank.id === item.tankId)?.name : "";
+      return `✓ estoque aplicado${tankName ? ` • ${tankName}` : ""}`;
+    }
+    return "estoque pendente";
+  }
+
+  function chemicalDisplayStatus(item) {
+    const days = daysUntil(item.expiry_date);
+    if (days !== null && days < 0) return "Vencido";
+    if (item.quantity <= item.minimum) return "Baixo estoque";
+    if (days !== null && days <= 60) return "Próximo vencimento";
+    return item.status || "Disponível";
+  }
+
+  function renderChemicalInventory() {
+    const groups = groupedChemicalInventory();
+    const lots = state.data.chemicals || [];
+    const totalProducts = groups.length;
+    const totalLots = lots.length;
+    const lowStock = groups.filter(item => item.inventoryStatus === "Baixo estoque" || item.inventoryStatus === "Sem estoque").length;
+    const expired = groups.filter(item => item.expiredLots.length > 0).length;
+    const expiring = groups.filter(item => item.expiringLots.length > 0).length;
+    const sections = CHEMICAL_PACKAGING_ORDER.map(type =>
+      chemicalInventorySection(type, groups.filter(item => item.packagingType === type))
+    ).join("");
+
+    $("#page-chemicals").innerHTML = header("Inventário de produtos químicos", "Produtos organizados por tipo de embalagem. Cada cartão mostra o total somado de todos os lotes.", `${canManageChemicals() ? `<button class="btn primary" data-action="new-chemical-product">+ Novo produto</button>` : ""}<button class="btn secondary" data-action="show-fefo">Ordem FEFO</button><button class="btn secondary" data-export="chemicals">Exportar lotes</button>`) +
+      `<div class="grid four">${statCard("Produtos", fmt.format(totalProducts), "cadastros únicos", "▦")}${statCard("Lotes", fmt.format(totalLots), "quantidades separadas", "▧")}${statCard("Baixo ou sem estoque", fmt.format(lowStock), "produtos", "⚠")}${statCard("Com vencimento crítico", fmt.format(expired + expiring), "vencidos ou até 60 dias", "⏳")}</div>
+      <div class="packaging-summary-grid">${packagingSummaryCards(groups)}</div>
+      <div class="info-box chemical-inventory-rule"><strong>Organização por embalagem:</strong> Big Bags, Sacarias, Tambores, Bombonas e Outros. O total de cada produto continua sendo calculado pela soma dos lotes.</div>
+      <div class="info-box chemical-inventory-rule"><strong>Carretas Plataforma desvinculadas:</strong> cadastrar um produto na carreta não cria lote e não altera este inventário. Os lotes são controlados somente aqui.</div>
+      <div class="chemical-packaging-sections">${sections || `<div class="card empty">Nenhum produto químico cadastrado.</div>`}</div>`;
+  }
+
+  function renderTrucks() {
+    const trucks = filteredTrucks();
+    const typeCount = type => trucks.filter(item => item.truckType === type).length;
+    const rows = trucks.map(item => `<tr>
+      <td>${dateOnly(item.date)}</td>
+      <td>${badge(item.movement)}<br><small>${badge(item.truckType)}</small></td>
+      <td>${esc(item.supplier)}<br><small>${esc(item.client || "-")}</small></td>
+      <td>${truckItemsSummary(item)}</td>
+      <td>${esc(item.plate || "-")}<br><small>${esc(item.driver || "-")}</small></td>
+      <td>${esc(item.invoice || "-")}</td>
+      <td>${badge(item.status)}<br><small>${esc(truckInventoryLabel(item))}</small></td>
+      <td><div class="row-actions">
+        ${item.truckType === "Plataforma" ? `<button class="btn small secondary" data-truck-items="${item.id}">Ver ${item.items.length} itens</button>` : ""}
+        <button class="btn small secondary" data-attachments="truck:${item.id}" data-attachment-title="${esc(item.plate || item.product)}">Anexos (${attachmentCount("truck", item.id)})</button>
+        ${canManageTrucks() ? `<button class="btn small primary" data-edit-truck="${item.id}">Editar</button>` : ""}
+      </div></td>
+    </tr>`).join("");
+
+    const mobile = trucks.map(item => `<article class="card mobile-record-card truck-mobile-card truck-type-${String(item.truckType).toLowerCase()}">
+      <div class="mobile-record-head"><div><strong>${esc(item.plate || item.product)}</strong><small>${dateOnly(item.date)} • ${esc(item.movement)}</small></div>${badge(item.truckType)}</div>
+      <div class="truck-mobile-products">${truckItemsSummary(item)}</div>
+      <div class="mobile-record-grid"><span>Origem/Destino<strong>${esc(item.supplier)}</strong></span><span>NF<strong>${esc(item.invoice || "-")}</strong></span><span>Motorista<strong>${esc(item.driver || "-")}</strong></span><span>Status<strong>${esc(item.status)}</strong></span><span>Integração<strong>${item.truckType === "Plataforma" ? "Sem inventário" : (item.stockApplied ? "Aplicado" : "Pendente")}</strong></span></div>
+      <div class="row-actions">${item.truckType === "Plataforma" ? `<button class="btn small secondary" data-truck-items="${item.id}">Ver itens</button>` : ""}<button class="btn small secondary" data-attachments="truck:${item.id}" data-attachment-title="${esc(item.plate || item.product)}">Anexos</button>${canManageTrucks() ? `<button class="btn small primary" data-edit-truck="${item.id}">Editar</button>` : ""}</div>
+    </article>`).join("");
+
+    $("#page-trucks").innerHTML =
+      header("Carretas", "Controle separado de Bulk, Tank e Plataforma com vários insumos.",
+        `<button class="btn secondary" data-export="trucks">Exportar CSV</button>${canManageTrucks() ? `<button class="btn primary" data-action="new-truck">+ Nova movimentação</button>` : ""}`) +
+      `<div class="grid three truck-type-kpis">
+        <div class="card"><span>Bulk</span><strong>${typeCount("Bulk")}</strong><small>Carretas de granel</small></div>
+        <div class="card"><span>Tank</span><strong>${typeCount("Tank")}</strong><small>Carretas tanque</small></div>
+        <div class="card"><span>Plataforma</span><strong>${typeCount("Plataforma")}</strong><small>Vários insumos</small></div>
+      </div>
+      <div class="card table-wrap desktop-record-table"><table class="data-table"><thead><tr><th>Data</th><th>Movimento / Tipo</th><th>Origem / Cliente</th><th>Produtos</th><th>Placa / Motorista</th><th>NF</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows || `<tr><td colspan="8" class="empty">Nenhuma movimentação.</td></tr>`}</tbody></table></div>
+      <div class="mobile-record-list">${mobile || `<div class="card empty">Nenhuma movimentação.</div>`}</div>`;
+  }
+
+  function renderQhse() {
+    const canAddQhse = hasRole(["supervisor", "lider", "qhse", "operador"]);
+    const rows = state.data.qhse.map(item => {
+      const openActions = state.data.actionItems.filter(a => a.qhse_record_id === item.id && a.status !== "Concluído").length;
+      return `<tr>
+        <td>${dateOnly(item.date)}</td><td>${badge(item.type)}</td>
+        <td><strong>${esc(item.title)}</strong><br><small>${esc(item.description || "")}</small></td>
+        <td>${esc(item.responsible || "-")}</td><td>${badge(item.severity)}</td><td>${badge(item.status)}</td>
+        <td><div class="row-actions">
+          <button class="btn small secondary" data-qhse-actions="${item.id}">Ações (${openActions})</button>
+          <button class="btn small secondary" data-attachments="qhse:${item.id}" data-attachment-title="${esc(item.title)}">📎 ${attachmentCount("qhse", item.id)}</button>${isAdmin() ? `<button class="btn small primary" data-edit-qhse="${item.id}">Editar</button>` : ""}
+        </div></td>
+      </tr>`;
+    }).join("");
+    const mobile = state.data.qhse.map(item => {
+      const openActions = state.data.actionItems.filter(a => a.qhse_record_id === item.id && a.status !== "Concluído").length;
+      return `<div class="card mobile-record-card"><div class="mobile-record-head"><div><strong>${esc(item.title)}</strong><small>${dateOnly(item.date)} • ${esc(item.type)}</small></div>${badge(item.status)}</div><p>${esc(item.description || "Sem descrição")}</p><div class="mobile-record-grid"><span>Responsável<strong>${esc(item.responsible || "-")}</strong></span><span>Severidade<strong>${esc(item.severity)}</strong></span></div><div class="row-actions"><button class="btn small secondary" data-qhse-actions="${item.id}">Ações (${openActions})</button><button class="btn small secondary" data-attachments="qhse:${item.id}" data-attachment-title="${esc(item.title)}">Anexos (${attachmentCount("qhse", item.id)})</button>${isAdmin() ? `<button class="btn small primary" data-edit-qhse="${item.id}">Editar</button>` : ""}</div></div>`;
+    }).join("");
+
+    const actions = canAddQhse ? `<button class="btn primary" data-action="new-qhse">+ Novo registro QHSE</button>` : "";
+    const quickAction = canAddQhse ? `<div class="module-action-bar"><div class="module-action-copy"><span class="module-action-icon">+</span><div><strong>Adicionar registro QHSE</strong><small>Registre DDS, APR, inspeção, risco, ocorrência ou evidência.</small></div></div><button class="btn primary" data-action="new-qhse">Novo registro</button></div>` : "";
+
+    $("#page-qhse").innerHTML =
+      header("QHSE", "DDS, APR, inspeções, riscos, itens de ação e evidências.", actions) + quickAction +
+      `<div class="card table-wrap desktop-record-table"><table class="data-table"><thead><tr><th>Data</th><th>Tipo</th><th>Registro</th><th>Responsável</th><th>Severidade</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows || `<tr><td colspan="7" class="empty">Nenhum registro QHSE cadastrado.</td></tr>`}</tbody></table></div><div class="mobile-record-list">${mobile || `<div class="card empty">Nenhum registro QHSE cadastrado.</div>`}</div>`;
+  }
+
+  function renderMaintenance() {
+    const canManageMaintenance = hasRole(["supervisor", "lider", "mecanico"]);
+    const equipmentRows = state.data.equipment.map(item => {
+      const used = Math.max(0, item.diesel_initial + item.refueled - item.diesel_final);
+      const average = item.last_hours ? used / item.last_hours : 0;
+      const openOrders = state.data.maintenanceOrders.filter(order => order.equipment_id === item.id && !["Concluída", "Fechada", "Cancelada"].includes(order.status)).length;
+      const hoursDue = item.maintenance_due_hourmeter > 0 ? item.maintenance_due_hourmeter - item.hourmeter : null;
+      const preventive = hoursDue !== null && hoursDue <= 0 ? "Vencida por horímetro" : item.next_maintenance_date ? `${dateOnly(item.next_maintenance_date)}${hoursDue !== null ? ` • ${fmt.format(hoursDue)} h` : ""}` : hoursDue !== null ? `${fmt.format(hoursDue)} h restantes` : "Não programada";
+      return `<tr><td><strong>${esc(item.name)}</strong><br><small>${esc(item.category)} • ${esc(item.location || "-")}</small></td><td>${badge(item.status)}</td><td>${fmt.format(item.hourmeter)} h</td><td>${esc(preventive)}</td><td>${fmt.format(used)} L</td><td>${fmt.format(average)} L/h</td><td>${openOrders}</td><td><div class="row-actions">${canManageMaintenance ? `<button class="btn small primary" data-new-order-equipment="${item.id}">Abrir OS</button>` : ""}${isAdmin() ? `<button class="btn small secondary" data-edit-equipment="${item.id}">Editar</button>` : ""}<button class="btn small secondary" data-asset-qr="equipment:${item.id}">QR</button></div></td></tr>`;
+    }).join("");
+    const mobileEquipment = state.data.equipment.map(item => {
+      const openOrders = state.data.maintenanceOrders.filter(order => order.equipment_id === item.id && !["Concluída", "Fechada", "Cancelada"].includes(order.status)).length;
+      return `<article class="card mobile-record-card"><div class="mobile-record-head"><div><strong>${esc(item.name)}</strong><small>${esc(item.category)} • ${esc(item.location || "-")}</small></div>${badge(item.status)}</div><div class="mobile-record-grid"><span>Horímetro<strong>${fmt.format(item.hourmeter)} h</strong></span><span>OS abertas<strong>${openOrders}</strong></span></div><div class="row-actions">${canManageMaintenance ? `<button class="btn small primary" data-new-order-equipment="${item.id}">Abrir OS</button>` : ""}<button class="btn small secondary" data-asset-qr="equipment:${item.id}">QR Code</button>${isAdmin() ? `<button class="btn small secondary" data-edit-equipment="${item.id}">Editar</button>` : ""}</div></article>`;
+    }).join("");
+    const orderRows = state.data.maintenanceOrders.map(order => {
+      const equipment = state.data.equipment.find(x => x.id === order.equipment_id)?.name || "Equipamento removido";
+      return `<tr><td><strong>${esc(order.title)}</strong><br><small>${esc(equipment)} • ${esc(order.maintenance_type)}</small></td><td>${badge(order.priority)}</td><td>${badge(order.status)}</td><td>${esc(order.responsible || "-")}</td><td>${dateOnly(order.due_date)}</td><td>${money.format(order.actual_cost || order.estimated_cost || 0)}</td><td><div class="row-actions"><button class="btn small secondary" data-attachments="maintenance:${order.id}" data-attachment-title="${esc(order.title)}">📎 ${attachmentCount("maintenance", order.id)}</button>${canManageMaintenance ? `<button class="btn small primary" data-edit-order="${order.id}">Editar</button>` : ""}</div></td></tr>`;
+    }).join("");
+    const mobileOrders = state.data.maintenanceOrders.map(order => {
+      const equipment = state.data.equipment.find(x => x.id === order.equipment_id)?.name || "Equipamento removido";
+      return `<div class="card mobile-record-card"><div class="mobile-record-head"><div><strong>${esc(order.title)}</strong><small>${esc(equipment)} • ${esc(order.maintenance_type)}</small></div>${badge(order.status)}</div><div class="mobile-record-grid"><span>Prioridade<strong>${esc(order.priority)}</strong></span><span>Prazo<strong>${dateOnly(order.due_date)}</strong></span><span>Responsável<strong>${esc(order.responsible || "-")}</strong></span><span>Custo<strong>${money.format(order.actual_cost || order.estimated_cost || 0)}</strong></span></div><div class="row-actions"><button class="btn small secondary" data-attachments="maintenance:${order.id}" data-attachment-title="${esc(order.title)}">Anexos (${attachmentCount("maintenance", order.id)})</button>${canManageMaintenance ? `<button class="btn small primary" data-edit-order="${order.id}">Editar</button>` : ""}</div></div>`;
+    }).join("");
+
+    const headerActions = `<button class="btn secondary" data-export="maintenance">Exportar CSV</button>${canManageMaintenance ? `<button class="btn secondary" data-action="new-equipment">+ Novo equipamento</button><button class="btn primary" data-action="new-maintenance-order">+ Nova ordem de serviço</button>` : ""}`;
+    const quickActions = canManageMaintenance ? `<div class="module-action-grid"><button class="module-action-card" data-action="new-equipment"><span class="module-action-card-icon">EQ</span><span><strong>Adicionar equipamento</strong><small>Cadastre motor a diesel, bomba, compressor ou outro ativo.</small></span><b>+</b></button><button class="module-action-card primary-action-card" data-action="new-maintenance-order"><span class="module-action-card-icon">OS</span><span><strong>Abrir ordem de serviço</strong><small>Registre manutenção preventiva ou corretiva.</small></span><b>+</b></button></div>` : "";
+
+    $("#page-maintenance").innerHTML = header("Manutenção", "Equipamentos, preventiva, horímetro, diesel e ordens de serviço.", headerActions) + quickActions + `<div class="section-title">Equipamentos</div><div class="card table-wrap desktop-record-table"><table class="data-table"><thead><tr><th>Equipamento</th><th>Status</th><th>Horímetro</th><th>Preventiva</th><th>Diesel</th><th>Média</th><th>OS abertas</th><th>Ação</th></tr></thead><tbody>${equipmentRows || `<tr><td colspan="8" class="empty">Nenhum equipamento cadastrado.</td></tr>`}</tbody></table></div><div class="mobile-record-list">${mobileEquipment || `<div class="card empty">Nenhum equipamento cadastrado.</div>`}</div><div class="section-title">Ordens de serviço</div><div class="card table-wrap desktop-record-table"><table class="data-table"><thead><tr><th>Ordem</th><th>Prioridade</th><th>Status</th><th>Responsável</th><th>Prazo</th><th>Custo</th><th>Ações</th></tr></thead><tbody>${orderRows || `<tr><td colspan="7" class="empty">Nenhuma ordem de serviço.</td></tr>`}</tbody></table></div><div class="mobile-record-list">${mobileOrders || `<div class="card empty">Nenhuma ordem de serviço.</div>`}</div>`;
+  }
+
+  function renderCertificates() {
+    const canManage = canManageCertificates();
+    const rows = state.data.certificates.map(item => {
+      const days = daysUntil(item.expires_at);
+      const automaticStatus = days !== null && days < 0 ? "Vencido" : days !== null && days <= 60 ? "A vencer" : item.status;
+      return `<tr>
+        <td><strong>${esc(item.title)}</strong><br><small>${esc(item.issuer || "-")}</small></td>
+        <td>${esc(item.owner)}</td><td>${dateOnly(item.expires_at)}${days !== null ? `<br><small>${days < 0 ? `${Math.abs(days)} dias vencido` : `${days} dias restantes`}</small>` : ""}</td>
+        <td>${badge(automaticStatus)}</td>
+        <td><div class="row-actions"><button class="btn small secondary" data-attachments="certificate:${item.id}" data-attachment-title="${esc(item.title)}">📎 ${attachmentCount("certificate", item.id)}</button>${canManage ? `<button class="btn small primary" data-edit-certificate="${item.id}">Editar</button>` : ""}</div></td>
+      </tr>`;
+    }).join("");
+    const mobile = state.data.certificates.map(item => {
+      const days = daysUntil(item.expires_at);
+      const automaticStatus = days !== null && days < 0 ? "Vencido" : days !== null && days <= 60 ? "A vencer" : item.status;
+      return `<article class="card mobile-record-card"><div class="mobile-record-head"><div><strong>${esc(item.title)}</strong><small>${esc(item.issuer || "-")}</small></div>${badge(automaticStatus)}</div><div class="mobile-record-grid"><span>Colaborador<strong>${esc(item.owner)}</strong></span><span>Validade<strong>${dateOnly(item.expires_at)}</strong></span></div><div class="row-actions"><button class="btn small secondary" data-attachments="certificate:${item.id}" data-attachment-title="${esc(item.title)}">Anexos (${attachmentCount("certificate", item.id)})</button>${canManage ? `<button class="btn small primary" data-edit-certificate="${item.id}">Editar</button>` : ""}</div></article>`;
+    }).join("");
+    $("#page-certificates").innerHTML =
+      header("Certificados", "Cada certificado fica vinculado ao usuário selecionado.",
+        canManage ? `<button class="btn primary" data-action="new-certificate">+ Adicionar certificado</button>` : "") +
+      `${!canManage ? `<div class="info-box" style="margin-bottom:14px">Você pode consultar seus certificados. O cadastro é feito pela Logística, Supervisor ou Administrador.</div>` : ""}
+       <div class="card table-wrap desktop-record-table"><table class="data-table"><thead><tr><th>Certificado</th><th>Colaborador</th><th>Validade</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows || `<tr><td colspan="5" class="empty">Nenhum certificado disponível.</td></tr>`}</tbody></table></div><div class="mobile-record-list">${mobile || `<div class="card empty">Nenhum certificado disponível.</div>`}</div>`;
+  }
+
+  function renderAlerts() {
+    const manual = state.data.alerts || [];
+    const automatic = state.data.systemAlerts || [];
+    const all = [...automatic, ...manual.map(item => ({ ...item, category:item.target||"Comunicado", automatic:false }))]
+      .sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0));
+    const critical=all.filter(item=>isCriticalAlert(item.level));
+    const grouped=[...new Set(all.map(x=>x.category||"Sistema"))];
+    const cards=all.slice(0,80).map(item=>`<div class="alert-center-card ${statusClass(item.level)}"><div class="alert-center-top"><span>${esc(item.category||"Sistema")}</span>${badge(item.level)}</div><h3>${esc(item.title)}</h3><p>${esc(item.message||"")}</p><footer><span>${dateTime(item.created_at)}</span>${item.action_page&&moduleAllowed(item.action_page)?`<button class="btn small secondary" data-alert-page="${esc(item.action_page)}">Abrir módulo</button>`:""}</footer></div>`).join("");
+    const messages=state.data.messages.map(item=>`<div class="chat-message"><strong>${esc(item.sender_name)}</strong><p>${esc(item.message)}</p><small>${dateTime(item.created_at)}</small></div>`).join("");
+    $("#page-alerts").innerHTML=header("Central de alertas", "Avisos automáticos, comunicados e comunicação da equipe.", hasRole(["supervisor","lider","qhse","logistica"])?`<button class="btn primary" data-action="new-alert">+ Criar comunicado</button>`:"")+
+      `<div class="grid four alert-kpis"><div class="card"><span>Total ativo</span><strong>${all.length}</strong></div><div class="card"><span>Críticos/altos</span><strong>${critical.length}</strong></div><div class="card"><span>Categorias</span><strong>${grouped.length}</strong></div><div class="card"><span>Pendentes offline</span><strong>${offlineQueue().length}</strong></div></div>
+       <div class="alert-center-layout"><div><div class="alert-filter-row">${grouped.map(category=>`<span>${esc(category)} <strong>${all.filter(x=>(x.category||"Sistema")===category).length}</strong></span>`).join("")}</div><div class="alert-center-grid">${cards||`<div class="empty">Nenhum alerta ativo.</div>`}</div></div>
+       <div class="card chat-panel"><h3>Chat interno</h3><div class="chat-list">${messages||`<div class="empty">Sem mensagens.</div>`}</div>${role()!=="tv"?`<form id="chatForm" class="chat-form"><input name="message" required placeholder="Mensagem para a equipe"><button class="btn primary">Enviar</button></form>`:""}</div></div>`;
+  }
+
+  function defaultHandoverSelection(now = new Date()) {
+    const hour = now.getHours();
+    if (hour >= 7 && hour < 19) return { date: localDateKey(now), shift: "day" };
+    if (hour >= 19) return { date: localDateKey(now), shift: "night" };
+    return { date: addDaysToDateKey(localDateKey(now), -1), shift: "night" };
+  }
+
+  function ensureHandoverSelection() {
+    if (!state.handover.date || !state.handover.shift) {
+      state.handover = defaultHandoverSelection();
+    }
+    return state.handover;
+  }
+
+  function shiftWindow(selection = ensureHandoverSelection()) {
+    const startHour = selection.shift === "day" ? 7 : 19;
+    const endHour = selection.shift === "day" ? 19 : 7;
+    const endDate = selection.shift === "day" ? selection.date : addDaysToDateKey(selection.date, 1);
+    return {
+      date: selection.date,
+      shift: selection.shift,
+      start: new Date(`${selection.date}T${String(startHour).padStart(2, "0")}:00:00`),
+      end: new Date(`${endDate}T${String(endHour).padStart(2, "0")}:00:00`),
+      label: selection.shift === "day" ? "Turno Dia — 07:00 às 19:00" : "Turno Noite — 19:00 às 07:00"
+    };
+  }
+
+  function timestampInWindow(value, window) {
+    if (!value) return false;
+    const time = new Date(value).getTime();
+    return Number.isFinite(time) && time >= window.start.getTime() && time < window.end.getTime();
+  }
+
+  function handoverSnapshot(selection = ensureHandoverSelection()) {
+    const d = state.data;
+    const window = shiftWindow(selection);
+
+    const completedOperations = d.operations.filter(op =>
+      op.status === "Concluída" && timestampInWindow(op.end_at || op.updated_at, window)
+    );
+
+    const activeOperations = d.operations.filter(op => {
+      if (["Concluída", "Cancelada"].includes(op.status)) return false;
+      const start = op.start_at ? new Date(op.start_at).getTime() : new Date(op.created_at).getTime();
+      return Number.isFinite(start) && start < window.end.getTime();
+    });
+
+    const events = d.operationEvents.filter(item => timestampInWindow(item.event_time, window));
+    const tankMovements = d.tankMovements.filter(item => timestampInWindow(item.created_at, window));
+    const trucks = d.trucks.filter(item =>
+      timestampInWindow(item.created_at, window) ||
+      (!item.created_at && recordDateKey(item.date) === selection.date)
+    );
+    const qhse = d.qhse.filter(item =>
+      timestampInWindow(item.created_at, window) ||
+      (!item.created_at && recordDateKey(item.date) === selection.date)
+    );
+    const maintenanceOpened = d.maintenanceOrders.filter(item => timestampInWindow(item.opened_at, window));
+    const maintenanceClosed = d.maintenanceOrders.filter(item => timestampInWindow(item.closed_at, window));
+
+    const pendingCompleted = d.handoverPendings.filter(item =>
+      item.status === "Concluído" && timestampInWindow(item.completed_at, window)
+    );
+    const openPendings = d.handoverPendings.filter(item =>
+      ["Pendente", "Em andamento"].includes(item.status) &&
+      new Date(item.created_at).getTime() < window.end.getTime()
+    );
+
+    const openQhseActions = d.actionItems.filter(item => item.status !== "Concluído");
+    const openMaintenance = d.maintenanceOrders.filter(item => !["Concluída", "Fechada", "Cancelada"].includes(item.status));
+    const note = d.handoverNotes.find(item => item.shift_date === selection.date && item.shift_type === selection.shift);
+
+    return {
+      selection, window, completedOperations, activeOperations, events,
+      tankMovements, trucks, qhse, maintenanceOpened, maintenanceClosed,
+      pendingCompleted, openPendings, openQhseActions, openMaintenance,
+      observations: note?.observations || "", note
+    };
+  }
+
+
+  const SHIFT_CHECKLIST_TEMPLATE = [
+    ["tank_inventory","Conferir volumes, produtos e lotes dos tanques e silos","Operacional"],
+    ["pumps","Inspecionar bombas, compressores e equipamentos em operação","Equipamentos"],
+    ["chemical_inventory","Conferir insumos e estoque químico crítico","Inventário"],
+    ["documents","Atualizar OS, RFF, relatórios e controles","Documentação"],
+    ["qhse","Verificar ocorrências, ações QHSE e condições inseguras","QHSE"],
+    ["housekeeping","Manter sala e áreas operacionais organizadas","Housekeeping"],
+    ["handover","Registrar operações em andamento e pendências do próximo turno","Passagem"]
+  ];
+
+  function selectedHandoverApproval(selection=ensureHandoverSelection()) {
+    return (state.data.handoverApprovals || []).find(item=>item.shift_date===selection.date&&item.shift_type===selection.shift)||null;
+  }
+
+  function checklistForShift(selection=ensureHandoverSelection()) {
+    const saved=(state.data.shiftChecklist || []).filter(item=>item.shift_date===selection.date&&item.shift_type===selection.shift);
+    return SHIFT_CHECKLIST_TEMPLATE.map(([key,label,category])=>saved.find(item=>item.item_key===key)||{item_key:key,item_label:label,category,completed:false,notes:""});
+  }
+
+  function handoverApprovalCard(selection,snapshot) {
+    const approval=selectedHandoverApproval(selection); const locked=approval?.status==="Aprovada";
+    const delivered=state.data.users.find(u=>u.id===approval?.delivered_by)?.name||"-";
+    const received=state.data.users.find(u=>u.id===approval?.received_by)?.name||"-";
+    return `<div class="card handover-approval-card ${locked?"approved":""}"><div><small>Controle da passagem</small><h3>${approval?.sequence_no?`Passagem nº ${String(approval.sequence_no).padStart(5,"0")}`:"Passagem ainda não entregue"}</h3><p>${approval?`Status: ${approval.status}`:"Revise o checklist e entregue ao próximo turno."}</p></div><div class="handover-approval-people"><span>Entregue por<strong>${esc(delivered)}</strong><small>${dateTime(approval?.delivered_at)}</small></span><span>Recebida por<strong>${esc(received)}</strong><small>${dateTime(approval?.received_at)}</small></span></div><div class="row-actions">${!locked&&canManageHandover()?`<button class="btn primary" data-action="deliver-handover">Entregar passagem</button>`:""}${approval?.status==="Entregue"&&canApproveHandover()?`<button class="btn primary" data-action="approve-handover">Confirmar recebimento</button>`:""}${locked&&hasRole(["supervisor"])?`<button class="btn secondary" data-action="reopen-handover">Reabrir</button>`:""}${approval?.snapshot_text?`<button class="btn secondary" data-action="view-approved-handover">Ver versão entregue</button>`:""}</div></div>`;
+  }
+
+  function shiftChecklistHtml(selection=ensureHandoverSelection()) {
+    const approval=selectedHandoverApproval(selection); const locked=approval?.status==="Aprovada"&&!hasRole(["supervisor"]);
+    const items=checklistForShift(selection); const done=items.filter(x=>x.completed).length;
+    return `<div class="card shift-checklist-card"><div class="kpi-row"><div><h3>Checklist do turno</h3><span class="muted">${done} de ${items.length} itens concluídos</span></div>${badge(done===items.length?"Concluído":"Pendente")}</div><div class="checklist-progress"><span style="width:${done/items.length*100}%"></span></div><div class="shift-checklist-list">${items.map(item=>`<label class="shift-checklist-row ${item.completed?"done":""}"><input type="checkbox" data-shift-checklist="${esc(item.item_key)}" ${item.completed?"checked":""} ${locked?"disabled":""}><span><strong>${esc(item.item_label)}</strong><small>${esc(item.category)}</small></span><input class="checklist-note" data-shift-checklist-note="${esc(item.item_key)}" value="${esc(item.notes||"")}" placeholder="Observação" ${locked?"disabled":""}></label>`).join("")}</div></div>`;
+  }
+
+  function periodStats(days,offsetDays=0) {
+    const end=new Date(); end.setHours(23,59,59,999); end.setDate(end.getDate()-offsetDays);
+    const start=new Date(end); start.setDate(start.getDate()-days+1); start.setHours(0,0,0,0);
+    const ops=state.data.operations.filter(op=>{const d=new Date(op.end_at||op.start_at||op.created_at);return d>=start&&d<=end&&op.status==="Concluída"});
+    const trucks=state.data.trucks.filter(t=>{const d=new Date(`${t.date}T12:00:00`);return d>=start&&d<=end});
+    return { operations:ops.length, bbl:ops.filter(o=>o.unit==="bbl").reduce((s,o)=>s+Number(o.executed||0),0), ton:ops.filter(o=>o.unit==="ton").reduce((s,o)=>s+Number(o.executed||0),0), trucks:trucks.length, downtime:ops.reduce((s,o)=>s+Number(o.paused_minutes||0),0)/60 };
+  }
+
+  function metricComparison(label,current,previous,suffix="") {
+    const diff=previous?((current-previous)/previous*100):(current?100:0); const arrow=diff>0?"↑":diff<0?"↓":"→";
+    return `<div class="metric-comparison"><span>${esc(label)}</span><strong>${fmt.format(current)}${suffix}</strong><small class="${diff<0?"down":diff>0?"up":""}">${arrow} ${fmt.format(Math.abs(diff))}% contra período anterior</small></div>`;
+  }
+
+
+  function handoverPendingForm(item = {}) {
+    return `<form id="handoverPendingForm" data-id="${item.id || ""}">
+      <div class="form-grid">
+        <div><label>Categoria</label><select name="category">${["Operação","Logística","Tancagem","QHSE","Manutenção","Documentação","Outro"].map(x => `<option ${item.category === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
+        <div><label>Prioridade</label><select name="priority">${["Baixa","Normal","Alta","Crítica"].map(x => `<option ${item.priority === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
+        <div class="wide"><label>Pendência *</label><input name="title" required value="${esc(item.title || "")}" placeholder="Ex.: Atualizar lote da RFF"></div>
+        <div class="wide"><label>Descrição</label><textarea name="description">${esc(item.description || "")}</textarea></div>
+        <div><label>Responsável</label><input name="responsible" value="${esc(item.responsible || "")}"></div>
+        <div><label>Prazo</label><input name="due_at" type="datetime-local" value="${toLocalInput(item.due_at)}"></div>
+        <div><label>Status</label><select name="status">${["Pendente","Em andamento","Concluído","Cancelado"].map(x => `<option ${item.status === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
+      </div>
+      ${formActions(item.id ? "Salvar pendência" : "Adicionar pendência")}
+    </form>`;
+  }
+
+  function handoverSection(title, items, renderer, emptyText) {
+    return `<section class="handover-section"><h3>${title}</h3>${items.length ? `<ol>${items.map(renderer).join("")}</ol>` : `<p class="handover-empty">${emptyText}</p>`}</section>`;
+  }
+
+  function handoverSheetHtml(snapshot) {
+    const s = snapshot;
+    const generated = new Date();
+    const operationItems = s.completedOperations.map(op => ({
+      title: `${op.activity} de ${op.product}`,
+      detail: `${op.client} • ${op.vessel}${op.rig ? ` • Sonda ${op.rig}` : ""}${op.well ? ` • Poço ${op.well}` : ""}${op.ticketNumber ? ` • Ticket ${op.ticketNumber}` : ""} • ${fmt.format(op.executed)} ${op.unit}${op.service_order ? ` • OS ${op.service_order}` : ""}`
+    }));
+    const eventItems = s.events.map(item => ({
+      title: item.title,
+      detail: `${dateTime(item.event_time)}${item.description ? ` • ${item.description}` : ""}`
+    }));
+    const movementItems = s.tankMovements.map(item => {
+      const source = state.data.tanks.find(t => t.id === item.source_tank_id)?.name;
+      const destination = state.data.tanks.find(t => t.id === item.destination_tank_id)?.name;
+      const route = source && destination ? `${source} → ${destination}` : source ? `Saída de ${source}` : destination ? `Entrada em ${destination}` : item.movement_type;
+      return { title: `${route}: ${fmt.format(item.quantity)} ${item.unit}`, detail: `${item.product || "-"}${item.lot ? ` • lote ${item.lot}` : ""}` };
+    });
+    const truckItems = s.trucks.map(item => ({
+      title: `${item.movement} — ${item.product}`,
+      detail: `${fmt.format(item.quantity)} ${item.unit} • ${item.supplier || item.client || "-"}${item.invoice ? ` • NF ${item.invoice}` : ""}${item.plate ? ` • ${item.plate}` : ""}`
+    }));
+    const qhseItems = s.qhse.map(item => ({ title: `${item.type}: ${item.title}`, detail: `${item.responsible || "Sem responsável"} • ${item.status}` }));
+    const maintenanceItems = [
+      ...s.maintenanceOpened.map(item => ({ title: `OS aberta: ${item.title}`, detail: `${item.responsible || "Sem responsável"} • ${item.status}` })),
+      ...s.maintenanceClosed.map(item => ({ title: `OS concluída: ${item.title}`, detail: `${item.responsible || "Sem responsável"}` })),
+      ...s.pendingCompleted.map(item => ({ title: `Pendência concluída: ${item.title}`, detail: `${item.responsible || "Sem responsável"} • ${item.category}` }))
+    ];
+    const pendingItems = [
+      ...s.activeOperations.map(op => ({ title: `Operação em andamento: ${op.activity} de ${op.product}`, detail: `${op.client} • ${op.vessel}${op.rig ? ` • Sonda ${op.rig}` : ""}${op.well ? ` • Poço ${op.well}` : ""}${op.ticketNumber ? ` • Ticket ${op.ticketNumber}` : ""} • ${fmt.format(op.executed)}/${fmt.format(op.planned)} ${op.unit}` })),
+      ...s.openPendings.map(item => ({ title: item.title, detail: `${item.category} • ${item.responsible || "Sem responsável"} • ${item.priority}` })),
+      ...s.openMaintenance.map(item => ({ title: `Manutenção: ${item.title}`, detail: `${item.responsible || "Sem responsável"} • ${item.status}` })),
+      ...s.openQhseActions.map(item => ({ title: `QHSE: ${item.title}`, detail: `${item.responsible || "Sem responsável"} • prazo ${dateOnly(item.due_date)}` }))
+    ];
+
+    const itemRenderer = item => `<li><strong>${esc(item.title)}</strong><span>${esc(item.detail || "")}</span></li>`;
+
+    return `<article class="handover-sheet" id="handoverSheet">
+      <header class="handover-print-header">
+        <div><span class="handover-logo">OC</span></div>
+        <div><h1>PASSAGEM DE SERVIÇO</h1><p>B-Port LMP — OpsControl IA</p></div>
+        <div class="handover-print-meta"><strong>${dateOnly(s.selection.date)}</strong><span>${esc(s.window.label)}</span>${selectedHandoverApproval(s.selection)?.sequence_no?`<span>Passagem nº ${String(selectedHandoverApproval(s.selection).sequence_no).padStart(5,"0")} • ${esc(selectedHandoverApproval(s.selection).status)}</span>`:""}<small>Gerado em ${generated.toLocaleString("pt-BR")}</small></div>
+      </header>
+
+      <div class="handover-summary-grid">
+        <div><span>Operações concluídas</span><strong>${s.completedOperations.length}</strong></div>
+        <div><span>Eventos registrados</span><strong>${s.events.length}</strong></div>
+        <div><span>Movimentações</span><strong>${s.tankMovements.length}</strong></div>
+        <div><span>Pendências abertas</span><strong>${pendingItems.length}</strong></div>
+      </div>
+
+      ${handoverSection("1. Operações concluídas no turno", operationItems, itemRenderer, "Nenhuma operação concluída no período.")}
+      ${handoverSection("2. Eventos e atividades registradas", eventItems, itemRenderer, "Nenhum evento registrado no período.")}
+      ${handoverSection("3. Movimentações de tanques e silos", movementItems, itemRenderer, "Nenhuma movimentação de tancagem registrada.")}
+      ${handoverSection("4. Movimentações de carretas", truckItems, itemRenderer, "Nenhuma carreta registrada no período.")}
+      ${handoverSection("5. QHSE e manutenção", [...qhseItems, ...maintenanceItems], itemRenderer, "Nenhuma atividade QHSE ou de manutenção registrada.")}
+      ${handoverSection("6. Pendências para o próximo turno", pendingItems, itemRenderer, "Nenhuma pendência identificada.")}
+      <section class="handover-section"><h3>7. Checklist do turno</h3><ol>${checklistForShift(s.selection).map(item=>`<li><strong>${item.completed?"☑":"☐"} ${esc(item.item_label)}</strong>${item.notes?`<span>${esc(item.notes)}</span>`:""}</li>`).join("")}</ol></section>
+
+      <section class="handover-section observations"><h3>8. Observações</h3><p>${esc(s.observations || "Manter os controles atualizados, a sala organizada e registrar todas as alterações no OpsControl IA.")}</p></section>
+
+      <footer class="handover-signatures">
+        <div><span>Responsável pelo turno</span><strong>${esc(state.data.profile.name)}</strong></div>
+        <div><span>Recebido por</span><strong>________________________________</strong></div>
+      </footer>
+    </article>`;
+  }
+
+  function handoverText(selection = ensureHandoverSelection()) {
+    const s = handoverSnapshot(selection);
+    const lines = [
+      "> PASSAGEM DE SERVIÇO",
+      `> Data: ${dateOnly(selection.date)} | ${s.window.label}`,
+      ""
+    ];
+    let number = 1;
+
+    const add = text => lines.push(`${number++}. ${text}`);
+    s.completedOperations.forEach(op => add(`${op.activity} de ${op.product} concluído — ${op.client} / ${op.vessel} — ${fmt.format(op.executed)} ${op.unit}`));
+    s.events.forEach(item => add(`${item.title}${item.description ? ` — ${item.description}` : ""}`));
+    s.trucks.forEach(item => add(`${item.movement} de carreta — ${item.product} — ${fmt.format(item.quantity)} ${item.unit}${item.invoice ? ` — NF ${item.invoice}` : ""}`));
+    s.qhse.forEach(item => add(`${item.type}: ${item.title} — ${item.status}`));
+    s.maintenanceClosed.forEach(item => add(`Manutenção concluída: ${item.title}`));
+    s.pendingCompleted.forEach(item => add(`Pendência concluída: ${item.title}`));
+
+    if (number === 1) lines.push("• Nenhuma atividade concluída ou registrada no turno.");
+
+    lines.push("", "*Operações em andamento:*");
+    s.activeOperations.forEach(op => lines.push(`• ${op.client} | ${op.vessel} | ${op.activity} de ${op.product} | ${fmt.format(op.executed)}/${fmt.format(op.planned)} ${op.unit} | ${op.status}`));
+    if (!s.activeOperations.length) lines.push("• Nenhuma operação em andamento.");
+
+    lines.push("", "*Pendências:*");
+    s.openPendings.forEach(item => lines.push(`• [${item.priority}] ${item.title} — ${item.responsible || "Sem responsável"} — ${item.status}`));
+    s.openMaintenance.forEach(item => lines.push(`• Manutenção: ${item.title} — ${item.responsible || "Sem responsável"} — ${item.status}`));
+    s.openQhseActions.forEach(item => lines.push(`• QHSE: ${item.title} — ${item.responsible || "Sem responsável"} — prazo ${dateOnly(item.due_date)}`));
+    if (!s.openPendings.length && !s.openMaintenance.length && !s.openQhseActions.length) lines.push("• Nenhuma pendência.");
+
+    lines.push("", "*Observações:*");
+    lines.push(s.observations || "Manter os controles atualizados, a sala organizada e registrar todas as alterações no OpsControl IA.");
+    return lines.join("\n");
+  }
+
+
+
+  function currentClosing(date = state.closing.date || localDateKey(), shift = state.closing.shift || "day") {
+    return (state.data.closings || []).find(item => item.date === date && item.shift === shift) || null;
+  }
+
+  function closingForm(date = localDateKey(), shift = "day") {
+    const closing = currentClosing(date,shift);
+    const tankRows = state.data.tanks.map(item => `<div class="closing-count-row"><span><strong>${esc(item.name)}</strong><small>${esc(item.product || "Vazio")} • teórico ${fmt.format(item.volume)} ${esc(item.unit)}</small></span><input data-closing-count data-item-type="tank" data-item-id="${item.id}" data-unit="${esc(item.unit)}" inputmode="decimal" placeholder="${String(item.volume).replace(".",",")}"></div>`).join("");
+    const chemicalRows = state.data.chemicals.map(item => `<div class="closing-count-row"><span><strong>${esc(item.name)}</strong><small>Lote ${esc(item.lot || "-")} • teórico ${fmt.format(item.quantity)} ${esc(item.unit)}</small></span><input data-closing-count data-item-type="chemical" data-item-id="${item.id}" data-unit="${esc(item.unit)}" inputmode="decimal" placeholder="${String(item.quantity).replace(".",",")}"></div>`).join("");
+    return `<form id="closingForm"><div class="form-grid"><div><label>Data *</label><input name="date" type="date" value="${date}" required></div><div><label>Turno *</label><select name="shift"><option value="day" ${shift==="day"?"selected":""}>Dia — 07h às 19h</option><option value="night" ${shift==="night"?"selected":""}>Noite — 19h às 07h</option></select></div><div class="wide"><label>Observações</label><textarea name="notes">${esc(closing?.notes || "")}</textarea></div></div>
+      <div class="closing-tools"><button type="button" class="btn secondary" data-action="fill-closing-theoretical">Preencher com saldos teóricos</button><span>Deixe em branco o item que não foi contado fisicamente.</span></div>
+      <details open class="closing-count-group"><summary>Tanques e silos (${state.data.tanks.length})</summary><div>${tankRows}</div></details>
+      <details class="closing-count-group"><summary>Inventário químico (${state.data.chemicals.length})</summary><div>${chemicalRows}</div></details>
+      ${formActions("Fechar turno e salvar conciliação")}</form>`;
+  }
+
+  function collectClosingCounts(form) {
+    return [...form.querySelectorAll("[data-closing-count]")].map(input => {
+      const value = parseOptionalDecimal(input.value);
+      if (Number.isNaN(value)) throw new Error("Existe uma contagem física inválida.");
+      if (value === null) return null;
+      if (value < 0) throw new Error("A contagem física não pode ser negativa.");
+      return {item_type:input.dataset.itemType,item_id:input.dataset.itemId,measured_quantity:value,unit:input.dataset.unit};
+    }).filter(Boolean);
+  }
+
+  function closingDetails(closing) {
+    if (!closing) return `<div class="card empty">Nenhum fechamento realizado.</div>`;
+    const items=(state.data.closingItems || []).filter(item => item.closingId===closing.id);
+    const divergent=items.filter(item => item.status==="Divergente");
+    const counted=items.filter(item => item.measured!==null);
+    const rows=items.filter(item => item.status!=="Conferido").slice(0,30).map(item => `<tr><td>${esc(item.itemName)}</td><td>${esc(item.itemType==="tank"?"Tancagem":"Químico")}</td><td>${fmt.format(item.theoretical)} ${esc(item.unit)}</td><td>${item.measured===null?"Não contado":`${fmt.format(item.measured)} ${esc(item.unit)}`}</td><td>${item.variance===null?"-":`${fmt.format(item.variance)} ${esc(item.unit)}`}</td><td>${badge(item.status)}</td></tr>`).join("");
+    return `<div class="card closing-detail-card"><div class="kpi-row"><div><h3>${dateOnly(closing.date)} • ${closing.shift==="day"?"Dia":"Noite"}</h3><span class="muted">Fechado em ${dateTime(closing.closedAt)}</span></div>${badge(closing.status)}</div><div class="closing-summary-grid"><span>Contados<strong>${counted.length}/${items.length}</strong></span><span>Divergências<strong>${divergent.length}</strong></span><span>Operações concluídas<strong>${closing.summary.operations_completed || 0}</strong></span><span>Carretas<strong>${closing.summary.trucks || 0}</strong></span></div>${closing.notes?`<p>${esc(closing.notes)}</p>`:""}<div class="table-wrap"><table class="data-table"><thead><tr><th>Item</th><th>Tipo</th><th>Teórico</th><th>Contado</th><th>Diferença</th><th>Status</th></tr></thead><tbody>${rows||`<tr><td colspan="6" class="empty">Todos os itens contados estão conferidos.</td></tr>`}</tbody></table></div><div class="row-actions">${hasRole(["admin","supervisor"])&&closing.status==="Fechado"?`<button class="btn small danger" data-reopen-closing="${closing.id}">Reabrir fechamento</button>`:""}<button class="btn small secondary" data-export-closing="${closing.id}">Exportar conciliação</button></div></div>`;
+  }
+
+  function renderClosingPanel() {
+    const latest=(state.data.closings || [])[0] || null;
+    const cards=(state.data.closings || []).slice(0,8).map(item => `<button class="closing-history-button" data-view-closing="${item.id}"><span>${dateOnly(item.date)} • ${item.shift==="day"?"Dia":"Noite"}</span>${badge(item.status)}</button>`).join("");
+    return `<div class="section-title">Fechamento diário operacional</div><div class="closing-layout"><div><div class="card closing-action-card"><div><small>CONTROLE DO TURNO</small><h3>Fechar operações e conciliar estoques</h3><p>Registra operações, carretas, movimentações, saldo teórico e contagem física.</p></div>${hasRole(["supervisor","lider"])?`<button class="btn primary" data-action="new-closing">Preparar fechamento</button>`:""}</div>${closingDetails(latest)}</div><aside class="card"><h3>Fechamentos recentes</h3><div class="closing-history-list">${cards||`<div class="empty">Nenhum fechamento.</div>`}</div></aside></div>`;
+  }
+
+  function latestClosingReconciliationPanel() {
+    const closing=(state.data.closings || []).find(item => item.status==="Fechado") || (state.data.closings || [])[0];
+    if(!closing) return `<div class="section-title">Conciliação física</div><div class="card empty">Faça o primeiro fechamento diário para comparar saldo teórico e contagem física.</div>`;
+    const items=(state.data.closingItems || []).filter(item => item.closingId===closing.id);
+    const divergent=items.filter(item => item.status==="Divergente");
+    const notCounted=items.filter(item => item.status==="Não contado");
+    return `<div class="section-title">Conciliação física mais recente</div><div class="grid three reconciliation-grid"><div class="card reconciliation-card"><span>Data / turno</span><strong>${dateOnly(closing.date)}</strong><small>${closing.shift==="day"?"Dia":"Noite"} • ${closing.status}</small></div><div class="card reconciliation-card"><span>Divergências</span><strong>${divergent.length}</strong><small>diferença entre teórico e contado</small></div><div class="card reconciliation-card"><span>Não contados</span><strong>${notCounted.length}</strong><small>itens sem contagem física</small></div></div>${divergent.length?`<div class="quality-issues-grid">${divergent.slice(0,12).map(item => `<article class="card quality-issue-card red"><div class="quality-issue-top"><span>CONCILIAÇÃO</span>${badge("Alta")}</div><h3>${esc(item.itemName)}</h3><p>Teórico ${fmt.format(item.theoretical)}; contado ${fmt.format(item.measured)}; diferença ${fmt.format(item.variance)} ${esc(item.unit)}.</p></article>`).join("")}</div>`:""}`;
+  }
+
+  function renderReports() {
+    const selection=ensureHandoverSelection(); const snapshot=handoverSnapshot(selection); const approval=selectedHandoverApproval(selection);
+    const locked=approval?.status==="Aprovada"&&!hasRole(["supervisor"]);
+    const reportCard=(title,description,page,exportKind="")=>`<div class="card report-card"><h3>${title}</h3><p>${description}</p><div class="row-actions"><button class="btn primary" data-print-page="${page}">Gerar / Imprimir</button>${exportKind?`<button class="btn secondary" data-export="${exportKind}">Exportar CSV</button>`:""}</div></div>`;
+    const pendingCards=snapshot.openPendings.map(item=>`<div class="handover-pending-card"><div><span>${badge(item.priority)}</span><small>${esc(item.category)}</small><h4>${esc(item.title)}</h4><p>${esc(item.description||"Sem descrição")}</p><footer><span>${esc(item.responsible||"Sem responsável")}</span><span>${item.due_at?dateTime(item.due_at):"Sem prazo"}</span></footer></div>${canManageHandover()?`<div class="row-actions"><button class="btn small secondary" data-edit-handover-pending="${item.id}">Editar</button><button class="btn small primary" data-toggle-handover-pending="${item.id}">Concluir</button>${canDeleteHandoverPending()?`<button class="btn small danger" data-delete-handover-pending="${item.id}">Excluir</button>`:""}</div>`:""}</div>`).join("");
+    const week=periodStats(7),prevWeek=periodStats(7,7),month=periodStats(30),prevMonth=periodStats(30,30);
+    $("#page-reports").innerHTML=header("Relatórios","Passagem aprovada, fechamento diário, indicadores e exportações gerenciais.",`<button class="btn secondary" data-action="copy-handover">Copiar passagem</button><button class="btn primary" data-action="print-handover">Imprimir passagem</button>`)+
+      `${renderClosingPanel()}${handoverApprovalCard(selection,snapshot)}
+       <div class="card handover-controls no-print"><div class="handover-control-copy"><strong>Passagem automática do turno</strong><span>Operações, eventos, movimentações, carretas, QHSE e manutenção.</span></div><div><label>Data do turno</label><input id="handoverDate" type="date" value="${esc(selection.date)}"></div><div><label>Turno</label><select id="handoverShift"><option value="day" ${selection.shift==="day"?"selected":""}>Dia — 07h às 19h</option><option value="night" ${selection.shift==="night"?"selected":""}>Noite — 19h às 07h</option></select></div><button class="btn secondary" data-action="apply-handover-filter">Atualizar período</button>${canManageHandover()&&!locked?`<button class="btn primary" data-action="new-handover-pending">+ Adicionar pendência</button>`:""}</div>
+       <div class="handover-layout"><div>${handoverSheetHtml(snapshot)}</div><aside class="handover-side no-print"><div class="card"><h3>Observações do turno</h3><p>Incluídas na impressão e na cópia para WhatsApp.</p><textarea id="handoverObservations" rows="7" ${locked?"disabled":""}>${esc(snapshot.observations)}</textarea>${canManageHandover()&&!locked?`<button class="btn primary full" data-action="save-handover-note">Salvar observações</button>`:""}</div>${shiftChecklistHtml(selection)}<div class="card"><div class="kpi-row"><div><h3>Pendências manuais</h3><span class="muted">Continuam abertas até a conclusão.</span></div>${badge(snapshot.openPendings.length)}</div><div class="handover-pending-list">${pendingCards||`<div class="empty">Nenhuma pendência manual aberta.</div>`}</div></div></aside></div>
+       <div class="section-title no-print">Indicadores comparativos</div><div class="grid two no-print"><div class="card"><h3>Últimos 7 dias</h3><div class="metric-grid">${metricComparison("Operações",week.operations,prevWeek.operations)}${metricComparison("Volume de fluidos",week.bbl,prevWeek.bbl," bbl")}${metricComparison("Granéis",week.ton,prevWeek.ton," ton")}${metricComparison("Carretas",week.trucks,prevWeek.trucks)}</div></div><div class="card"><h3>Últimos 30 dias</h3><div class="metric-grid">${metricComparison("Operações",month.operations,prevMonth.operations)}${metricComparison("Volume de fluidos",month.bbl,prevMonth.bbl," bbl")}${metricComparison("Granéis",month.ton,prevMonth.ton," ton")}${metricComparison("Horas paradas",month.downtime,prevMonth.downtime," h")}</div></div></div>
+       <div class="section-title no-print">Exportação e backup</div><div class="grid three no-print"><div class="card report-card"><h3>Backup completo</h3><p>Dados operacionais em JSON para guarda externa.</p><button class="btn primary" data-action="backup-json">Baixar backup</button></div><div class="card report-card"><h3>Auditoria</h3><p>Alterações de usuários e registros.</p><button class="btn secondary" data-page-link="audit">Abrir auditoria</button></div><div class="card report-card"><h3>Fila offline</h3><p>${offlineQueue().length} registro(s) aguardando sincronização.</p><button class="btn secondary" data-action="sync-offline">Sincronizar agora</button></div></div>
+       <div class="section-title no-print">Outros relatórios</div><div class="grid two no-print">${reportCard("Relatório gerencial","KPIs, clientes, produtos, riscos e produtividade.","dashboard","operations")}${reportCard("Operações","Vazão, volume, paralisações e tancagem.","operations","operations")}${reportCard("Inventário de tancagem","Produto, lote, volume e capacidade.","tanks","tanks")}${reportCard("QHSE","Registros, severidades e itens de ação.","qhse")}${reportCard("Manutenção","Equipamentos, diesel e ordens.","maintenance","maintenance")}${reportCard("Carretas","Entradas, saídas, NF, placa e motorista.","trucks","trucks")}</div>`;
+  }
+
+
+
+  function auditChangeSummary(item) {
+    const before=item.old_data||{},after=item.new_data||{}; const keys=[...new Set([...Object.keys(before),...Object.keys(after)])].filter(k=>JSON.stringify(before[k])!==JSON.stringify(after[k])).slice(0,6);
+    return keys.map(key=>`${key}: ${before[key]??"-"} → ${after[key]??"-"}`).join(" | ")||"Registro criado/removido";
+  }
+
+  function renderAudit() {
+    const page=$("#page-audit"); if(!page)return;
+    if(!canViewAudit()){page.innerHTML=header("Auditoria","Acesso restrito.")+`<div class="card empty">Somente administração e supervisão podem consultar a auditoria.</div>`;return;}
+    const auditLogs = state.data.auditLogs || [];
+    const rows=auditLogs.map(item=>{const user=state.data.users.find(u=>u.id===item.changed_by)?.name||"Sistema";return `<tr><td>${dateTime(item.created_at)}</td><td><strong>${esc(user)}</strong></td><td>${esc(item.table_name)}</td><td>${badge(item.action)}</td><td>${esc(item.record_id||"-")}</td><td><small>${esc(auditChangeSummary(item))}</small></td></tr>`}).join("");
+    const mobileAudit=auditLogs.map(item=>{const user=state.data.users.find(u=>u.id===item.changed_by)?.name||"Sistema";return `<article class="card mobile-record-card audit-mobile-card"><div class="mobile-record-head"><div><strong>${esc(user)}</strong><small>${dateTime(item.created_at)}</small></div>${badge(item.action)}</div><div class="mobile-record-grid"><span>Módulo<strong>${esc(item.table_name)}</strong></span><span>Registro<strong>${esc(item.record_id||"-")}</strong></span></div><p>${esc(auditChangeSummary(item))}</p></article>`}).join("");
+    page.innerHTML=header("Auditoria do sistema","Quem alterou, quando, em qual módulo e o que mudou.",`<button class="btn secondary" data-export="audit">Exportar CSV</button>`)+`<div class="grid four audit-kpis"><div class="card"><span>Registros carregados</span><strong>${auditLogs.length}</strong></div><div class="card"><span>Usuários envolvidos</span><strong>${new Set(auditLogs.map(x=>x.changed_by).filter(Boolean)).size}</strong></div><div class="card"><span>Módulos alterados</span><strong>${new Set(auditLogs.map(x=>x.table_name)).size}</strong></div><div class="card"><span>Última alteração</span><strong>${auditLogs[0]?dateTime(auditLogs[0].created_at):"-"}</strong></div></div><div class="card table-wrap desktop-record-table"><table class="data-table"><thead><tr><th>Data</th><th>Usuário</th><th>Tabela</th><th>Ação</th><th>Registro</th><th>Alterações</th></tr></thead><tbody>${rows||`<tr><td colspan="6" class="empty">Nenhuma auditoria disponível.</td></tr>`}</tbody></table></div><div class="mobile-record-list">${mobileAudit||`<div class="card empty">Nenhuma auditoria disponível.</div>`}</div>`;
+  }
+
+
+
+
+  function environmentPanel() {
+    const current=state.config.environment || "production";
+    const staging=CONFIG.environments?.staging || {};
+    const configured=Boolean(staging.supabaseUrl && staging.supabaseKey);
+    return `<div class="card environment-card"><div class="kpi-row"><div><h3>Ambiente do sistema</h3><p>Produção usa o banco oficial. Homologação precisa de URL e chave próprias em js/config.js.</p></div>${badge(current==="production"?"Produção":"Homologação")}</div><div class="info-box">${configured?"O ambiente de homologação está configurado e pode ser ativado.":"Estrutura pronta, mas o banco de homologação ainda não foi criado/configurado."}</div><div class="row-actions"><button class="btn secondary" data-action="switch-environment" data-environment="${current==="production"?"staging":"production"}" ${current==="production"&&!configured?"disabled":""}>Alternar para ${current==="production"?"Homologação":"Produção"}</button></div></div>`;
+  }
+
+  function homologationPanel() {
+    const logs = testLog();
+    return `<div class="card homologation-card ${state.testMode ? "active" : ""}">
+      <div class="homologation-head"><div><span class="homologation-dot"></span><div><h3>Modo de homologação local</h3><p>Use os dados oficiais somente para consulta e simule salvamentos neste aparelho.</p></div></div>${badge(state.testMode ? "Ativo" : "Inativo")}</div>
+      <div class="info-box">${state.testMode ? "Nenhum formulário, checklist, transferência ou encerramento será enviado ao banco oficial." : "Ative antes de testar novos fluxos com a equipe."}</div>
+      <div class="row-actions"><button class="btn ${state.testMode ? "danger" : "primary"}" data-action="toggle-test-mode">${state.testMode ? "Desativar homologação" : "Ativar homologação"}</button><button class="btn secondary" data-action="export-test-log">Exportar testes (${logs.length})</button>${logs.length ? `<button class="btn secondary" data-action="clear-test-log">Limpar testes</button>` : ""}</div>
+    </div>`;
+  }
+
+  function feedbackManagementPanel() {
+    const items = state.data.feedback || [];
+    if (!items.length) return `<div class="card empty">Nenhum feedback recebido.</div>`;
+    return `<div class="feedback-management-list">${items.map(item => {
+      const user = state.data.users.find(x => x.id === item.created_by)?.name || "Usuário";
+      return `<article class="card feedback-card"><div class="mobile-record-head"><div><strong>${esc(item.category)}</strong><small>${esc(user)} • ${dateTime(item.created_at)} • ${esc(item.page)}</small></div>${badge(item.status)}</div><p>${esc(item.message)}</p>${item.rating ? `<span class="feedback-rating">Nota ${item.rating}/5</span>` : ""}</article>`;
+    }).join("")}</div>`;
+  }
+
+  function renderSettings() {
+    const users = state.data?.users || [];
+    const userRows = users.map(user => `<tr><td><strong>${esc(user.name)}</strong><br><small>${esc(user.email)}</small></td><td>${badge(user.role)}</td><td>${esc(user.department || "-")}</td><td>${badge(user.active ? "Ativo" : "Inativo")}</td><td>${dateOnly(user.created_at)}</td><td>${isAdmin() ? `<button class="btn small primary" data-edit-user="${user.id}">Gerenciar</button>` : ""}</td></tr>`).join("");
+    const mobileUsers = users.map(user => `<article class="card mobile-record-card"><div class="mobile-record-head"><div><strong>${esc(user.name)}</strong><small>${esc(user.email)}</small></div>${badge(user.active ? "Ativo" : "Inativo")}</div><div class="mobile-record-grid"><span>Cargo<strong>${esc(user.role)}</strong></span><span>Setor<strong>${esc(user.department || "-")}</strong></span></div>${isAdmin() ? `<button class="btn primary full" data-edit-user="${user.id}">Gerenciar usuário</button>` : ""}</article>`).join("");
+    const lastSync = state.lastSync ? state.lastSync.toLocaleString("pt-BR") : "Não sincronizado";
+    const errors = state.data?.systemErrors || [];
+    $("#page-settings").innerHTML = header("Configurações", "Perfil, usuários, permissões, diagnóstico e aparência.", `<button class="btn secondary" data-action="toggle-theme">Alternar tema</button>${isAdmin() ? `<button class="btn primary" data-action="new-user">+ Novo usuário</button>` : ""}`) + `<div class="section-title">Ambiente</div>${environmentPanel()}<div class="section-title">Teste seguro</div>${homologationPanel()}<div class="grid two"><div class="card"><h3>Meu perfil</h3><div class="kpi-list" style="margin-top:14px"><div class="kpi-row"><span>Nome</span><strong>${esc(state.data.profile.name)}</strong></div><div class="kpi-row"><span>E-mail</span><strong>${esc(state.data.profile.email)}</strong></div><div class="kpi-row"><span>Cargo</span>${badge(state.data.profile.role)}</div><div class="kpi-row"><span>Departamento</span><strong>${esc(state.data.profile.department || "-")}</strong></div></div></div><div class="card"><h3>Diagnóstico do sistema</h3><div class="kpi-list" style="margin-top:14px"><div class="kpi-row"><span>Última sincronização</span><strong>${esc(lastSync)}</strong></div><div class="kpi-row"><span>Tanques e silos</span><strong>${(state.data.tanks || []).length}</strong></div><div class="kpi-row"><span>Operações</span><strong>${(state.data.operations || []).length}</strong></div><div class="kpi-row"><span>Alertas automáticos</span><strong>${(state.data.systemAlerts || []).length}</strong></div><div class="kpi-row"><span>Erros registrados</span><strong>${errors.length}</strong></div><div class="kpi-row"><span>Fila offline</span><strong>${offlineQueue().length}</strong></div><div class="kpi-row"><span>Backup local</span><strong>${latestLocalBackup()?.created_at ? dateTime(latestLocalBackup().created_at) : "-"}</strong></div></div><div class="row-actions" style="margin-top:12px"><button class="btn primary" data-action="backup-json">Backup JSON</button><button class="btn secondary" data-action="sync-offline">Sincronizar offline</button></div><div class="info-box" style="margin-top:12px">Movimentações automáticas e transferências são executadas por transações no Supabase.</div>${isAdmin() ? `<div class="admin-edit-notice" style="margin-top:12px"><strong>Edição total ativa</strong><span>O administrador pode editar registros operacionais de todos os módulos. Históricos e auditorias permanecem protegidos.</span></div>` : ""}</div></div><div class="section-title">Usuários e permissões</div><div class="card table-wrap desktop-record-table">${isAdmin() ? "" : `<div class="info-box" style="margin-bottom:12px">Somente o administrador pode alterar cargo, setor, status e permissões.</div>`}<table class="data-table"><thead><tr><th>Usuário</th><th>Cargo</th><th>Departamento</th><th>Status</th><th>Cadastro</th><th>Ação</th></tr></thead><tbody>${userRows}</tbody></table></div><div class="mobile-record-list">${mobileUsers || `<div class="card empty">Nenhum usuário disponível.</div>`}</div>${hasRole(["supervisor"]) ? `<div class="section-title">Feedback da versão beta</div>${feedbackManagementPanel()}` : ""}${isAdmin() && errors.length ? `<div class="section-title">Erros recentes</div><div class="card table-wrap"><table class="data-table"><thead><tr><th>Data</th><th>Contexto</th><th>Mensagem</th></tr></thead><tbody>${errors.slice(0,20).map(e => `<tr><td>${dateTime(e.created_at)}</td><td>${esc(e.context || "-")}</td><td>${esc(e.message)}</td></tr>`).join("")}</tbody></table></div>` : ""}`;
+  }
+
+
+  function chemicalForm(item = {}) {
+    const editing = Boolean(item.id);
+    const lockProduct = item.lockProduct === true;
+    const currentProduct = state.data.chemicalProducts.find(product => product.id === item.productId);
+    const products = (state.data.chemicalProducts || []).filter(product => product.active || product.id === item.productId);
+    const status = item.status || "Disponível";
+    return `<form id="chemicalForm" data-id="${item.id || ""}" novalidate>
+      <div class="form-grid">
+        <div class="wide catalog-linked-field">
+          <div class="catalog-linked-heading"><div><label>Produto do Catálogo Químico *</label><small>O nome e a unidade vêm do cadastro oficial.</small></div><button type="button" class="btn small secondary" data-action="open-chemical-catalog">Abrir catálogo</button></div>
+          <select name="product_id" required ${lockProduct ? "disabled" : ""}><option value="">Selecione o produto</option>${products.map(product => `<option value="${product.id}" ${product.id === item.productId ? "selected" : ""}>${esc(product.name)}</option>`).join("")}</select>
+          ${lockProduct ? `<input type="hidden" name="product_id" value="${esc(item.productId || "")}">` : ""}
+          <small class="field-help">${currentProduct ? `${esc(currentProduct.category || "Produto químico")} • ${esc(inferChemicalPackaging(currentProduct))} • ${esc(currentProduct.unit)} • o total será somado automaticamente` : "Selecione um produto cadastrado."}</small>
+        </div>
+        <div><label>Lote</label><input name="lot" value="${esc(item.lot || "")}"></div>
+        ${editing ? `<div><label>Saldo atual</label><input value="${fmt.format(item.quantity)} ${esc(item.unit)}" disabled><small class="field-help">Para alterar o saldo, use Movimentar.</small></div>` : `<div><label>Quantidade inicial</label><input name="quantity" type="text" inputmode="decimal" value="0"></div>`}
+        <div><label>Estoque mínimo</label><input name="minimum_quantity" type="text" inputmode="decimal" value="${String(item.minimum || 0).replace(".", ",")}"></div>
+        <div><label>Validade</label><input name="expiry_date" type="date" value="${String(item.expiry_date || "").slice(0,10)}"></div>
+        <div><label>Localização</label><input name="location" value="${esc(item.location || "")}" placeholder="Ex.: Almoxarifado A"></div>
+        <div><label>Fornecedor</label><input name="supplier" value="${esc(item.supplier || "")}"></div>
+        <div><label>Status</label><select name="status">${["Disponível","Quarentena","Bloqueado","Vencido","Descartado"].map(value => `<option ${status === value ? "selected" : ""}>${value}</option>`).join("")}</select></div>
+        <div class="wide"><label>Observações</label><textarea name="notes">${esc(item.notes || "")}</textarea></div>
+        <div class="wide"><label>FISPQ, NF, certificado ou foto</label><input name="attachment" type="file" accept=".pdf,image/jpeg,image/png,image/webp,image/heic,image/heif" multiple capture="environment"></div>
+      </div><div id="chemicalSaveMessage" class="message hidden"></div>${formActions(editing ? "Salvar lote" : "Cadastrar lote")}
+    </form>`;
+  }
+
+  function chemicalMovementForm(item) {
+    return `<form id="chemicalMovementForm" data-id="${item.id}" novalidate>
+      <div class="info-box">
+        <strong>${esc(item.name)}</strong><br>
+        Lote: ${esc(item.lot || "-")} • Saldo atual: ${fmt.format(item.quantity)} ${esc(item.unit)}
+      </div>
+      <div class="form-grid" style="margin-top:12px">
+        <div>
+          <label>Tipo de movimentação</label>
+          <select name="movement_type">
+            <option>Entrada</option>
+            <option>Saída</option>
+            <option>Ajuste</option>
+          </select>
+        </div>
+        <div>
+          <label>Quantidade *</label>
+          <input name="quantity" type="text" inputmode="decimal" required placeholder="Ex.: 10 ou 10,5">
+          <small class="field-help">Em Ajuste, informe o novo saldo físico. O valor pode ser zero.</small>
+        </div>
+        <div>
+          <label>Referência</label>
+          <input name="reference" placeholder="NF, OS, inventário ou operação">
+        </div>
+        <div class="wide">
+          <label>Observação</label>
+          <textarea name="notes"></textarea>
+        </div>
+      </div>
+      <div id="chemicalMovementMessage" class="message hidden"></div>
+      ${formActions("Confirmar movimentação")}
+    </form>`;
+  }
+
+
+  function inferredTruckType(item = {}) {
+    if (["Bulk","Tank","Plataforma"].includes(item.truckType)) return item.truckType;
+    return ["bbl","m³","m3"].includes(String(item.unit || "").toLowerCase()) ? "Tank" : "Bulk";
+  }
+
+  function truckCatalogProducts(type = "Bulk", currentId = "") {
+    return (state.data?.fluids || [])
+      .filter(item => item.active !== false || item.id === currentId)
+      .filter(item => {
+        const category = String(item.type || "").toLowerCase();
+        return type === "Bulk" ? category === "granel" : !["granel","insumo"].includes(category);
+      })
+      .sort((a,b) => a.name.localeCompare(b.name));
+  }
+
+  function truckCatalogOptions(type = "Bulk", selectedId = "") {
+    return truckCatalogProducts(type, selectedId).map(item =>
+      `<option value="${item.id}" data-unit="${esc(item.unit)}" ${item.id === selectedId ? "selected" : ""}>${esc(item.name)}${item.active === false ? " — inativo (histórico)" : ""}</option>`
+    ).join("");
+  }
+
+  function truckCompatibleTanks(type, productId, movement, selectedId = "") {
+    const incoming = ["Entrada","Backload"].includes(movement);
+    return (state.data.tanks || []).filter(tank => {
+      if (tank.id === selectedId) return true;
+      if (type === "Bulk" && !isSiloAsset(tank)) return false;
+      if (type === "Tank" && isSiloAsset(tank)) return false;
+      const product = state.data.fluids.find(item => item.id === productId);
+      if (!product || tank.unit !== product.unit) return false;
+      if (incoming) return Number(tank.volume || 0) <= 0 || tank.fluidTypeId === productId;
+      return tank.fluidTypeId === productId && Number(tank.volume || 0) > 0;
+    }).sort((a,b) => a.order-b.order);
+  }
+
+  function truckTankOptions(type, productId, movement, selectedId = "") {
+    return truckCompatibleTanks(type, productId, movement, selectedId).map(tank => {
+      const incoming = ["Entrada","Backload"].includes(movement);
+      const detail = incoming ? `livre ${fmt.format(Math.max(0,tank.capacity-tank.volume))} ${tank.unit}` : `saldo ${fmt.format(tank.volume)} ${tank.unit}`;
+      return `<option value="${tank.id}" ${tank.id === selectedId ? "selected" : ""}>${esc(tank.name)} — ${detail} — ${esc(tank.product || "Vazio")}</option>`;
+    }).join("");
+  }
+
+  function platformProductOptions(selectedId = "") {
+    return (state.data.chemicalProducts || [])
+      .filter(item => item.active || item.id === selectedId)
+      .sort((a,b) => a.name.localeCompare(b.name))
+      .map(item => `<option value="${item.id}" data-unit="${esc(item.unit)}" ${item.id === selectedId ? "selected" : ""}>${esc(item.name)}</option>`)
+      .join("");
+  }
+
+  function truckPlatformItemRow(item = {}) {
+    const selectedId = item.chemicalProductId || item.chemical_product_id || "";
+    const product = (state.data.chemicalProducts || []).find(entry => entry.id === selectedId);
+    return `<div class="truck-platform-row" data-truck-platform-row>
+      <div class="truck-platform-product"><label>Produto químico *</label><select data-truck-item-product><option value="">Selecione o produto químico</option>${platformProductOptions(selectedId)}</select><small data-truck-item-detail>${product ? `Produto selecionado: ${esc(product.name)}` : "A lista mostra somente o nome do produto."}</small></div>
+      <div><label>Quantidade *</label><input data-truck-item-quantity type="text" inputmode="decimal" value="${esc(item.quantity ?? "")}" placeholder="Ex.: 20"></div>
+      <div><label>Unidade</label><input data-truck-item-unit value="${esc(item.unit || product?.unit || "")}" readonly></div>
+      <button type="button" class="icon-btn truck-remove-item" data-action="remove-truck-item" aria-label="Remover produto">×</button>
+    </div>`;
+  }
+
+  function syncTruckPlatformRow(row) {
+    if (!row) return;
+    const select = row.querySelector("[data-truck-item-product]");
+    const product = (state.data.chemicalProducts || []).find(item => item.id === select?.value);
+    const unit = row.querySelector("[data-truck-item-unit]");
+    const detail = row.querySelector("[data-truck-item-detail]");
+    if (unit) unit.value = product?.unit || "";
+    if (detail) detail.textContent = product ? `Produto selecionado: ${product.name}` : "A lista mostra somente o nome do produto.";
+  }
+
+  function syncTruckSingleProduct(form) {
+    if (!form) return;
+    const type = form.elements.truck_type?.value || "Bulk";
+    const movement = form.elements.movement?.value || "Entrada";
+    const select = form.elements.fluid_type_id;
+    const selected = select?.value || "";
+    if (select) {
+      const valid = truckCatalogProducts(type, selected).some(item => item.id === selected);
+      select.innerHTML = `<option value="">Selecione o produto cadastrado</option>${truckCatalogOptions(type, valid ? selected : "")}`;
+    }
+    const product = (state.data.fluids || []).find(item => item.id === select?.value);
+    if (form.elements.unit) form.elements.unit.value = product?.unit || "";
+    const detail = form.querySelector("[data-truck-product-detail]");
+    if (detail) detail.textContent = product ? `${product.type} • unidade ${product.unit}` : type === "Bulk" ? "Somente granéis." : "Somente fluidos.";
+    const tankSelect = form.elements.tank_id;
+    const selectedTank = tankSelect?.value || form.dataset.tankId || "";
+    if (tankSelect) tankSelect.innerHTML = `<option value="">Selecione o equipamento</option>${truckTankOptions(type,product?.id || "",movement,selectedTank)}`;
+  }
+
+  function updateTruckPlatformSummary(form) {
+    const summary = form?.querySelector("[data-truck-platform-summary]");
+    if (!summary) return;
+    const valid = [...form.querySelectorAll("[data-truck-platform-row]")].filter(row => row.querySelector("[data-truck-item-product]")?.value);
+    summary.innerHTML = `<strong>${valid.length}</strong><span>produto(s) adicionado(s)</span>`;
+  }
+
+  function syncTruckForm(form, resetProduct = false) {
+    if (!form) return;
+    const type = form.elements.truck_type?.value || "Bulk";
+    const single = form.querySelector("[data-truck-single-section]");
+    const platform = form.querySelector("[data-truck-platform-section]");
+    const isPlatform = type === "Plataforma";
+    single?.classList.toggle("hidden", isPlatform);
+    platform?.classList.toggle("hidden", !isPlatform);
+    single?.querySelectorAll("input,select").forEach(field => field.disabled = isPlatform);
+    platform?.querySelectorAll("input,select").forEach(field => field.disabled = !isPlatform);
+    if (!isPlatform) {
+      if (resetProduct && form.elements.fluid_type_id) form.elements.fluid_type_id.value = "";
+      syncTruckSingleProduct(form);
+    } else {
+      const list = form.querySelector("[data-truck-items-list]");
+      if (list && !list.children.length) list.innerHTML = truckPlatformItemRow();
+      list?.querySelectorAll("[data-truck-platform-row]").forEach(syncTruckPlatformRow);
+      updateTruckPlatformSummary(form);
+    }
+  }
+
+  function collectTruckPlatformItems(form, validate = true) {
+    if (!form || form.elements.truck_type?.value !== "Plataforma") return [];
+    const rows = [...form.querySelectorAll("[data-truck-platform-row]")];
+    if (validate && !rows.length) throw new Error("Adicione pelo menos um produto na Plataforma.");
+    const used = new Set();
+    return rows.map((row,index) => {
+      const productId = row.querySelector("[data-truck-item-product]")?.value || "";
+      const quantity = parseTankVolume(row.querySelector("[data-truck-item-quantity]")?.value || "");
+      const product = state.data.chemicalProducts.find(item => item.id === productId);
+      if (validate && !product) throw new Error(`Selecione o produto da linha ${index+1}.`);
+      if (validate && (!Number.isFinite(quantity) || quantity<=0)) throw new Error(`Informe uma quantidade maior que zero na linha ${index+1}.`);
+      if (validate && used.has(productId)) throw new Error(`${product.name} foi adicionado mais de uma vez.`);
+      if (productId) used.add(productId);
+      return { chemical_product_id:productId, quantity:Number.isFinite(quantity)?quantity:0, display_order:index };
+    }).filter(item => item.chemical_product_id);
+  }
+
+  function truckItemsSummary(item, detailed = false) {
+    const items = item.items || [];
+    if (item.truckType !== "Plataforma") return `<strong>${esc(item.product)}</strong><small>${fmt.format(item.quantity)} ${esc(item.unit)} • Lote ${esc(item.lot || "-")}</small>`;
+    if (!items.length) return `<strong>Plataforma</strong><small>Nenhum item detalhado.</small>`;
+    const visible = detailed ? items : items.slice(0,3);
+    return `<div class="truck-item-summary">${visible.map(product => `<span><strong>${esc(product.productName)}</strong><small>${fmt.format(product.quantity)} ${esc(product.unit)}</small></span>`).join("")}${!detailed && items.length>3 ? `<em>+ ${items.length-3} produto(s)</em>` : ""}</div>`;
+  }
+
+  function truckForm(item = {}) {
+    const type = inferredTruckType(item);
+    const items = item.items || [];
+    const linked = state.data.fluids.find(product => product.id === item.fluidTypeId);
+    const stockApplied = type !== "Plataforma" && item.stockApplied === true;
+    const tank = state.data.tanks.find(entry => entry.id === item.tankId);
+    return `<form id="truckForm" data-id="${item.id || ""}" data-tank-id="${item.tankId || ""}" data-stock-applied="${stockApplied}">
+      ${stockApplied ? `<div class="info-box truck-stock-lock"><strong>Estoque já aplicado</strong><span>${dateTime(item.stockAppliedAt)} • ${tank?.name || "Inventário químico"}. Produto, quantidade e equipamento ficam protegidos; correções devem ser feitas por ajuste de estoque.</span></div>` : ""}
+      <div class="form-grid">
+        <div><label>Data *</label><input name="date" type="date" required value="${String(item.date || new Date().toISOString()).slice(0,10)}"></div>
+        <div><label>Movimento *</label><select name="movement" ${stockApplied ? "disabled" : ""}>${["Entrada","Saída","Backload"].map(value => `<option ${item.movement === value ? "selected" : ""}>${value}</option>`).join("")}</select>${stockApplied ? `<input type="hidden" name="movement" value="${esc(item.movement)}">` : ""}</div>
+        <div class="wide truck-type-field"><label>Tipo da carreta *</label><div class="truck-type-selector">${["Bulk","Tank","Plataforma"].map(value => `<label><input type="radio" name="truck_type" value="${value}" ${type===value?"checked":""} ${stockApplied?"disabled":""}><span><b>${value==="Bulk"?"◆":value==="Tank"?"●":"▦"}</b><strong>${value}</strong><small>${value==="Bulk"?"Granel":value==="Tank"?"Fluido":"Vários insumos"}</small></span></label>`).join("")}</div>${stockApplied ? `<input type="hidden" name="truck_type" value="${esc(type)}">` : ""}</div>
+        <div><label>Origem / Destino *</label><input name="supplier" required value="${esc(item.supplier || "")}"></div>
+        <div><label>Cliente</label><input name="client" value="${esc(item.client || "")}"></div>
+        <section class="wide truck-single-section ${type==="Plataforma"?"hidden":""}" data-truck-single-section>
+          <div class="form-grid">
+            <div class="wide"><div class="catalog-linked-heading"><div><label>Produto vinculado *</label><small>Bulk usa granéis; Tank usa fluidos.</small></div><button type="button" class="btn small secondary" data-action="open-fluid-catalog">Abrir Fluidos e Granéis</button></div><select name="fluid_type_id" data-truck-single-product ${stockApplied?"disabled":""}><option value="">Selecione o produto cadastrado</option>${truckCatalogOptions(type,item.fluidTypeId || "")}</select>${stockApplied ? `<input type="hidden" name="fluid_type_id" value="${esc(item.fluidTypeId || "")}">` : ""}<small class="field-help" data-truck-product-detail>${linked ? `${esc(linked.type)} • unidade ${esc(linked.unit)}` : ""}</small></div>
+            <div class="wide"><label>Tanque ou silo vinculado *</label><select name="tank_id" ${stockApplied?"disabled":""}><option value="">Selecione o equipamento</option>${truckTankOptions(type,item.fluidTypeId || "",item.movement || "Entrada",item.tankId || "")}</select>${stockApplied ? `<input type="hidden" name="tank_id" value="${esc(item.tankId || "")}">` : ""}<small class="field-help">Entrada/Backload acrescenta saldo; Saída reduz o saldo automaticamente ao receber/concluir.</small></div>
+            <div><label>Lote</label><input name="lot" value="${esc(item.lot || "")}" ${stockApplied?"readonly":""}></div>
+            <div><label>Quantidade *</label><input name="quantity" type="text" inputmode="decimal" value="${item.quantity || ""}" ${stockApplied?"readonly":""}></div>
+            <div><label>Unidade</label><input name="unit" value="${esc(linked?.unit || item.unit || "")}" readonly></div>
+          </div>
+        </section>
+        <section class="wide truck-platform-section ${type==="Plataforma"?"":"hidden"}" data-truck-platform-section>
+          <div class="info-box platform-detached-notice"><strong>Sem vínculo com o Inventário Químico</strong><span>Esta carreta registra somente os produtos e as quantidades transportadas. Nenhum lote ou saldo será criado ou alterado.</span></div>
+          <div class="truck-platform-heading"><div><label>Produtos da Plataforma *</label><small>Selecione o nome do Catálogo Químico e informe a quantidade transportada.</small></div><div class="row-actions"><button type="button" class="btn small secondary" data-action="open-chemical-catalog">Abrir catálogo</button>${stockApplied?"":`<button type="button" class="btn small primary" data-action="add-truck-item">+ Adicionar produto</button>`}</div></div>
+          <div class="truck-platform-summary" data-truck-platform-summary><strong>${items.length}</strong><span>produto(s) adicionado(s)</span></div>
+          <div class="truck-platform-list" data-truck-items-list>${(items.length?items:[{}]).map(truckPlatformItemRow).join("")}</div>
+        </section>
+        <div><label>Placa</label><input name="plate" value="${esc(item.plate || "")}"></div>
+        <div><label>Motorista</label><input name="driver" value="${esc(item.driver || "")}"></div>
+        <div><label>Nota fiscal</label><input name="invoice" value="${esc(item.invoice || "")}"></div>
+        <div><label>Status</label><select name="status">${["Programada","Recebida","Concluída"].map(value => `<option ${item.status===value?"selected":""}>${value}</option>`).join("")}</select><small class="field-help">${type === "Plataforma" ? "O status não altera o Inventário Químico." : "Recebida ou Concluída aplica o saldo no tanque ou silo vinculado."}</small></div>
+        <div class="wide"><label>Observações</label><textarea name="notes">${esc(item.notes || "")}</textarea></div>
+        <div class="wide"><label>NF, documento ou foto</label><input name="attachment" type="file" accept=".pdf,image/jpeg,image/png,image/webp,image/heic,image/heif" multiple capture="environment"></div>
+      </div>${formActions(item.id?"Salvar alterações":"Salvar movimentação")}
+    </form>`;
+  }
+
+  async function saveTruck(payload,id=null,items=[]) {
+    const type=payload.truck_type;
+    if(!["Bulk","Tank","Plataforma"].includes(type)) throw new Error("Selecione o tipo da carreta.");
+    const finalStatus=["Recebida","Concluída"].includes(payload.status);
+    if(finalStatus && !payload.invoice) throw new Error("Informe a nota fiscal antes de receber ou concluir a carreta.");
+    const quantity=type==="Plataforma"?0:parseTankVolume(payload.quantity || "");
+    if(type!=="Plataforma" && (!Number.isFinite(quantity)||quantity<=0)) throw new Error("Informe uma quantidade maior que zero.");
+    if(type!=="Plataforma" && !payload.fluid_type_id) throw new Error("Selecione o produto em Fluidos e Granéis.");
+    if(type!=="Plataforma" && finalStatus && !payload.tank_id) throw new Error("Selecione o tanque ou silo antes de aplicar o estoque.");
+    if(type==="Plataforma" && !items.length) throw new Error("Adicione pelo menos um produto na Plataforma.");
+    const truckPayload={movement_date:payload.date,movement_type:payload.movement,truck_type:type,supplier:payload.supplier,client:payload.client||null,fluid_type_id:type==="Plataforma"?null:payload.fluid_type_id,tank_id:type==="Plataforma"?null:(payload.tank_id||null),lot:type==="Plataforma"?null:(payload.lot||null),quantity,plate:payload.plate||null,driver_name:payload.driver||null,invoice_number:payload.invoice||null,status:payload.status,notes:payload.notes||null};
+    const {data,error}=await state.client.rpc("save_truck_movement_integrated",{p_truck_id:id||null,p_truck:truckPayload,p_items:items});
+    if(error) throw error;
+    const row=Array.isArray(data)?data[0]:data;
+    if(!row?.id) throw new Error("O Supabase não confirmou a movimentação da carreta.");
+    return row.id;
+  }
+
+  function genericForm(kind, item = {}) {
+    const sel = (value, option) => String(value ?? "") === String(option) ? "selected" : "";
+    const id = item.id || "";
+    const forms = {
+      fluid: `<form id="genericForm" data-kind="fluid" data-id="${id}"><div class="form-grid">
+        <div class="wide"><label>Nome do produto *</label><input name="name" required value="${esc(item.name || "")}"></div>
+        <div><label>Tipo de produto *</label><select name="type" data-fluid-category>${["WBM","Brine","SBM","Olefina","Outro Fluido","Granel","Insumo"].map(x => `<option ${sel(item.type,x)}>${x}</option>`).join("")}</select><small class="field-help">Granel e Insumo aparecem nos silos. As demais opções aparecem nos tanques.</small></div>
+        <div><label>Unidade de estoque</label><select name="unit">${["bbl","ton","m³","kg"].map(x => `<option ${sel(item.unit,x)}>${x}</option>`).join("")}</select></div>
+        <div><label>Densidade padrão</label><input name="density" type="text" inputmode="decimal" value="${item.density || ""}" placeholder="Ex.: 9,7 ou 4,10"></div>
+        <div><label>Unidade da densidade</label><select name="density_unit"><option value="ppg" ${(item.densityUnit || defaultDensityUnit(item.type)) === "ppg" ? "selected" : ""}>ppg</option><option value="t/m³" ${(item.densityUnit || defaultDensityUnit(item.type)) === "t/m³" ? "selected" : ""}>t/m³</option></select></div>
+        <div class="catalog-status-field"><label>Status do produto *</label><select name="active" required><option value="true" ${item.active !== false ? "selected" : ""}>Ativo — aparece nos tanques/silos</option><option value="false" ${item.active === false ? "selected" : ""}>Inativo — fica oculto na seleção</option></select><small class="field-help">Ao ativar, o produto volta imediatamente para o menu suspenso dos equipamentos compatíveis.</small></div>
+        <div class="wide"><label>Documentos ou fotos</label><input name="attachment" type="file" accept=".pdf,image/jpeg,image/png,image/webp,image/heic,image/heif" multiple></div>
+      </div>${formActions(id ? "Salvar alterações" : "Salvar produto")}</form>`,
+
+      qhse: `<form id="genericForm" data-kind="qhse" data-id="${id}"><div class="form-grid">
+        <div><label>Data</label><input name="date" type="date" value="${String(item.date || new Date().toISOString()).slice(0,10)}"></div>
+        <div><label>Tipo</label><select name="type">${["DDS","APR","Inspeção","RIR","Auditoria","Observação"].map(x => `<option ${sel(item.type,x)}>${x}</option>`).join("")}</select></div>
+        <div class="wide"><label>Título *</label><input name="title" required value="${esc(item.title || "")}"></div>
+        <div class="wide"><label>Descrição</label><textarea name="description">${esc(item.description || "")}</textarea></div>
+        <div><label>Responsável</label><input name="responsible" value="${esc(item.responsible || "")}"></div>
+        <div><label>Severidade</label><select name="severity">${["Baixa","Média","Alta","Crítica"].map(x => `<option ${sel(item.severity,x)}>${x}</option>`).join("")}</select></div>
+        <div><label>Status</label><select name="status">${["Pendente","Em andamento","Concluído"].map(x => `<option ${sel(item.status,x)}>${x}</option>`).join("")}</select></div>
+        <div class="wide"><label>Fotos ou documentos</label><input name="attachment" type="file" accept=".pdf,image/jpeg,image/png,image/webp,image/heic,image/heif" multiple capture="environment"></div>
+      </div>${formActions(id ? "Salvar alterações" : "Salvar registro")}</form>`,
+
+      equipment: `<form id="genericForm" data-kind="equipment" data-id="${id}"><div class="form-grid">
+        <div><label>Equipamento *</label><input name="name" required value="${esc(item.name || "")}"></div>
+        <div><label>Categoria</label><select name="category">${["Motor a diesel","Bomba","Compressor","Empilhadeira","Outro"].map(x => `<option ${sel(item.category,x)}>${x}</option>`).join("")}</select></div>
+        <div><label>Localização</label><input name="location" value="${esc(item.location || "")}"></div>
+        <div><label>Status</label><select name="status">${["Operando","Disponível","Parado","Manutenção"].map(x => `<option ${sel(item.status,x)}>${x}</option>`).join("")}</select></div>
+        <div><label>Horímetro final</label><input name="hourmeter" type="number" min="0" step="0.1" value="${item.hourmeter || 0}"></div>
+        <div><label>Horas trabalhadas</label><input name="last_hours" type="number" min="0" step="0.1" value="${item.last_hours || 0}"></div>
+        <div><label>Diesel inicial (L)</label><input name="diesel_initial" type="number" min="0" step="0.1" value="${item.diesel_initial || 0}"></div>
+        <div><label>Abastecido (L)</label><input name="refueled" type="number" min="0" step="0.1" value="${item.refueled || 0}"></div>
+        <div><label>Diesel final (L)</label><input name="diesel_final" type="number" min="0" step="0.1" value="${item.diesel_final || 0}"></div>
+        <div><label>Próxima preventiva</label><input name="next_maintenance_date" type="date" value="${String(item.next_maintenance_date || "").slice(0,10)}"></div>
+        <div><label>Preventiva no horímetro</label><input name="maintenance_due_hourmeter" type="number" min="0" step="0.1" value="${item.maintenance_due_hourmeter || ""}"></div>
+        <div><label>Intervalo preventivo (h)</label><input name="maintenance_interval_hours" type="number" min="0" step="0.1" value="${item.maintenance_interval_hours || ""}"></div>
+        <div class="wide"><label>Observações</label><textarea name="notes">${esc(item.notes || "")}</textarea></div>
+      </div>${formActions(id ? "Salvar alterações" : "Salvar equipamento")}</form>`,
+
+      certificate: `<form id="genericForm" data-kind="certificate" data-id="${id}"><div class="form-grid">
+        <div class="wide"><label>Certificado *</label><input name="title" required value="${esc(item.title || "")}"></div>
+        <div>
+          <label>Usuário vinculado *</label>
+          <select name="user_id" required data-certificate-user>
+            <option value="">Selecione o usuário</option>
+            ${state.data.users.filter(user => user.active !== false || user.id === item.user_id).map(user => `<option value="${user.id}" data-user-name="${esc(user.name)}" ${item.user_id === user.id ? "selected" : ""}>${esc(user.name)} — ${esc(user.role)}</option>`).join("")}
+          </select>
+        </div>
+        <div><label>Nome no certificado *</label><input name="owner" value="${esc(item.owner || "")}" required></div>
+        <div><label>Emissor</label><input name="issuer" value="${esc(item.issuer || "")}"></div>
+        <div><label>Emissão</label><input name="issued_at" type="date" value="${String(item.issued_at || "").slice(0,10)}"></div>
+        <div><label>Validade</label><input name="expires_at" type="date" value="${String(item.expires_at || "").slice(0,10)}"></div>
+        <div><label>Status</label><select name="status">${["Válido","A vencer","Vencido"].map(x => `<option ${sel(item.status,x)}>${x}</option>`).join("")}</select></div>
+        <div class="wide"><label>Certificado em PDF ou foto</label><input name="attachment" type="file" accept=".pdf,image/jpeg,image/png,image/webp,image/heic,image/heif" multiple></div>
+      </div>
+      <div class="info-box" style="margin-top:12px">Somente Logística, Supervisor ou Administrador podem cadastrar e editar certificados.</div>
+      ${formActions(id ? "Salvar alterações" : "Salvar certificado")}</form>`,
+
+      alert: `<form id="genericForm" data-kind="alert" data-id="${id}"><div class="form-grid">
+        <div class="wide"><label>Título *</label><input name="title" required value="${esc(item.title || "")}"></div>
+        <div class="wide"><label>Mensagem *</label><textarea name="message" required>${esc(item.message || "")}</textarea></div>
+        <div><label>Nível</label><select name="level">${["Informativo","Atenção","Crítico"].map(x => `<option ${sel(item.level,x)}>${x}</option>`).join("")}</select></div>
+        <div><label>Grupo / Destino</label><input name="target" value="${esc(item.target || "")}" placeholder="Ex.: mecânicos, operação"></div>
+      </div>${formActions(id ? "Salvar alterações" : "Criar alerta")}</form>`
+    };
+    return forms[kind] || "";
+  }
+
+  function actionItemForm(qhseId, item = {}) {
+    return `<form id="actionItemForm" data-qhse-id="${qhseId}" data-id="${item.id || ""}"><div class="form-grid">
+      <div class="wide"><label>Ação *</label><input name="title" required value="${esc(item.title || "")}"></div>
+      <div class="wide"><label>Descrição</label><textarea name="description">${esc(item.description || "")}</textarea></div>
+      <div><label>Responsável</label><input name="responsible" value="${esc(item.responsible || "")}"></div>
+      <div><label>Prazo</label><input name="due_date" type="date" value="${String(item.due_date || "").slice(0,10)}"></div>
+      <div><label>Status</label><select name="status">${["Pendente","Em andamento","Concluído"].map(x => `<option ${item.status === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
+    </div>${formActions(item.id ? "Salvar alterações" : "Salvar ação")}</form>`;
+  }
+
+  function maintenanceOrderForm(order = {}, equipmentId = "") {
+    const selectedEquipment = order.equipment_id || equipmentId;
+    return `<form id="maintenanceOrderForm" data-id="${order.id || ""}"><div class="form-grid">
+      <div><label>Equipamento *</label><select name="equipment_id" required><option value="">Selecione</option>${state.data.equipment.map(item => `<option value="${item.id}" ${selectedEquipment === item.id ? "selected" : ""}>${esc(item.name)}</option>`).join("")}</select></div>
+      <div><label>Tipo</label><select name="maintenance_type">${["Preventiva", "Corretiva", "Inspeção"].map(x => `<option ${order.maintenance_type === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
+      <div class="wide"><label>Título *</label><input name="title" required value="${esc(order.title || "")}"></div>
+      <div class="wide"><label>Descrição</label><textarea name="description">${esc(order.description || "")}</textarea></div>
+      <div><label>Prioridade</label><select name="priority">${["Baixa", "Média", "Alta", "Crítica"].map(x => `<option ${order.priority === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
+      <div><label>Status</label><select name="status">${["Aberta", "Em andamento", "Aguardando peça", "Concluída", "Cancelada"].map(x => `<option ${order.status === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
+      <div><label>Responsável</label><input name="responsible" value="${esc(order.responsible || "")}"></div>
+      <div><label>Prazo</label><input name="due_date" type="date" value="${String(order.due_date || "").slice(0, 10)}"></div>
+      <div><label>Custo estimado</label><input name="estimated_cost" type="number" min="0" step="0.01" value="${order.estimated_cost || 0}"></div>
+      <div><label>Custo real</label><input name="actual_cost" type="number" min="0" step="0.01" value="${order.actual_cost || 0}"></div>
+      <div class="wide"><label>Condição antes</label><textarea name="before_notes">${esc(order.before_notes || "")}</textarea></div>
+      <div class="wide"><label>Peças utilizadas</label><textarea name="parts_used">${esc(order.parts_used || "")}</textarea></div>
+      <div class="wide"><label>Solução aplicada</label><textarea name="solution">${esc(order.solution || "")}</textarea></div>
+      <div class="wide"><label>Condição depois</label><textarea name="after_notes">${esc(order.after_notes || "")}</textarea></div>
+      <div class="wide"><label>Fotos antes/depois ou documentos</label><input name="attachment" type="file" accept=".pdf,image/jpeg,image/png,image/webp,image/heic,image/heif" multiple capture="environment"></div>
+    </div>${formActions("Salvar ordem")}</form>`;
+  }
+
+  function newUserForm() {
+    return `<form id="newUserForm"><div class="form-grid"><div class="wide"><label>Nome completo *</label><input name="full_name" required></div><div><label>E-mail *</label><input name="email" type="email" required></div><div><label>Senha inicial *</label><input name="password" type="password" minlength="8" required></div><div><label>Cargo</label><select name="role">${["user","tv","operador","logistica","mecanico","qhse","lider","supervisor","admin"].map(x => `<option>${x}</option>`).join("")}</select></div><div><label>Departamento</label><input name="department"></div><div class="wide info-box">A conta será criada pelo cadastro seguro do Supabase. Dependendo da configuração, o usuário poderá receber uma confirmação por e-mail.</div></div>${formActions("Criar usuário")}</form>`;
+  }
+
+  function userForm(user) {
+    const modules = [
+      ["dashboard", "Dashboard"], ["quality", "Qualidade dos Dados"], ["sanitation", "Saneamento de Dados"], ["tv", "Painel TV"], ["operations", "Operações"], ["tanks", "Tanques"],
+      ["fluids", "Fluidos e Granéis"], ["chemical-catalog", "Catálogo Químico"], ["chemicals", "Inventário Químico"], ["trucks", "Carretas"], ["qhse", "QHSE"],
+      ["maintenance", "Manutenção"], ["certificates", "Certificados"],
+      ["alerts", "Alertas"], ["reports", "Relatórios"], ["audit", "Auditoria"]
+    ];
+    return `<form id="userForm" data-user-id="${user.id}"><div class="form-grid">
+      <div class="wide"><label>Nome</label><input name="full_name" required value="${esc(user.name)}"></div>
+      <div><label>E-mail</label><input value="${esc(user.email)}" disabled></div>
+      <div><label>Cargo</label><select name="role">${["admin", "supervisor", "lider", "operador", "logistica", "mecanico", "qhse", "tv", "user"].map(x => `<option ${user.role === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
+      <div><label>Departamento</label><input name="department" value="${esc(user.department)}"></div>
+      <div><label>Status</label><select name="active"><option value="true" ${user.active ? "selected" : ""}>Ativo</option><option value="false" ${!user.active ? "selected" : ""}>Bloqueado</option></select></div>
+      <div class="wide"><label>Permissões por módulo</label><div class="permission-grid">${modules.map(([key, label]) => `<label class="permission-item"><input type="checkbox" name="perm_${key}" ${user.permissions?.[key] !== false ? "checked" : ""}><span>${label}</span></label>`).join("")}</div></div>
+    </div>${formActions("Salvar usuário")}</form>`;
+  }
+
+  async function uploadAttachments(module, recordId, files) {
+    if (!files?.length) return;
+    const allowed = ["application/pdf", "image/jpeg", "image/png", "image/webp", "image/heic", "image/heif"];
+    for (const file of files) {
+      if (!allowed.includes(file.type)) throw new Error(`Formato não permitido: ${file.name}`);
+      if (file.size > 20 * 1024 * 1024) throw new Error(`${file.name} ultrapassa 20 MB.`);
+      const path = `${module}/${recordId}/${Date.now()}-${uid("file")}-${safeFileName(file.name)}`;
+      const { error: uploadError } = await state.client.storage.from("opscontrol-files").upload(path, file, { contentType: file.type, upsert: false });
+      if (uploadError) throw uploadError;
+      const { error: metaError } = await state.client.from("attachments").insert({
+        module, record_id: recordId, file_name: file.name, file_path: path,
+        mime_type: file.type, file_size: file.size, uploaded_by: state.user.id
+      });
+      if (metaError) {
+        await state.client.storage.from("opscontrol-files").remove([path]);
+        throw metaError;
+      }
+    }
+  }
+
+  async function showAttachments(module, recordId, title) {
+    const items = state.data.attachments.filter(x => x.module === module && x.record_id === recordId);
+    const canDelete = item => isAdmin() || item.uploaded_by === state.user.id;
+    const rows = await Promise.all(items.map(async item => {
+      const { data, error } = await state.client.storage.from("opscontrol-files").createSignedUrl(item.file_path, 3600);
+      const url = error ? "" : data?.signedUrl || "";
+      return `<div class="attachment-item">
+        <div class="attachment-icon">${String(item.mime_type).startsWith("image/") ? "🖼️" : "📄"}</div>
+        <div class="attachment-info"><strong>${esc(item.file_name)}</strong><small>${fileSizeLabel(item.file_size)} • ${dateTime(item.created_at)}</small></div>
+        ${url ? `<a class="btn small primary" href="${url}" target="_blank" rel="noopener">Abrir</a>` : ""}
+        ${canDelete(item) ? `<button class="btn small danger" data-delete-attachment="${item.id}">Excluir</button>` : ""}
+      </div>`;
+    }));
+
+    openModal(`Anexos — ${title}`, `
+      <form id="attachmentUploadForm" data-module="${module}" data-record-id="${recordId}">
+        <label>Adicionar documentos ou fotos</label>
+        <input name="attachment" type="file" accept=".pdf,image/jpeg,image/png,image/webp,image/heic,image/heif" multiple capture="environment">
+        <div class="form-actions"><button class="btn primary">Enviar arquivos</button></div>
+      </form>
+      <div class="section-title">Arquivos anexados</div>
+      <div class="attachment-list">${rows.join("") || `<div class="empty">Nenhum arquivo anexado.</div>`}</div>
+    `, "ANEXOS");
+  }
+
+
+  function parseTankVolume(value) {
+    const normalized = String(value ?? "")
+      .trim()
+      .replace(/\s/g, "")
+      .replace(/\.(?=\d{3}(?:\D|$))/g, "")
+      .replace(",", ".");
+    const number = Number(normalized);
+    return Number.isFinite(number) ? number : NaN;
+  }
+
+  function parseOptionalDecimal(value) {
+    if (value === null || value === undefined || String(value).trim() === "") return null;
+    const parsed = parseTankVolume(value);
+    return Number.isFinite(parsed) ? parsed : NaN;
+  }
+
+
+  function friendlyTankSaveError(error) {
+    const raw = String(error?.message || error || "Não foi possível salvar o tanque ou silo.");
+    if (raw.includes("tanks_name_key") || raw.toLowerCase().includes("duplicate key")) {
+      return "Já existe outro tanque ou silo com esse nome. A atualização operacional não precisa alterar o nome do equipamento.";
+    }
+    if (raw.includes("fluid_types_name_key")) {
+      return "Este produto já está cadastrado em Fluidos e Granéis. Selecione o cadastro existente.";
+    }
+    if (raw.toLowerCase().includes("não é compatível com silo")) {
+      return "Este produto é um fluido e não pode ser usado em silo. Selecione um Granel ou Insumo.";
+    }
+    if (raw.toLowerCase().includes("não é compatível com tanque")) {
+      return "Este produto é um granel e não pode ser usado em tanque de fluido.";
+    }
+    if (raw.toLowerCase().includes("equipamento selecionado não confere")
+        || raw.toLowerCase().includes("outro equipamento")
+        || raw.toLowerCase().includes("id oculto")) {
+      return "O formulário estava vinculado a outro equipamento e foi bloqueado. Feche a janela, abra novamente o tanque correto e salve.";
+    }
+    if (raw.toLowerCase().includes("alterado depois que o formulário foi aberto")) {
+      return "Este tanque foi atualizado por outra pessoa. Feche a janela, atualize a página e abra novamente.";
+    }
+    if (raw.toLowerCase().includes("administrador ou supervisor")) {
+      return "Somente Administrador ou Supervisor pode alterar nome, capacidade e densidade.";
+    }
+    return raw;
+  }
+
+
+  async function refreshTankProductList(form) {
+    if (!form) return;
+    const tankId = form.dataset.tankId;
+    const editStructure = form.dataset.adminFull === "true";
+    if (!tankId) throw new Error("O formulário perdeu o vínculo com o equipamento.");
+    const currentSelection = form.elements.fluid_type_id?.value || "";
+    const currentVolume = form.elements.volume?.value || "";
+    const currentLot = form.elements.lot?.value || "";
+    const currentStatus = form.elements.status?.value || "";
+
+    await loadData();
+    const tank = state.data.tanks.find(item => item.id === tankId);
+    if (!tank) throw new Error("Tanque ou silo não localizado após atualizar o catálogo.");
+
+    $("#modalBody").innerHTML = tankForm(tank, editStructure);
+    const refreshed = $("#tankForm");
+    if (refreshed?.elements.volume) refreshed.elements.volume.value = currentVolume;
+    if (refreshed?.elements.lot) refreshed.elements.lot.value = currentLot;
+    if (refreshed?.elements.status) refreshed.elements.status.value = currentStatus;
+    if (refreshed?.elements.fluid_type_id && currentSelection) {
+      const exists = [...refreshed.elements.fluid_type_id.options].some(option => option.value === currentSelection);
+      if (exists) refreshed.elements.fluid_type_id.value = currentSelection;
+    }
+    syncTankCatalogFields(refreshed);
+    toast("Lista de produtos atualizada.", "success");
+  }
+
+  async function saveTankVolume(form, button = null) {
+    if (!form) throw new Error("Formulário de tancagem não localizado.");
+    if (!state.client || !state.user) throw new Error("Sessão inválida. Entre novamente.");
+
+    const payload = Object.fromEntries(new FormData(form));
+    const targetTankId = form.dataset.tankId || "";
+    const targetTankName = form.dataset.tankName || "";
+    const expectedUpdatedAt = form.dataset.tankUpdatedAt || null;
+    const editToken = form.dataset.editToken || "";
+    const payloadId = payload.id || "";
+
+    if (!targetTankId || !targetTankName || !editToken) {
+      throw new Error("O formulário perdeu a identificação segura do tanque. Feche e abra novamente.");
+    }
+    if (payloadId && payloadId !== targetTankId) {
+      throw new Error("O ID oculto não corresponde ao equipamento aberto. A alteração foi bloqueada.");
+    }
+    if (button) {
+      if (button.dataset.tankId !== targetTankId || button.dataset.editToken !== editToken) {
+        throw new Error("O botão de salvar pertence a outro equipamento. A alteração foi bloqueada.");
+      }
+    }
+    if ($("#tankForm") !== form || !form.closest("#modalBody")) {
+      throw new Error("Este formulário não é mais o formulário ativo. Feche e abra o tanque novamente.");
+    }
+
+    const tank = state.data.tanks.find(item => item.id === targetTankId);
+    if (!tank) throw new Error("Tanque ou silo não localizado.");
+    if (normalizeSearch(tank.name) !== normalizeSearch(targetTankName)) {
+      throw new Error(`O equipamento aberto era ${targetTankName}, mas os dados atuais pertencem a ${tank.name}. Atualize a página.`);
+    }
+
+    const selectedClient = payload.client || "A definir";
+    if (!TANK_CLIENTS.includes(selectedClient)) {
+      throw new Error("Selecione Petrobras, PRIO, Equinor, Interno ou A definir.");
+    }
+
+    const adminFull = form.dataset.adminFull === "true" && canEditTankStructure();
+    const newKind = adminFull ? payload.kind : tank.kind;
+    const silo = isSiloAsset(newKind);
+    const newVolume = parseTankVolume(payload.volume);
+    const physicalCapacityM3 = silo
+      ? parseOptionalDecimal(payload.physical_capacity_m3 ?? tank.physicalCapacityM3 ?? defaultSiloPhysicalCapacity(tank))
+      : null;
+    const selectedFluidId = payload.fluid_type_id || null;
+    const selectedFluid = (state.data.fluids || []).find(item => item.id === selectedFluidId);
+    const newDensity = adminFull
+      ? parseOptionalDecimal(payload.density)
+      : (selectedFluid?.density === null || selectedFluid?.density === undefined ? null : Number(selectedFluid.density));
+    const newDensityUnit = newDensity === null
+      ? null
+      : (silo ? "t/m³" : (adminFull ? payload.density_unit : selectedFluid?.densityUnit || "ppg"));
+    const enteredCapacity = adminFull ? parseTankVolume(payload.capacity) : Number(tank.capacity || 0);
+    const calculatedSiloCapacity = silo ? siloOperationalCapacity(physicalCapacityM3, newDensity) : null;
+    const newCapacity = enteredCapacity;
+
+    if (adminFull) {
+      const requestedName = String(payload.name || "").trim();
+      if (!requestedName) throw new Error("Informe o nome do tanque ou silo.");
+      const duplicateTank = state.data.tanks.find(item =>
+        item.id !== tank.id && normalizeSearch(item.name) === normalizeSearch(requestedName)
+      );
+      if (duplicateTank) {
+        throw new Error(`O nome ${requestedName} já pertence a ${duplicateTank.name}. Escolha outro nome para o equipamento.`);
+      }
+    }
+
+    if (!Number.isFinite(newVolume)) throw new Error("Informe um volume válido.");
+    if (newVolume > 0 && !selectedFluidId) throw new Error("Selecione um produto cadastrado na aba Fluidos e Granéis.");
+    if (selectedFluidId && !selectedFluid) throw new Error("O produto selecionado não foi encontrado no catálogo. Atualize a página e tente novamente.");
+    if (selectedFluid) {
+      const category = String(selectedFluid.type || "").toLowerCase();
+      const compatible = silo ? ["granel", "insumo"].includes(category) : !["granel", "insumo"].includes(category);
+      if (!compatible) throw new Error(silo ? "Selecione um produto classificado como Granel ou Insumo." : "Selecione um produto classificado como fluido.");
+    }
+    if (silo && (!Number.isFinite(physicalCapacityM3) || physicalCapacityM3 <= 0)) throw new Error("Informe o volume físico do silo em m³.");
+    if (!silo && (!Number.isFinite(newCapacity) || newCapacity <= 0)) throw new Error("Informe uma capacidade válida.");
+    if (Number.isNaN(newDensity)) throw new Error("Informe uma densidade válida.");
+    if (newDensity !== null && newDensity < 0) throw new Error("A densidade não pode ser negativa.");
+    if (silo && newVolume > 0 && (!newDensity || newDensityUnit !== "t/m³")) {
+      throw new Error("Selecione o granel e informe a densidade em t/m³.");
+    }
+    if (newVolume < 0) throw new Error("O volume não pode ser negativo.");
+    if (newVolume > newCapacity) {
+      throw new Error(`O volume não pode ultrapassar a capacidade operacional de ${fmt.format(newCapacity)} ${silo ? "ton" : (adminFull ? payload.unit : tank.unit)}.`);
+    }
+
+    const originalLabel = button?.textContent || "Salvar";
+    const message = form.querySelector("#tankSaveMessage");
+    showMobileSaveProgress("Validando atualização", `${targetTankName} • conferindo campos`, "loading");
+
+    if (button) {
+      button.disabled = true;
+      button.textContent = "Salvando no banco...";
+    }
+    if (message) {
+      message.classList.add("hidden");
+      message.textContent = "";
+    }
+
+    try {
+      // O modo operacional usa uma função que não recebe nome, fase, tipo,
+      // capacidade ou densidade. Isso elimina conflitos de nome e garante
+      // que o produto seja derivado exclusivamente pelo ID do catálogo.
+      const rpcName = adminFull ? "admin_update_tank_structure_v6" : "update_tank_content_v6";
+      const rpcPayload = adminFull ? {
+        p_tank_id: targetTankId,
+        p_client: selectedClient,
+        p_name: payload.name?.trim(),
+        p_phase: payload.phase,
+        p_kind: payload.kind,
+        p_capacity: newCapacity,
+        p_physical_capacity_m3: physicalCapacityM3,
+        p_unit: silo ? "ton" : payload.unit,
+        p_display_order: Number(payload.display_order || 0),
+        p_volume: newVolume,
+        p_status: payload.status,
+        p_fluid_type_id: selectedFluidId,
+        p_product: selectedFluid?.name || null,
+        p_lot: payload.lot?.trim() || null,
+        p_density: newDensity,
+        p_density_unit: newDensityUnit
+      } : {
+        p_tank_id: targetTankId,
+        p_expected_name: targetTankName,
+        p_expected_updated_at: expectedUpdatedAt,
+        p_client: selectedClient,
+        p_volume: newVolume,
+        p_status: payload.status,
+        p_fluid_type_id: selectedFluidId,
+        p_lot: payload.lot?.trim() || null
+      };
+
+      showMobileSaveProgress("Salvando no Supabase", `${targetTankName} • enviando dados`, "loading");
+      const { data, error } = await state.client.rpc(rpcName, rpcPayload);
+      if (error) throw error;
+
+      const rpcRow = Array.isArray(data) ? data[0] : data;
+      const expectedSavedName = adminFull ? String(payload.name || targetTankName).trim() : targetTankName;
+      if (!rpcRow?.id) throw new Error("O Supabase não confirmou a atualização.");
+      if (rpcRow.id !== targetTankId || normalizeSearch(rpcRow.name) !== normalizeSearch(expectedSavedName)) {
+        throw new Error("O Supabase retornou outro equipamento. A confirmação foi rejeitada.");
+      }
+
+      showMobileSaveProgress("Confirmando no banco", `${targetTankName} • validando equipamento e volume`, "loading");
+      const { data: serverRow, error: confirmError } = await state.client
+        .from("tanks")
+        .select("*")
+        .eq("id", targetTankId)
+        .single();
+
+      if (confirmError) throw confirmError;
+      if (!serverRow) throw new Error("Não foi possível reler o tanque atualizado.");
+      if (serverRow.id !== targetTankId || normalizeSearch(serverRow.name) !== normalizeSearch(expectedSavedName)) {
+        throw new Error("A releitura retornou outro equipamento. A atualização não foi confirmada.");
+      }
+
+      const confirmedVolume = Number(serverRow.current_volume || 0);
+      if (Math.abs(confirmedVolume - newVolume) > 0.001) {
+        throw new Error(`O banco retornou ${fmt.format(confirmedVolume)}, diferente do valor informado.`);
+      }
+      if ((serverRow.current_fluid_type_id || null) !== selectedFluidId) {
+        throw new Error("O banco não confirmou o produto selecionado.");
+      }
+      if ((serverRow.client || "A definir") !== selectedClient) {
+        throw new Error("O banco não confirmou o cliente selecionado.");
+      }
+
+      const mapped = {
+        id: serverRow.id,
+        name: serverRow.name,
+        phase: serverRow.phase,
+        kind: serverRow.kind,
+        capacity: Number(serverRow.capacity || 0),
+        unit: serverRow.unit,
+        volume: confirmedVolume,
+        physicalCapacityM3: serverRow.physical_capacity_m3 === null || serverRow.physical_capacity_m3 === undefined
+          ? null : Number(serverRow.physical_capacity_m3),
+        fluidTypeId: serverRow.current_fluid_type_id || null,
+        product: serverRow.current_product || "",
+        lot: serverRow.current_lot || "",
+        client: serverRow.client || "A definir",
+        density: serverRow.current_density === null || serverRow.current_density === undefined ? null : Number(serverRow.current_density),
+        densityUnit: serverRow.current_density_unit || null,
+        status: serverRow.status,
+        order: serverRow.display_order,
+        updated_by: serverRow.updated_by,
+        updated_at: serverRow.updated_at
+      };
+
+      const index = state.data.tanks.findIndex(item => item.id === targetTankId);
+      if (index >= 0) state.data.tanks[index] = mapped;
+
+      renderTanks();
+      renderDashboard();
+      closeModal();
+      showMobileSaveProgress("Atualização confirmada", `${mapped.name} • ${mapped.client} • ${fmt.format(mapped.volume)} ${mapped.unit}`, "success", 1500);
+      toast(`${mapped.name} confirmado para ${mapped.client} em ${fmt.format(mapped.volume)} ${mapped.unit}.`, "success");
+
+      // Sincronização completa em segundo plano. Uma falha em outro módulo
+      // não impede a confirmação visual do tanque que já foi salvo.
+      setTimeout(() => {
+        loadData().then(renderAll).catch(error => console.error("Sincronização posterior:", error));
+      }, 50);
+
+      return mapped;
+    } catch (error) {
+      const friendlyMessage = friendlyTankSaveError(error);
+      showMobileSaveProgress("Não foi possível salvar", friendlyMessage, "error", 2600);
+      if (message) {
+        message.textContent = friendlyMessage;
+        message.classList.remove("hidden");
+      }
+      try {
+        await state.client.from("system_errors").insert({
+          user_id: state.user.id,
+          context: `tank_volume_update:${targetTankName}:${targetTankId.slice(0,8)}`,
+          message: friendlyMessage,
+          stack: error.stack || null,
+          user_agent: navigator.userAgent
+        });
+      } catch (_) {}
+      throw new Error(friendlyMessage);
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.textContent = originalLabel;
+      }
+    }
+  }
+
+  async function saveOperation(payload, id = null, allocations = []) {
+    const planned = parseTankVolume(payload.planned || "0");
+    const executed = parseTankVolume(payload.executed || "0");
+    const catalogItem = state.data.fluids.find(item => item.id === payload.fluid_type_id);
+    if (!catalogItem) throw new Error("Selecione um produto cadastrado em Fluidos e Granéis.");
+    const existing = id ? state.data.operations.find(item => item.id === id) : null;
+    if (catalogItem.active === false && existing?.fluidTypeId !== catalogItem.id) {
+      throw new Error("O produto selecionado está inativo. Ative-o em Fluidos e Granéis.");
+    }
+    if (!Number.isFinite(planned) || planned < 0) throw new Error("Informe uma quantidade planejada válida.");
+    if (!Number.isFinite(executed) || executed < 0) throw new Error("Informe uma quantidade executada válida.");
+
+    if (payload.status === "Concluída" && !payload.ticket_number?.trim()) throw new Error("Informe o número do ticket antes de concluir a operação.");
+    const start = payload.start_at ? new Date(payload.start_at) : null;
+    const end = payload.end_at ? new Date(payload.end_at) : null;
+    if (payload.status === "Concluída" && !start) throw new Error("Informe o horário de início.");
+    if (payload.status === "Concluída" && !end) throw new Error("Informe o horário de término.");
+    if (start && end && end < start) throw new Error("O término não pode ser anterior ao início.");
+    const paused = Number(payload.paused_minutes || 0);
+    const hours = start && end ? Math.max(0, (end - start) / 3600000 - paused / 60) : 0;
+    const flow = hours > 0 ? executed / hours : 0;
+    const mode = tankMovementMode(payload.activity);
+    const applyTank = payload.apply_tank_movement === true;
+    const allocationTotal = allocations.reduce((sum, item) => sum + Number(item.quantity || 0), 0);
+
+    if (applyTank && mode === "none") throw new Error("Esta atividade não possui movimentação automática de tancagem.");
+    if (payload.status === "Concluída" && mode !== "none") {
+      if (!allocations.length) throw new Error("Distribua a quantidade executada entre os tanques ou silos.");
+      if (Math.abs(allocationTotal-executed) > 0.001) {
+        throw new Error(`A soma distribuída (${fmt.format(allocationTotal)}) deve ser igual à quantidade executada (${fmt.format(executed)}).`);
+      }
+    }
+
+    const operationPayload = {
+      client: payload.client,
+      vessel: payload.vessel,
+      rig: payload.rig || null,
+      well: payload.well || null,
+      ticket_number: payload.ticket_number || null,
+      service_order: payload.service_order || null,
+      responsible_id: payload.responsible_id || null,
+      fluid_type_id: catalogItem.id,
+      activity: payload.activity,
+      product: catalogItem.name,
+      lot: payload.lot || null,
+      planned_quantity: planned,
+      executed_quantity: executed,
+      unit: catalogItem.unit,
+      status: payload.status,
+      start_at: start ? start.toISOString() : null,
+      end_at: end ? end.toISOString() : null,
+      paused_minutes: paused,
+      flow_rate: flow,
+      flow_rate_unit: `${catalogItem.unit}/h`,
+      occurrence: payload.occurrence || null,
+      notes: payload.notes || null,
+      apply_tank_movement: applyTank,
+      locked: payload.locked === true || payload.status === "Concluída"
+    };
+
+    const { data, error } = await state.client.rpc("save_operation_with_allocations", {
+      p_operation_id: id || null,
+      p_operation: operationPayload,
+      p_allocations: allocations
+    });
+    if (error) throw error;
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!row?.id) throw new Error("O Supabase não confirmou a operação e sua distribuição.");
+    return row.id;
+  }
+
+  async function saveEntity(kind, payload, id = null) {
+
+    if (kind === "fluid") {
+      const active = String(payload.active).toLowerCase() === "true";
+      const density = parseOptionalDecimal(payload.density);
+      const { data, error } = await state.client.rpc("save_fluid_catalog_item", {
+        p_id: id || null,
+        p_name: payload.name?.trim() || "",
+        p_category: payload.type,
+        p_default_unit: payload.unit,
+        p_density_value: density,
+        p_density_unit: payload.density_unit || defaultDensityUnit(payload.type),
+        p_active: active
+      });
+      if (error) throw error;
+      const saved = Array.isArray(data) ? data[0] : data;
+      if (!saved?.id) throw new Error("O Supabase não confirmou a atualização do produto.");
+      return saved.id;
+    }
+
+    const maps = {
+      qhse: ["qhse_records", {
+        record_date: payload.date, record_type: payload.type, title: payload.title,
+        description: payload.description || null, responsible: payload.responsible || null,
+        severity: payload.severity, status: payload.status, created_by: state.user.id
+      }],
+      equipment: ["equipment", {
+        name: payload.name, category: payload.category, location: payload.location || null,
+        status: payload.status, hourmeter: Number(payload.hourmeter || 0),
+        last_work_hours: Number(payload.last_hours || 0),
+        diesel_initial: Number(payload.diesel_initial || 0),
+        diesel_refueled: Number(payload.refueled || 0),
+        diesel_final: Number(payload.diesel_final || 0),
+        next_maintenance_date: payload.next_maintenance_date || null,
+        maintenance_due_hourmeter: Number(payload.maintenance_due_hourmeter || 0) || null,
+        maintenance_interval_hours: Number(payload.maintenance_interval_hours || 0) || null,
+        notes: payload.notes || null, updated_by: state.user.id
+      }],
+      certificate: ["certificates", {
+        user_id: payload.user_id, owner_name: payload.owner,
+        title: payload.title, issuer: payload.issuer || null,
+        issued_at: payload.issued_at || null, expires_at: payload.expires_at || null,
+        status: payload.status, created_by: state.user.id
+      }],
+      alert: ["alerts", {
+        title: payload.title, message: payload.message, level: payload.level,
+        target_group: payload.target || null, is_read: false, created_by: state.user.id
+      }]
+    };
+    const [table, row] = maps[kind];
+    if (id && Object.prototype.hasOwnProperty.call(row, "created_by")) delete row.created_by;
+    const query = id
+      ? state.client.from(table).update(row).eq("id", id).select("id").single()
+      : state.client.from(table).insert(row).select("id").single();
+    const { data, error } = await query;
+    if (error) throw error;
+    return data.id;
+  }
+
+  async function saveMaintenanceOrder(payload, id = null) {
+    const completed = ["Concluída", "Fechada"].includes(payload.status);
+    const row = {
+      equipment_id: payload.equipment_id, title: payload.title,
+      description: payload.description || null, priority: payload.priority,
+      status: payload.status, due_date: payload.due_date || null,
+      responsible: payload.responsible || null, maintenance_type: payload.maintenance_type,
+      parts_used: payload.parts_used || null, solution: payload.solution || null,
+      estimated_cost: Number(payload.estimated_cost || 0), actual_cost: Number(payload.actual_cost || 0),
+      before_notes: payload.before_notes || null, after_notes: payload.after_notes || null,
+      closed_at: completed ? new Date().toISOString() : null,
+      completed_by: completed ? state.user.id : null,
+      created_by: id ? undefined : state.user.id
+    };
+    Object.keys(row).forEach(key => row[key] === undefined && delete row[key]);
+    const query = id
+      ? state.client.from("maintenance_orders").update(row).eq("id", id).select("id").single()
+      : state.client.from("maintenance_orders").insert(row).select("id").single();
+    const { data, error } = await query;
+    if (error) throw error;
+    return data.id;
+  }
+
+  function showPage(page, options = {}) {
+    if (role() === "tv" && page !== "tv") page = "tv";
+    if (!moduleAllowed(page)) return toast("Seu perfil não possui acesso a este módulo.", "error");
+    state.page = page;
+    updateShellPageMeta(page);
+    const targetPage = $(`#page-${page}`);
+    if (!targetPage) return toast("A página solicitada não está disponível.", "error");
+    $$(".page").forEach(item => item.classList.remove("active"));
+    $$(".nav-item").forEach(item => item.classList.toggle("active", item.dataset.page === page));
+    document.body.classList.toggle("tanks-page-active",page==="tanks");
+    targetPage.classList.add("active");
+    $("#sidebar")?.classList.remove("open");
+    $("#sidebarBackdrop")?.classList.remove("visible");
+    closeMobileSheets();
+    localStorage.setItem("opscontrol_last_page", page);
+    if (options.history !== false && location.hash !== `#${page}`) {
+      history.pushState({ page }, "", `#${page}`);
+    }
+    if (options.scroll !== false) window.scrollTo({ top: 0, behavior: "instant" });
+    if (page === "tv") {
+      renderTv();
+      startTvMode();
+    } else {
+      stopTvMode();
+    }
+    renderMobileShell();
+  }
+
+  function setupMobilePullToRefresh() {
+    const main = $(".main-content");
+    const indicator = $("#pullRefreshIndicator");
+    if (!main || !indicator || main.dataset.pullReady === "true") return;
+    main.dataset.pullReady = "true";
+
+    main.addEventListener("touchstart", event => {
+      if (!isMobileViewport() || window.scrollY > 0 || !$("#modal")?.classList.contains("hidden") || state.mobile.pullRefreshing) return;
+      state.mobile.pullStartY = event.touches[0].clientY;
+      state.mobile.pullDistance = 0;
+      state.mobile.pullReady = true;
+    }, { passive: true });
+
+    main.addEventListener("touchmove", event => {
+      if (!state.mobile.pullReady) return;
+      const distance = Math.max(0, Math.min(110, (event.touches[0].clientY - state.mobile.pullStartY) * 0.55));
+      if (distance <= 0) return;
+      state.mobile.pullDistance = distance;
+      document.documentElement.style.setProperty("--pull-distance", `${distance}px`);
+      document.body.classList.add("mobile-pulling");
+      indicator.querySelector("strong").textContent = distance >= 72 ? "Solte para atualizar" : "Puxe para atualizar";
+      if (distance > 10) event.preventDefault();
+    }, { passive: false });
+
+    main.addEventListener("touchend", async () => {
+      if (!state.mobile.pullReady) return;
+      const shouldRefresh = state.mobile.pullDistance >= 72;
+      state.mobile.pullReady = false;
+      state.mobile.pullDistance = 0;
+      document.body.classList.remove("mobile-pulling");
+      document.documentElement.style.setProperty("--pull-distance", "0px");
+      indicator.querySelector("strong").textContent = shouldRefresh ? "Atualizando..." : "Puxe para atualizar";
+      if (shouldRefresh) {
+        state.mobile.pullRefreshing = true;
+        indicator.classList.add("refreshing");
+        await refreshRealtime("gesto de atualização", true);
+        state.mobile.pullRefreshing = false;
+        indicator.classList.remove("refreshing");
+        indicator.querySelector("strong").textContent = "Puxe para atualizar";
+      }
+    }, { passive: true });
+  }
+
+  function applyTheme(theme) {
+    const value = theme === "light" ? "light" : "dark";
+    document.documentElement.dataset.theme = value;
+    localStorage.setItem(THEME_KEY, value);
+    const button = $("#themeToggleBtn");
+    if (button) {
+      button.setAttribute("aria-label", value === "dark" ? "Ativar tema claro" : "Ativar tema escuro");
+      button.title = value === "dark" ? "Ativar tema claro" : "Ativar tema escuro";
+    }
+  }
+
+  function smartAnswer(question) {
+    const q = question.toLowerCase();
+    const d = state.data;
+
+    if (q.includes("brine")) {
+      const volume = d.tanks.filter(t => productClass(t.product) === "brine").reduce((s, t) => s + t.volume, 0);
+      return `Há ${fmt.format(volume)} bbl de Brine registrados nos tanques.`;
+    }
+    if (q.includes("sbm")) {
+      const volume = d.tanks.filter(t => productClass(t.product) === "sbm").reduce((s, t) => s + t.volume, 0);
+      return `Há ${fmt.format(volume)} bbl de SBM registrados nos tanques.`;
+    }
+    if (q.includes("wbm")) {
+      const volume = d.tanks.filter(t => productClass(t.product) === "wbm").reduce((s, t) => s + t.volume, 0);
+      return `Há ${fmt.format(volume)} bbl de WBM registrados nos tanques.`;
+    }
+    if (q.includes("barita")) {
+      const ops = d.operations.filter(op => op.product.toLowerCase().includes("barita"));
+      const total = ops.reduce((s, op) => s + op.executed, 0);
+      return `Foram registrados ${fmt.format(total)} nas operações de Barita em ${ops.length} operação(ões).`;
+    }
+    if (q.includes("químic") || q.includes("quimic") || q.includes("estoque químico") || q.includes("estoque quimico")) {
+      const low = d.chemicals.filter(item => item.quantity <= item.minimum);
+      const expired = d.chemicals.filter(item => {
+        const days = daysUntil(item.expiry_date);
+        return days !== null && days < 0;
+      });
+      if (q.includes("baixo") || q.includes("mínimo") || q.includes("minimo")) {
+        return low.length ? `Produtos em baixo estoque: ${low.map(x => `${x.name} (${fmt.format(x.quantity)} ${x.unit})`).join(", ")}.` : "Não há produtos químicos abaixo do estoque mínimo.";
+      }
+      if (q.includes("venc")) {
+        return expired.length ? `Produtos vencidos: ${expired.map(x => `${x.name} — lote ${x.lot || "-"}`).join(", ")}.` : "Não há produtos químicos vencidos.";
+      }
+      return `O inventário químico possui ${d.chemicals.length} produto(s)/lote(s), sendo ${low.length} em baixo estoque e ${expired.length} vencido(s).`;
+    }
+
+    if (q.includes("carreta")) {
+      const weekAgo = Date.now() - 7 * 86400000;
+      const total = d.trucks.filter(item => new Date(`${item.date}T12:00`) >= weekAgo).length;
+      return `Foram registradas ${total} movimentações de carretas nos últimos 7 dias.`;
+    }
+    if (q.includes("diesel")) {
+      const ranked = d.equipment.map(item => ({
+        name: item.name,
+        used: Math.max(0, item.diesel_initial + item.refueled - item.diesel_final)
+      })).sort((a, b) => b.used - a.used);
+      return ranked.length ? `${ranked[0].name} apresenta o maior consumo registrado: ${fmt.format(ranked[0].used)} L.` : "Não há consumo de diesel registrado.";
+    }
+    if (q.includes("certificado")) {
+      const expiring = d.certificates.filter(item => {
+        const days = daysUntil(item.expires_at);
+        return days !== null && days >= 0 && days <= 60;
+      });
+      return `${expiring.length} certificado(s) vencem nos próximos 60 dias.`;
+    }
+    if (q.includes("tanque") && q.includes("bloque")) {
+      const blocked = d.tanks.filter(t => t.status === "Bloqueado");
+      return blocked.length ? `Tanques bloqueados: ${blocked.map(x => x.name).join(", ")}.` : "Não há tanques bloqueados.";
+    }
+    return "Posso responder sobre Brine, WBM, SBM, Barita, inventário químico, carretas, diesel, certificados e tanques bloqueados.";
+  }
+
+  document.addEventListener("submit", async event => {
+    event.preventDefault();
+    const form = event.target;
+    if (state.testMode && form.id !== "feedbackForm") {
+      simulateFormSubmission(form);
+      return;
+    }
+    if (!navigator.onLine && form.id !== "loginForm") {
+      if (queueOfflineForm(form)) {
+        closeModal(); toast("Registro salvo na fila offline. Será sincronizado quando a internet voltar.", "success");
+        return;
+      }
+      return toast("Este registro altera saldo ou dados críticos e exige conexão com o Supabase.", "error");
+    }
+    try {
+      if (!navigator.onLine) throw new Error("Sem internet. Reconecte para salvar alterações.");
+
+
+
+      if (form.id === "tankMovementForm") {
+        const data=await saveTankMovementForm(form);
+        await loadData(); renderAll(); closeModal();
+        toast(`Movimentação registrada. Volume final: ${fmt.format(Number(data.final_volume))} ${data.unit}.`,"success");
+        return;
+      }
+
+      if (form.id === "tankObservationForm") {
+        const payload=Object.fromEntries(new FormData(form));
+        if(!payload.notes?.trim()) throw new Error("Informe a observação.");
+        const {error}=await state.client.rpc("add_tank_observation_v1",{tid:form.dataset.tankId,notes:payload.notes.trim(),observed_at:new Date(payload.observed_at).toISOString()});
+        if(error) throw error;
+        await loadData(); renderAll(); closeModal(); toast("Observação adicionada ao histórico.","success");
+        return;
+      }
+
+      if (form.id === "feedbackForm") {
+        const payload = Object.fromEntries(new FormData(form));
+        const { error } = await state.client.from("app_feedback").insert({
+          category: payload.category,
+          page: payload.page || state.page,
+          rating: payload.rating ? Number(payload.rating) : null,
+          message: payload.message.trim(),
+          device_info: `${navigator.userAgent} | ${window.innerWidth}x${window.innerHeight}`,
+          app_version: APP_VERSION,
+          created_by: state.user.id
+        });
+        if (error) throw error;
+      }
+
+      if (form.id === "operationForm") {
+        const payload = Object.fromEntries(new FormData(form));
+        payload.locked = form.querySelector('[name="locked"]')?.checked === true;
+        payload.apply_tank_movement = form.querySelector('[name="apply_tank_movement"]')?.checked === true;
+        const files = [...(form.querySelector('[name="attachment"]')?.files || [])];
+        delete payload.attachment;
+        const allocations = collectOperationAllocations(form);
+        const recordId = await saveOperation(payload, form.dataset.id || null, allocations);
+        if (files.length) await uploadAttachments("operation", recordId, files);
+      }
+
+      if (form.id === "tankForm") {
+        const confirmed = await confirmTankUpdate(form);
+        if (!confirmed) return;
+        await saveTankVolume(form, form.querySelector('[data-action="save-tank-volume"]'));
+        return;
+      }
+
+      if (form.id === "tankTransferForm") {
+        const payload = Object.fromEntries(new FormData(form));
+        const quantity = parseTankVolume(payload.quantity);
+        if (!Number.isFinite(quantity) || quantity <= 0) throw new Error("Informe uma quantidade válida.");
+        const { error } = await state.client.rpc("transfer_tank_volume", {
+          p_source_tank_id: payload.source_tank_id,
+          p_destination_tank_id: payload.destination_tank_id,
+          p_quantity: quantity,
+          p_reference: payload.reference || null,
+          p_notes: payload.notes || null
+        });
+        if (error) throw error;
+      }
+
+      if (form.id === "newUserForm") {
+        if (!isAdmin()) throw new Error("Somente administradores podem criar usuários.");
+        const payload = Object.fromEntries(new FormData(form));
+        if (String(payload.password || "").length < 8) throw new Error("A senha precisa ter pelo menos 8 caracteres.");
+        const tempClient = window.supabase.createClient(state.config.url, state.config.key, {
+          auth: { persistSession: false, autoRefreshToken: false, storageKey: `opscontrol-create-${Date.now()}` }
+        });
+        const { data, error } = await tempClient.auth.signUp({
+          email: String(payload.email).trim().toLowerCase(),
+          password: payload.password,
+          options: { data: { full_name: payload.full_name } }
+        });
+        if (error) throw error;
+        if (!data.user?.id) throw new Error("O Supabase não devolveu o novo usuário.");
+        let profileUpdated = false;
+        for (let attempt = 0; attempt < 6 && !profileUpdated; attempt++) {
+          await new Promise(resolve => setTimeout(resolve, 300));
+          const { error: updateError } = await state.client.from("profiles").update({
+            full_name: payload.full_name,
+            role: payload.role,
+            department: payload.department || null,
+            active: true
+          }).eq("id", data.user.id);
+          profileUpdated = !updateError;
+        }
+        if (!profileUpdated) throw new Error("A conta foi criada, mas o perfil ainda não ficou disponível para configuração.");
+      }
+
+
+      if (form.id === "truckForm") {
+        if (!canManageTrucks()) throw new Error("Seu perfil não pode cadastrar ou editar carretas.");
+        const files = [...(form.querySelector('[name="attachment"]')?.files || [])];
+        const payload = Object.fromEntries(new FormData(form));
+        delete payload.attachment;
+        const items = collectTruckPlatformItems(form);
+        const recordId = await saveTruck(payload, form.dataset.id || null, items);
+        if (files.length) await uploadAttachments("truck", recordId, files);
+      }
+
+      if (form.id === "genericForm") {
+        const kind = form.dataset.kind;
+        if (kind === "certificate" && !canManageCertificates()) {
+          throw new Error("Somente Logística, Supervisor ou Administrador podem cadastrar certificados.");
+        }
+        const files = [...(form.querySelector('[name="attachment"]')?.files || [])];
+        const payload = Object.fromEntries(new FormData(form));
+        delete payload.attachment;
+        if ("active" in payload) payload.active = payload.active === "true";
+        const recordId = await saveEntity(kind, payload, form.dataset.id || null);
+        if (files.length && ["fluid", "truck", "qhse", "certificate"].includes(kind)) {
+          await uploadAttachments(kind, recordId, files);
+        }
+      }
+
+
+      if (form.id === "chemicalProductForm") {
+        if (!canManageChemicals()) throw new Error("Seu perfil não pode alterar o Catálogo Químico.");
+        const payload=Object.fromEntries(new FormData(form));
+        const {data,error}=await state.client.rpc("save_chemical_product_v2",{p_id:form.dataset.id||null,p_name:payload.name?.trim(),p_category:payload.category?.trim()||null,p_packaging_type:payload.packaging_type,p_default_unit:payload.unit,p_active:payload.active==="true",p_notes:payload.notes?.trim()||null});
+        if(error) throw error;
+        const row=Array.isArray(data)?data[0]:data;
+        if(!row?.id) throw new Error("O Supabase não confirmou o produto químico.");
+      }
+
+      if (form.id === "closingForm") {
+        if (!hasRole(["supervisor","lider"])) throw new Error("Seu perfil não pode fechar o turno.");
+        const payload=Object.fromEntries(new FormData(form));
+        const counts=collectClosingCounts(form);
+        const {data,error}=await state.client.rpc("close_operational_period",{p_date:payload.date,p_shift:payload.shift,p_notes:payload.notes?.trim()||null,p_counts:counts});
+        if(error) throw error;
+        const row=Array.isArray(data)?data[0]:data;
+        if(!row?.id) throw new Error("O Supabase não confirmou o fechamento.");
+      }
+
+      if (form.id === "reopenClosingForm") {
+        const payload=Object.fromEntries(new FormData(form));
+        const {error}=await state.client.rpc("reopen_operational_closing",{p_closing_id:form.dataset.id,p_reason:payload.reason?.trim()});
+        if(error) throw error;
+      }
+
+      if (form.id === "chemicalForm") {
+        if (!canManageChemicals()) throw new Error("Seu perfil não pode alterar o inventário químico.");
+
+        const files = [...(form.querySelector('[name="attachment"]')?.files || [])];
+        const payload = Object.fromEntries(new FormData(form));
+        delete payload.attachment;
+
+        const initialQuantity = form.dataset.id ? 0 : parseOptionalDecimal(payload.quantity);
+        const minimumQuantity = parseOptionalDecimal(payload.minimum_quantity) ?? 0;
+
+        if (Number.isNaN(initialQuantity)) throw new Error("Informe uma quantidade inicial válida.");
+        if (Number.isNaN(minimumQuantity)) throw new Error("Informe um estoque mínimo válido.");
+        if ((initialQuantity ?? 0) < 0) throw new Error("A quantidade inicial não pode ser negativa.");
+        if (minimumQuantity < 0) throw new Error("O estoque mínimo não pode ser negativo.");
+
+        if (!payload.product_id) throw new Error("Selecione um produto do Catálogo Químico.");
+        const { data, error } = await state.client.rpc("save_chemical_inventory_v3", {
+          p_inventory_id: form.dataset.id || null,
+          p_product_id: payload.product_id,
+          p_lot: payload.lot?.trim() || null,
+          p_initial_quantity: initialQuantity ?? 0,
+          p_minimum_quantity: minimumQuantity,
+          p_expiry_date: payload.expiry_date || null,
+          p_location: payload.location?.trim() || null,
+          p_supplier: payload.supplier?.trim() || null,
+          p_status: payload.status,
+          p_notes: payload.notes?.trim() || null
+        });
+
+        if (error) throw error;
+        const row = Array.isArray(data) ? data[0] : data;
+        if (!row?.id) throw new Error("O Supabase não confirmou o cadastro do produto químico.");
+
+        const { data: confirmed, error: confirmError } = await state.client
+          .from("chemical_inventory")
+          .select("id,product_name,quantity,updated_at")
+          .eq("id", row.id)
+          .single();
+
+        if (confirmError) throw confirmError;
+        if (!confirmed?.id) throw new Error("Não foi possível confirmar o produto salvo.");
+
+        if (files.length) await uploadAttachments("chemical", row.id, files);
+      }
+
+      if (form.id === "chemicalMovementForm") {
+        if (!canManageChemicals()) throw new Error("Seu perfil não pode movimentar o inventário químico.");
+
+        const payload = Object.fromEntries(new FormData(form));
+        const amount = parseOptionalDecimal(payload.quantity);
+        if (Number.isNaN(amount) || amount === null) throw new Error("Informe uma quantidade válida.");
+        if (amount < 0) throw new Error("A quantidade não pode ser negativa.");
+        if (payload.movement_type !== "Ajuste" && amount <= 0) {
+          throw new Error("Informe uma quantidade maior que zero.");
+        }
+
+        const { data, error } = await state.client.rpc("move_chemical_inventory", {
+          p_inventory_id: form.dataset.id,
+          p_movement_type: payload.movement_type,
+          p_quantity: amount,
+          p_reference: payload.reference?.trim() || null,
+          p_notes: payload.notes?.trim() || null
+        });
+
+        if (error) throw error;
+        const row = Array.isArray(data) ? data[0] : data;
+        if (!row?.id) throw new Error("O Supabase não confirmou a movimentação.");
+
+        const { data: confirmed, error: confirmError } = await state.client
+          .from("chemical_inventory")
+          .select("id,quantity,updated_at")
+          .eq("id", row.id)
+          .single();
+
+        if (confirmError) throw confirmError;
+        if (Math.abs(Number(confirmed.quantity) - Number(row.quantity)) > 0.001) {
+          throw new Error("O saldo confirmado é diferente do saldo movimentado.");
+        }
+      }
+
+      if (form.id === "handoverPendingForm") {
+        if (!canManageHandover()) throw new Error("Seu perfil não pode alterar a passagem de serviço.");
+        const payload = Object.fromEntries(new FormData(form));
+        const completed = payload.status === "Concluído";
+        const row = {
+          title: payload.title?.trim(),
+          description: payload.description?.trim() || null,
+          category: payload.category,
+          responsible: payload.responsible?.trim() || null,
+          priority: payload.priority,
+          status: payload.status,
+          due_at: payload.due_at ? new Date(payload.due_at).toISOString() : null,
+          completed_at: completed ? new Date().toISOString() : null,
+          completed_by: completed ? state.user.id : null
+        };
+        const query = form.dataset.id
+          ? state.client.from("handover_pending_items").update(row).eq("id", form.dataset.id).select("id").single()
+          : state.client.from("handover_pending_items").insert({ ...row, created_by: state.user.id }).select("id").single();
+        const { data, error } = await query;
+        if (error) throw error;
+        if (!data?.id) throw new Error("O Supabase não confirmou a pendência.");
+      }
+
+      if (form.id === "eventForm") {
+        const payload = Object.fromEntries(new FormData(form));
+        const { error } = await state.client.from("operation_events").insert({
+          operation_id: form.dataset.operationId,
+          event_time: payload.event_time, title: payload.title,
+          description: payload.description || null, event_type: payload.event_type,
+          quantity: Number(payload.quantity || 0) || null,
+          unit: payload.unit === "-" ? null : payload.unit,
+          created_by: state.user.id
+        });
+        if (error) throw error;
+      }
+
+      if (form.id === "actionItemForm") {
+        const payload = Object.fromEntries(new FormData(form));
+        const row = {
+          qhse_record_id: form.dataset.qhseId, title: payload.title,
+          description: payload.description || null, responsible: payload.responsible || null,
+          due_date: payload.due_date || null, status: payload.status,
+          completed_at: payload.status === "Concluído" ? new Date().toISOString() : null
+        };
+        const query = form.dataset.id
+          ? state.client.from("action_items").update(row).eq("id", form.dataset.id)
+          : state.client.from("action_items").insert({ ...row, created_by: state.user.id });
+        const { error } = await query;
+        if (error) throw error;
+      }
+
+      if (form.id === "maintenanceOrderForm") {
+        const files = [...(form.querySelector('[name="attachment"]')?.files || [])];
+        const payload = Object.fromEntries(new FormData(form));
+        delete payload.attachment;
+        const recordId = await saveMaintenanceOrder(payload, form.dataset.id || null);
+        if (files.length) await uploadAttachments("maintenance", recordId, files);
+      }
+
+      if (form.id === "userForm") {
+        if (!isAdmin()) throw new Error("Somente o administrador pode alterar usuários.");
+        const payload = Object.fromEntries(new FormData(form));
+        if (form.dataset.userId === state.user.id && payload.active !== "true") {
+          throw new Error("Você não pode bloquear o próprio acesso.");
+        }
+        if (form.dataset.userId === state.user.id && payload.role !== "admin") {
+          throw new Error("O administrador atual não pode remover o próprio cargo.");
+        }
+        const permissions = {};
+        ["dashboard", "quality", "sanitation", "tv", "operations", "tanks", "fluids", "chemical-catalog", "chemicals", "trucks", "qhse", "maintenance", "certificates", "alerts", "reports", "audit"].forEach(module => {
+          permissions[module] = form.querySelector(`[name="perm_${module}"]`)?.checked === true;
+        });
+        if (payload.role === "tv") Object.keys(permissions).forEach(key => permissions[key] = key === "tv");
+        const { error } = await state.client.from("profiles").update({
+          full_name: payload.full_name,
+          role: payload.role,
+          department: payload.department || null,
+          active: payload.active === "true",
+          permissions
+        }).eq("id", form.dataset.userId);
+        if (error) throw error;
+      }
+
+      if (form.id === "attachmentUploadForm") {
+        const files = [...(form.querySelector('[name="attachment"]')?.files || [])];
+        if (!files.length) throw new Error("Selecione pelo menos um arquivo.");
+        await uploadAttachments(form.dataset.module, form.dataset.recordId, files);
+      }
+
+      clearFormDraft(form);
+      await loadData();
+      renderAll();
+      closeModal();
+      toast(form.dataset.kind === "fluid" ? "Produto e status atualizados com sucesso." : "Registro salvo com sucesso.", "success");
+    } catch (error) {
+      try {
+        if (state.client && state.user) await state.client.from("system_errors").insert({ user_id: state.user.id, context: `form:${form.id || "unknown"}`, message: error.message, stack: error.stack || null, user_agent: navigator.userAgent });
+      } catch (_) {}
+      toast(`Erro: ${error.message}`, "error");
+    }
+  });
+
+  document.addEventListener("click", async event => {
+    const button = event.target.closest("button");
+    if (!button) return;
+
+
+    if (button.id === "sidebarCollapseBtn") {
+      document.body.classList.toggle("sidebar-collapsed");
+      localStorage.setItem("opscontrol_sidebar_collapsed",document.body.classList.contains("sidebar-collapsed")?"1":"0");
+      return;
+    }
+    if (button.dataset.action === "tank-source-demo") { ensureTankPageState().source="demo"; renderTanks(); return; }
+    if (button.dataset.action === "tank-source-real") { ensureTankPageState().source="real"; renderTanks(); return; }
+    if (button.dataset.action === "tank-view-cards") { ensureTankPageState().view="cards"; renderTanks(); return; }
+    if (button.dataset.action === "tank-view-list") { ensureTankPageState().view="list"; renderTanks(); return; }
+    if (button.dataset.action === "refresh-tank-page") { await refreshRealtime("atualização manual",true); renderTanks(); return; }
+    if (button.dataset.action === "open-equipment-details") {
+      const demo=button.dataset.demo==="true";
+      const tank=(demo?equipmentDemoData():state.data.tanks).find(t=>t.id===button.dataset.tankId);
+      if(!tank) return toast("Equipamento não localizado.","error");
+      openModal(`${tank.name} — Tanques e Silos`,equipmentDetailsPanel(tank,demo),"DETALHES DO EQUIPAMENTO");
+      $("#modal").classList.add("equipment-drawer");
+      setTimeout(()=>animateIndustrialEquipmentLevels($("#modalBody")),0);
+      return;
+    }
+    if (button.dataset.action === "open-tank-movement") {
+      const tank=state.data.tanks.find(t=>t.id===button.dataset.tankId);
+      if(!tank) return toast("Equipamento não localizado.","error");
+      openModal(`Movimentação — ${tank.name}`,tankMovementFormV3(tank),"ATUALIZAÇÃO DE VOLUME");
+      updateTankMovementPreview($("#tankMovementForm"));
+      return;
+    }
+    if (button.dataset.action === "open-tank-observation") {
+      const tank=state.data.tanks.find(t=>t.id===button.dataset.tankId);
+      if(!tank) return toast("Equipamento não localizado.","error");
+      openModal(`Observação — ${tank.name}`,tankObservationForm(tank),"HISTÓRICO OPERACIONAL");
+      return;
+    }
+
+    if (button.id === "actionConfirmCancel") return resolveActionConfirmation(false);
+    if (button.id === "actionConfirmAccept") return resolveActionConfirmation(true);
+    if (button.id === "loginBtn") return login();
+    if (button.id === "logoutBtn") return logout();
+    if (button.id === "menuBtn") {
+      const sidebar = $("#sidebar");
+      const open = !sidebar.classList.contains("open");
+      sidebar.classList.toggle("open", open);
+      $("#sidebarBackdrop")?.classList.toggle("visible", open);
+      return;
+    }
+    if (button.id === "sidebarBackdrop") {
+      $("#sidebar")?.classList.remove("open");
+      button.classList.remove("visible");
+      return;
+    }
+    if (button.id === "mobileSheetBackdrop") return closeMobileSheets();
+    if (button.id === "modalClose" || button.hasAttribute("data-close-modal")) return closeModal();
+    if (button.dataset.mobilePage) return showPage(button.dataset.mobilePage);
+    if (button.classList.contains("nav-item")) return showPage(button.dataset.page);
+    if (button.closest(".user-chip")) return showPage("settings");
+    if (button.id === "notificationsBtn") return showPage("alerts");
+    if (button.id === "globalSearchBtn") return openGlobalSearch();
+
+    if (button.dataset.pageLink) { showPage(button.dataset.pageLink); return; }
+    if (button.dataset.alertPage) { showPage(button.dataset.alertPage); return; }
+
+    if (button.hasAttribute("data-tv-slide")) {
+      state.tv.slide = Number(button.dataset.tvSlide || 0);
+      renderTv();
+      return;
+    }
+
+    if (button.hasAttribute("data-add-operation-allocation")) {
+      addOperationAllocationRow(button.closest("#operationForm"));
+      return;
+    }
+    if (button.hasAttribute("data-remove-operation-allocation")) {
+      const form = button.closest("#operationForm");
+      button.closest("[data-operation-allocation-row]")?.remove();
+      refreshOperationAllocationOptions(form);
+      updateOperationAllocationSummary(form);
+      return;
+    }
+
+
+    if (button.dataset.searchType) {
+      state.searchQuery = $("#globalSearchInput")?.value || state.searchQuery;
+      return openSearchResult(button.dataset.searchType, button.dataset.searchId, button.dataset.searchPage);
+    }
+
+    if (button.dataset.assetQr) {
+      const [type, id] = button.dataset.assetQr.split(":");
+      return openAssetQr(type, id);
+    }
+
+    if (button.dataset.qualityPage) {
+      const type = button.dataset.qualityType;
+      const id = button.dataset.qualityId;
+      showPage(button.dataset.qualityPage);
+      if (type === "tank" || type === "equipment") return openAssetQr(type, id);
+      if (type === "operation") return openSearchResult(type, id, "operations");
+      if (type === "chemical") return openSearchResult(type, id, "chemicals");
+      return;
+    }
+
+    const action = button.dataset.action;
+    if (button.closest(".mobile-sheet") && !["mobile-more", "mobile-quick"].includes(action)) closeMobileSheets();
+
+    if (action === "add-truck-item") {
+      const form = button.closest("#truckForm");
+      form?.querySelector("[data-truck-items-list]")?.insertAdjacentHTML("beforeend", truckPlatformItemRow());
+      updateTruckPlatformSummary(form);
+      scheduleDraftSave(form);
+      return;
+    }
+    if (action === "remove-truck-item") {
+      const form = button.closest("#truckForm");
+      const rows = form?.querySelectorAll("[data-truck-platform-row]") || [];
+      if (rows.length <= 1) return toast("A Plataforma precisa manter pelo menos uma linha.", "error");
+      button.closest("[data-truck-platform-row]")?.remove();
+      updateTruckPlatformSummary(form);
+      scheduleDraftSave(form);
+      return;
+    }
+    if (action === "open-chemical-inventory") {
+      closeModal();
+      return showPage("chemicals");
+    }
+
+
+    if (action === "new-chemical-product") return openModal("Novo produto químico", chemicalProductForm(), "CATÁLOGO QUÍMICO");
+    if (action === "open-chemical-catalog") { closeModal(); return showPage("chemical-catalog"); }
+    if (action === "operation-next-step") {
+      const form=button.closest("#operationForm"); const step=Number(form?.dataset.step||1);
+      try { validateOperationStep(form,step); setOperationStep(form,step+1); } catch(error){ toast(error.message,"error"); }
+      return;
+    }
+    if (action === "operation-prev-step") { const form=button.closest("#operationForm"); setOperationStep(form,Number(form?.dataset.step||1)-1); return; }
+    if (action === "new-closing") {
+      const selection=ensureHandoverSelection();
+      state.closing={date:selection.date,shift:selection.shift};
+      return openModal("Fechamento diário operacional",closingForm(selection.date,selection.shift),"FECHAMENTO");
+    }
+    if (action === "fill-closing-theoretical") {
+      button.closest("form")?.querySelectorAll("[data-closing-count]").forEach(input=>input.value=input.placeholder);
+      return toast("Campos preenchidos com os saldos teóricos.");
+    }
+
+    if (action === "open-feedback") {
+      return openModal("Feedback da versão beta", feedbackForm(), "MELHORIA CONTÍNUA");
+    }
+    if (action === "discard-draft") {
+      const form = button.closest("form");
+      clearFormDraft(form);
+      button.closest(".draft-restored-banner")?.remove();
+      form?.reset();
+      syncOperationTankFields(form);
+      return toast("Rascunho descartado.");
+    }
+    if (action === "switch-environment") {
+      const environment=button.dataset.environment;
+      const config=CONFIG.environments?.[environment] || {};
+      if(!config.supabaseUrl || !config.supabaseKey) return toast("O ambiente de homologação ainda não possui URL e chave.","error");
+      localStorage.setItem(APP_ENV_KEY,environment);
+      location.reload();
+      return;
+    }
+
+    if (action === "toggle-test-mode") {
+      setTestMode(!state.testMode);
+      return;
+    }
+    if (action === "export-test-log") {
+      downloadJson(`homologacao-${localDateKey()}.json`, { version: APP_VERSION, exported_at: new Date().toISOString(), records: testLog() });
+      return toast("Histórico de homologação exportado.", "success");
+    }
+    if (action === "clear-test-log") {
+      if (!confirm("Limpar o histórico local de homologação?")) return;
+      localStorage.removeItem(TEST_LOG_KEY);
+      renderSettings();
+      return toast("Histórico de homologação limpo.");
+    }
+    if (action === "copy-asset-link") {
+      await navigator.clipboard.writeText(button.dataset.link || "");
+      return toast("Link do ativo copiado.", "success");
+    }
+    if (action === "print-asset-qr") {
+      document.body.classList.add("print-asset-qr");
+      setTimeout(() => window.print(), 80);
+      return;
+    }
+
+    if (action === "mobile-more") {
+      openMobileSheet("more");
+      return;
+    }
+    if (action === "mobile-quick") {
+      openMobileSheet("quick");
+      return;
+    }
+    if (action === "mobile-close-sheet") {
+      closeMobileSheets();
+      return;
+    }
+    if (action === "install-app") {
+      if (!state.installPrompt) return toast("Use a opção “Adicionar à tela de início” do navegador.", "error");
+      state.installPrompt.prompt();
+      const choice = await state.installPrompt.userChoice;
+      if (choice.outcome === "accepted") toast("Instalação iniciada.", "success");
+      state.installPrompt = null;
+      renderMobileShell();
+      return;
+    }
+    if (action === "tv-prev") {
+      changeTvSlide(-1);
+      return;
+    }
+    if (action === "tv-next") {
+      changeTvSlide(1);
+      return;
+    }
+    if (action === "tv-toggle") {
+      state.tv.paused = !state.tv.paused;
+      startTvMode();
+      renderTv();
+      return;
+    }
+    if (action === "tv-fullscreen") {
+      const target = $("#page-tv");
+      try {
+        if (!document.fullscreenElement) await target.requestFullscreen();
+        else await document.exitFullscreen();
+      } catch (error) {
+        toast(`Não foi possível abrir a tela cheia: ${error.message}`, "error");
+      }
+      renderTv();
+      return;
+    }
+    if (action === "apply-handover-filter") {
+      state.handover = {
+        date: $("#handoverDate")?.value || defaultHandoverSelection().date,
+        shift: $("#handoverShift")?.value || "day"
+      };
+      renderReports();
+      return;
+    }
+    if (action === "new-handover-pending") {
+      if (!canManageHandover()) return toast("Seu perfil não pode adicionar pendências.", "error");
+      return openModal("Nova pendência da passagem", handoverPendingForm(), "PASSAGEM");
+    }
+    if (action === "save-handover-note") {
+      if (!canManageHandover()) return toast("Seu perfil não pode alterar as observações.", "error");
+      const selection = ensureHandoverSelection();
+      const observations = $("#handoverObservations")?.value.trim() || null;
+      const { error } = await state.client.from("shift_handover_notes").upsert({
+        shift_date: selection.date,
+        shift_type: selection.shift,
+        observations,
+        updated_by: state.user.id
+      }, { onConflict: "shift_date,shift_type" });
+      if (error) return toast(error.message, "error");
+      await loadData();
+      renderReports();
+      return toast("Observações do turno salvas.", "success");
+    }
+    if (action === "print-handover") {
+      document.body.classList.add("print-handover");
+      setTimeout(() => window.print(), 100);
+      return;
+    }
+
+    if (action === "backup-json") {
+      downloadJson(`opscontrol-backup-${localDateKey()}.json`, backupPayload());
+      return toast("Backup completo gerado.", "success");
+    }
+    if (action === "sync-offline") {
+      if (!navigator.onLine) return toast("Sem conexão para sincronizar.", "error");
+      await syncOfflineQueue(); return;
+    }
+    const directWriteActions = ["deliver-handover","approve-handover","reopen-handover","save-handover-note","save-tank-volume"];
+    if (state.testMode && directWriteActions.includes(action)) {
+      addTestLog(`action:${action}`, { page: state.page });
+      return toast("Ação simulada na homologação local. O banco oficial não foi alterado.", "success");
+    }
+    if (action === "deliver-handover") {
+      const selection=ensureHandoverSelection(); const snapshot=handoverSnapshot(selection);
+      const checklist=checklistForShift(selection); const missing=checklist.filter(x=>!x.completed);
+      if (missing.length&&!confirm(`Existem ${missing.length} itens do checklist pendentes. Entregar mesmo assim?`)) return;
+      const summary={ selection, generated_at:new Date().toISOString(), delivered_by:state.data.profile.name,
+        counts:{operations:snapshot.completedOperations.length,events:snapshot.events.length,movements:snapshot.tankMovements.length,pendings:snapshot.openPendings.length}, checklist, observations:snapshot.observations };
+      const {error}=await state.client.rpc("submit_shift_handover",{p_shift_date:selection.date,p_shift_type:selection.shift,p_snapshot_json:summary,p_snapshot_text:handoverText(selection)});
+      if(error)return toast(error.message,"error"); await loadData();renderReports();return toast("Passagem entregue e numerada.","success");
+    }
+    if (action === "approve-handover") {
+      const selection=ensureHandoverSelection(); const {error}=await state.client.rpc("approve_shift_handover",{p_shift_date:selection.date,p_shift_type:selection.shift});
+      if(error)return toast(error.message,"error"); await loadData();renderReports();return toast("Recebimento confirmado. Passagem bloqueada.","success");
+    }
+    if (action === "reopen-handover") {
+      const selection=ensureHandoverSelection(); if(!confirm("Reabrir esta passagem aprovada?"))return;
+      const {error}=await state.client.rpc("reopen_shift_handover",{p_shift_date:selection.date,p_shift_type:selection.shift});
+      if(error)return toast(error.message,"error"); await loadData();renderReports();return toast("Passagem reaberta.","success");
+    }
+    if (action === "view-approved-handover") {
+      const approval=selectedHandoverApproval(); return openModal(`Passagem nº ${String(approval.sequence_no).padStart(5,"0")}`,`<pre class="approved-handover-text">${esc(approval.snapshot_text||"Sem versão salva.")}</pre>`,`VERSÃO ENTREGUE`);
+    }
+    if (action === "refresh") {
+      const original = button.textContent;
+      button.disabled = true;
+      button.textContent = "Atualizando...";
+      await refreshRealtime("atualização manual", true);
+      button.disabled = false;
+      button.textContent = original;
+      return;
+    }
+    if (action === "apply-dashboard-filters") {
+      state.filters = { start: $("#filterStart")?.value || "", end: $("#filterEnd")?.value || "", client: $("#filterClient")?.value || "", product: $("#filterProduct")?.value || "" };
+      renderDashboard(); renderOperations(); renderTrucks();
+      return;
+    }
+    if (action === "clear-dashboard-filters") {
+      state.filters = { start: "", end: "", client: "", product: "" };
+      renderDashboard(); renderOperations(); renderTrucks();
+      return;
+    }
+
+
+    if (button.dataset.tankClientFilter) {
+      state.mobile.tankFilters.client = button.dataset.tankClientFilter;
+      renderTanks();
+      return;
+    }
+    if (button.dataset.tankViewFilter) {
+      state.mobile.tankFilters.view = button.dataset.tankViewFilter;
+      renderTanks();
+      return;
+    }
+    if (action === "clear-mobile-tank-filters") {
+      state.mobile.tankFilters = { client: "Todos", view: "Todos", query: "" };
+      renderTanks();
+      return;
+    }
+    if (button.dataset.toggleTankCard) {
+      const card = button.closest("[data-tank-card]");
+      const expanded = card?.classList.toggle("expanded");
+      button.textContent = expanded ? "Ocultar detalhes" : "Ver detalhes";
+      return;
+    }
+
+
+    if (action === "apply-official-capacity") {
+      syncOfficialTankCapacity(button.closest("form"), true);
+      return;
+    }
+    if (action === "apply-calculated-silo-capacity") {
+      const form = button.closest("form");
+      const calculated = parseOptionalDecimal(form?.elements?.operational_capacity?.value);
+      if (!Number.isFinite(calculated) || calculated <= 0) return toast("Informe volume físico e densidade para calcular a capacidade.", "error");
+      form.elements.capacity.value = String(calculated).replace(".", ",");
+      syncSiloCapacityPreview(form);
+      toast(`Capacidade calculada de ${fmt.format(calculated)} ton aplicada.`, "success");
+      return;
+    }
+
+    if (action === "show-industrial-demo") {
+      [...state.visual.tankLevels.keys()].filter(key => String(key).startsWith("demo:")).forEach(key => state.visual.tankLevels.delete(key));
+      openModal("Demonstração — Painel industrial", industrialDemoPanel(), "DADOS FICTÍCIOS");
+      setTimeout(() => animateIndustrialEquipmentLevels($("#modalBody")), 0);
+      return;
+    }
+
+    if (button.dataset.industrialDetails) {
+      const demo = button.dataset.demo === "true";
+      const tank = demo
+        ? industrialDemoTanks().find(item => item.id === button.dataset.industrialDetails)
+        : state.data.tanks.find(item => item.id === button.dataset.industrialDetails);
+      if (!tank) return toast("Equipamento não localizado.", "error");
+      openModal(`${tank.name} — detalhes e histórico`, industrialEquipmentDetails(tank, demo), demo ? "DADOS FICTÍCIOS" : "EQUIPAMENTO INDUSTRIAL");
+      setTimeout(() => animateIndustrialEquipmentLevels($("#modalBody")), 0);
+      return;
+    }
+
+    if (action === "refresh-tank-products") {
+      try {
+        button.disabled = true;
+        button.textContent = "Atualizando...";
+        await refreshTankProductList(button.closest("form"));
+      } catch (error) {
+        toast(error.message || "Não foi possível atualizar a lista.", "error");
+      } finally {
+        button.disabled = false;
+        button.textContent = "Atualizar lista";
+      }
+      return;
+    }
+
+    if (action === "save-tank-volume") {
+      const form = button.closest("form");
+      const confirmed = await confirmTankUpdate(form);
+      if (!confirmed) return;
+      try {
+        await saveTankVolume(form, button);
+      } catch (error) {
+        toast(`Erro ao atualizar volume: ${error.message}`, "error");
+      }
+      return;
+    }
+    if (action === "new-operation") return openModal("Nova operação", operationForm(), "OPERAÇÃO");
+    if (action === "new-tank-transfer") return openModal("Transferência entre tanques", tankTransferForm(), "TRANSFERÊNCIA");
+    if (action === "new-user") return openModal("Novo usuário", newUserForm(), "USUÁRIO");
+    if (action === "show-fefo") {
+      const items = [...state.data.chemicals].filter(x => x.quantity > 0).sort((a,b) => (a.expiry_date || "9999-12-31").localeCompare(b.expiry_date || "9999-12-31"));
+      return openModal("Ordem de consumo FEFO", `<div class="info-box">Consumir primeiro os lotes que vencem antes.</div><div class="attachment-list" style="margin-top:12px">${items.map((item,index) => `<div class="attachment-item"><div class="attachment-icon">${index+1}</div><div class="attachment-info"><strong>${esc(item.name)} — lote ${esc(item.lot || "-")}</strong><small>Validade ${dateOnly(item.expiry_date)} • ${fmt.format(item.quantity)} ${esc(item.unit)}</small></div>${badge(chemicalDisplayStatus(item))}</div>`).join("") || `<div class="empty">Nenhum lote disponível.</div>`}</div>`, "FEFO");
+    }
+    if (action === "new-fluid") return openModal("Cadastrar fluido", genericForm("fluid", { type:"WBM", unit:"bbl", densityUnit:"ppg", active:true }), "FLUIDOS E GRANÉIS");
+    if (action === "new-bulk") return openModal("Cadastrar granel", genericForm("fluid", { type:"Granel", unit:"ton", densityUnit:"t/m³", active:true }), "FLUIDOS E GRANÉIS");
+    if (action === "open-fluid-catalog") {
+      closeModal();
+      return showPage("fluids");
+    }
+    if (action === "new-chemical") { if (!canManageChemicals()) return toast("Seu perfil não pode alterar o inventário químico.", "error"); return openModal("Adicionar lote ao inventário", chemicalForm(), "INVENTÁRIO"); }
+    if (action === "new-truck") return openModal("Nova movimentação de carreta", truckForm(), "CARRETA");
+    if (action === "new-qhse") return openModal("Novo registro QHSE", genericForm("qhse"), "QHSE");
+    if (action === "new-equipment") return openModal("Novo equipamento", genericForm("equipment"), "EQUIPAMENTO");
+    if (action === "new-certificate") { if (!canManageCertificates()) return toast("Somente Logística, Supervisor ou Administrador podem adicionar certificados.", "error"); return openModal("Adicionar certificado", genericForm("certificate"), "CERTIFICADO"); }
+    if (action === "new-alert") return openModal("Criar alerta", genericForm("alert"), "ALERTA");
+    if (action === "new-maintenance-order") return openModal("Nova ordem de serviço", maintenanceOrderForm(), "MANUTENÇÃO");
+
+    if (action === "send-message") {
+      const text = $("#chatText")?.value.trim();
+      if (!text) return;
+      const { error } = await state.client.from("chat_messages").insert({
+        channel: "operacao-geral", sender_id: state.user.id,
+        sender_name: state.data.profile.name, message: text
+      });
+      if (error) return toast(error.message, "error");
+      await loadData(); renderAlerts();
+      return;
+    }
+
+    if (action === "smart-query") {
+      const answer = smartAnswer($("#smartQuestion").value.trim());
+      const el = $("#smartAnswer");
+      el.textContent = answer;
+      el.classList.remove("hidden");
+      return;
+    }
+
+    if (action === "copy-handover") {
+      await navigator.clipboard.writeText(handoverText());
+      return toast("Passagem de serviço copiada.");
+    }
+
+    if (action === "toggle-theme") {
+      const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+      applyTheme(next);
+      return;
+    }
+
+    if (button.dataset.editHandoverPending) {
+      if (!canManageHandover()) return toast("Seu perfil não pode editar pendências.", "error");
+      const item = state.data.handoverPendings.find(x => x.id === button.dataset.editHandoverPending);
+      return openModal(`Editar pendência — ${item.title}`, handoverPendingForm(item), "PASSAGEM");
+    }
+
+    if (button.dataset.toggleHandoverPending) {
+      if (!canManageHandover()) return toast("Seu perfil não pode concluir pendências.", "error");
+      const item = state.data.handoverPendings.find(x => x.id === button.dataset.toggleHandoverPending);
+      const completed = item.status !== "Concluído";
+      const { error } = await state.client.from("handover_pending_items").update({
+        status: completed ? "Concluído" : "Pendente",
+        completed_at: completed ? new Date().toISOString() : null,
+        completed_by: completed ? state.user.id : null
+      }).eq("id", item.id);
+      if (error) return toast(error.message, "error");
+      await loadData(); renderReports();
+      return toast(completed ? "Pendência concluída." : "Pendência reaberta.", "success");
+    }
+
+    if (button.dataset.deleteHandoverPending) {
+      if (!canDeleteHandoverPending()) return toast("Somente liderança, supervisão ou administrador podem excluir.", "error");
+      if (!confirm("Excluir esta pendência permanentemente?")) return;
+      const { error } = await state.client.from("handover_pending_items").delete().eq("id", button.dataset.deleteHandoverPending);
+      if (error) return toast(error.message, "error");
+      await loadData(); renderReports();
+      return toast("Pendência excluída.");
+    }
+
+
+
+    if (button.dataset.chemicalLots) {
+      const product = state.data.chemicalProducts.find(item => item.id === button.dataset.chemicalLots);
+      if (!product) return toast("Produto químico não localizado.", "error");
+      return openModal(`Lotes — ${product.name}`, chemicalLotsModal(product.id), "INVENTÁRIO POR LOTE");
+    }
+    if (button.dataset.newChemicalLot) {
+      if (!canManageChemicals()) return toast("Seu perfil não pode alterar o inventário químico.", "error");
+      const product = state.data.chemicalProducts.find(item => item.id === button.dataset.newChemicalLot);
+      if (!product) return toast("Produto químico não localizado.", "error");
+      return openModal(`Adicionar lote — ${product.name}`, chemicalForm({ productId: product.id, lockProduct: true }), "NOVO LOTE");
+    }
+
+    if (button.dataset.editChemicalProduct) {
+      const item=state.data.chemicalProducts.find(entry=>entry.id===button.dataset.editChemicalProduct);
+      return openModal(`Editar produto — ${item.name}`,chemicalProductForm(item),"CATÁLOGO QUÍMICO");
+    }
+    if (button.dataset.viewClosing) {
+      const closing=state.data.closings.find(item=>item.id===button.dataset.viewClosing);
+      return openModal(`Fechamento — ${dateOnly(closing.date)}`,closingDetails(closing),"CONCILIAÇÃO");
+    }
+    if (button.dataset.reopenClosing) {
+      return openModal("Reabrir fechamento",`<form id="reopenClosingForm" data-id="${button.dataset.reopenClosing}"><label>Motivo da reabertura *</label><textarea name="reason" required></textarea>${formActions("Reabrir fechamento")}</form>`,"CONTROLE");
+    }
+    if (button.dataset.exportClosing) {
+      const closing=state.data.closings.find(item=>item.id===button.dataset.exportClosing);
+      const rows=state.data.closingItems.filter(item=>item.closingId===closing.id).map(item=>[closing.date,closing.shift,item.itemType,item.itemName,item.theoretical,item.measured,item.variance,item.variancePct,item.unit,item.status]);
+      return downloadCsv(`conciliacao-${closing.date}-${closing.shift}.csv`,["Data","Turno","Tipo","Item","Teórico","Contado","Diferença","Diferença %","Unidade","Status"],rows);
+    }
+    if (button.dataset.sanitationPage) {
+      showPage(button.dataset.sanitationPage);
+      const id=button.dataset.sanitationId;
+      if (button.dataset.sanitationPage==="operations") return openSearchResult("operation",id,"operations");
+      if (button.dataset.sanitationPage==="tanks") return openAssetQr("tank",id);
+      if (button.dataset.sanitationPage==="chemicals") return openSearchResult("chemical",id,"chemicals");
+      return;
+    }
+
+    if (button.dataset.toggleFluidActive) {
+      const nextActive = button.dataset.nextActive === "true";
+      const item = state.data.fluids.find(product => product.id === button.dataset.toggleFluidActive);
+      const verb = nextActive ? "ativar" : "desativar";
+      if (!item) return toast("Produto não encontrado.", "error");
+      if (!confirm(`Deseja ${verb} ${item.name}?`)) return;
+      try {
+        await toggleFluidCatalogActive(item.id, nextActive);
+      } catch (error) {
+        console.error("Falha ao alterar status do catálogo:", error);
+        toast(error.message || "Não foi possível alterar o status.", "error");
+      }
+      return;
+    }
+
+    if (button.dataset.editFluid) {
+      const item = state.data.fluids.find(x => x.id === button.dataset.editFluid);
+      return openModal(`Editar produto — ${item.name}`, genericForm("fluid", item), "ADMIN");
+    }
+
+    if (button.dataset.editTruck) {
+      if (!canManageTrucks()) return toast("Seu perfil não pode editar carretas.", "error");
+      const item = state.data.trucks.find(x => x.id === button.dataset.editTruck);
+      return openModal(`Editar carreta — ${item.plate || item.product}`, truckForm(item), "CARRETA");
+    }
+
+    if (button.dataset.truckItems) {
+      const item = state.data.trucks.find(x => x.id === button.dataset.truckItems);
+      if (!item) return toast("Carreta não localizada.", "error");
+      return openModal(`Itens da Plataforma — ${item.plate || item.invoice || item.id}`, `<div class="truck-detail-list">${(item.items || []).map((product,index) => `<div class="attachment-item"><div class="attachment-icon">${index+1}</div><div class="attachment-info"><strong>${esc(product.productName)}</strong><small>${fmt.format(product.quantity)} ${esc(product.unit)}</small></div></div>`).join("") || `<div class="empty">Nenhum produto detalhado.</div>`}</div>`, "PLATAFORMA");
+    }
+
+    if (button.dataset.editQhse) {
+      const item = state.data.qhse.find(x => x.id === button.dataset.editQhse);
+      return openModal(`Editar QHSE — ${item.title}`, genericForm("qhse", item), "ADMIN");
+    }
+
+    if (button.dataset.editEquipment) {
+      const item = state.data.equipment.find(x => x.id === button.dataset.editEquipment);
+      return openModal(`Editar equipamento — ${item.name}`, genericForm("equipment", item), "ADMIN");
+    }
+
+    if (button.dataset.editCertificate) {
+      if (!canManageCertificates()) return toast("Somente Logística, Supervisor ou Administrador podem editar certificados.", "error");
+      const item = state.data.certificates.find(x => x.id === button.dataset.editCertificate);
+      return openModal(`Editar certificado — ${item.title}`, genericForm("certificate", item), "CERTIFICADO");
+    }
+
+    if (button.dataset.editAlert) {
+      const item = state.data.alerts.find(x => x.id === button.dataset.editAlert);
+      return openModal(`Editar alerta — ${item.title}`, genericForm("alert", item), "ADMIN");
+    }
+
+    if (button.dataset.editChemical) {
+      if (!canManageChemicals()) return toast("Seu perfil não pode editar o inventário químico.", "error");
+      const item = state.data.chemicals.find(x => x.id === button.dataset.editChemical);
+      return openModal(`Editar — ${item.name}`, chemicalForm(item), "INVENTÁRIO");
+    }
+
+    if (button.dataset.chemicalMove) {
+      if (!canManageChemicals()) return toast("Seu perfil não pode movimentar o inventário químico.", "error");
+      const item = state.data.chemicals.find(x => x.id === button.dataset.chemicalMove);
+      return openModal(`Movimentar — ${item.name}`, chemicalMovementForm(item), "MOVIMENTAÇÃO");
+    }
+
+    if (button.dataset.chemicalHistory) {
+      const item = state.data.chemicals.find(x => x.id === button.dataset.chemicalHistory);
+      const history = state.data.chemicalMovements.filter(x => x.inventory_id === item.id);
+      const rows = history.map(movement => {
+        const user = state.data.users.find(x => x.id === movement.performed_by)?.name || "Usuário";
+        return `<div class="timeline-item"><span class="timeline-dot"></span><div>
+          <strong>${esc(movement.movement_type)} — ${fmt.format(movement.quantity)} ${esc(item.unit)}</strong>
+          <small>${dateTime(movement.created_at)} • ${esc(user)}</small>
+          <p>Saldo: ${fmt.format(movement.previous_balance)} → ${fmt.format(movement.new_balance)} ${esc(item.unit)}<br>
+          Referência: ${esc(movement.reference || "-")}<br>${esc(movement.notes || "")}</p>
+        </div></div>`;
+      }).join("");
+      return openModal(`Histórico — ${item.name}`, `<div class="timeline professional-timeline">${rows || `<div class="empty">Nenhuma movimentação registrada.</div>`}</div>`, "RASTREABILIDADE");
+    }
+
+    if (button.dataset.export) {
+      exportData(button.dataset.export);
+      return;
+    }
+
+    if (button.dataset.goModule) {
+      return showPage(button.dataset.goModule);
+    }
+
+    if (button.dataset.applyOperationTank) {
+      if (!confirm("Aplicar a quantidade executada na volumetria vinculada?")) return;
+      const { error } = await state.client.rpc("apply_completed_operation_tank_movement", { p_operation_id: button.dataset.applyOperationTank });
+      if (error) return toast(error.message, "error");
+      await loadData(); renderAll(); return toast("Movimentação aplicada à tancagem.", "success");
+    }
+
+    if (button.dataset.editOperation) {
+      const operation = state.data.operations.find(x => x.id === button.dataset.editOperation);
+      return openModal("Editar operação", operationForm(operation), "OPERAÇÃO");
+    }
+
+    if (button.dataset.operationTimeline) {
+      const operation = state.data.operations.find(x => x.id === button.dataset.operationTimeline);
+      const events = state.data.operationEvents.filter(x => x.operation_id === operation.id);
+      const timeline = events.map(item => `<div class="timeline-item"><span class="timeline-dot"></span><div><strong>${esc(item.title)}</strong><small>${dateTime(item.event_time)} • ${esc(item.event_type)}</small><p>${esc(item.description || "")}</p>${item.quantity ? `<span class="tag">${fmt.format(item.quantity)} ${esc(item.unit || "")}</span>` : ""}</div></div>`).join("");
+      return openModal(`Timeline — ${operation.vessel}`, `
+        ${hasRole(["supervisor", "lider", "operador"]) ? `<button class="btn primary" data-add-event="${operation.id}">+ Adicionar evento</button>` : ""}
+        <div class="timeline professional-timeline" style="margin-top:14px">${timeline || `<div class="empty">Nenhum evento registrado.</div>`}</div>
+      `, "TIMELINE");
+    }
+
+    if (button.dataset.addEvent) return openModal("Adicionar evento", eventForm(button.dataset.addEvent), "TIMELINE");
+
+    if (button.dataset.editTank) {
+      const tank = state.data.tanks.find(x => x.id === button.dataset.editTank);
+      if (!tank) return toast("O tanque selecionado não foi encontrado. Atualize a página.", "error");
+      return openModal(`Atualizar conteúdo — ${tank.name}`, tankForm(tank, false), "TANCAGEM");
+    }
+
+    if (button.dataset.editTankStructure) {
+      if (!canEditTankStructure()) return toast("Somente Administrador ou Supervisor pode editar a estrutura.", "error");
+      const tank = state.data.tanks.find(x => x.id === button.dataset.editTankStructure);
+      if (!tank) return toast("O equipamento selecionado não foi encontrado. Atualize a página.", "error");
+      return openModal(`Editar estrutura — ${tank.name}`, tankForm(tank, true), "ADMINISTRAÇÃO");
+    }
+
+    if (button.dataset.tankHistory) {
+      const tank = state.data.tanks.find(x => x.id === button.dataset.tankHistory);
+      return openModal(`Histórico completo — ${tank.name}`, completeTankTimelineHtml(tank), "RASTREABILIDADE");
+    }
+
+
+    if (button.dataset.tankMovements) {
+      const tank = state.data.tanks.find(x => x.id === button.dataset.tankMovements);
+      const movements = state.data.tankMovements.filter(x => x.source_tank_id === tank.id || x.destination_tank_id === tank.id);
+      const rows = movements.map(item => {
+        const source = state.data.tanks.find(x => x.id === item.source_tank_id)?.name;
+        const destination = state.data.tanks.find(x => x.id === item.destination_tank_id)?.name;
+        const direction = item.source_tank_id === tank.id ? "Saída" : "Entrada";
+        return `<div class="timeline-item"><span class="timeline-dot"></span><div><strong>${esc(direction)} — ${fmt.format(item.quantity)} ${esc(item.unit)}</strong><small>${dateTime(item.created_at)} • ${esc(item.movement_type)}</small><p>${source && destination ? `${esc(source)} → ${esc(destination)}<br>` : ""}Produto: ${esc(item.product || "-")} • Lote: ${esc(item.lot || "-")}<br>Referência: ${esc(item.reference || "-")}</p></div></div>`;
+      }).join("");
+      return openModal(`Movimentações — ${tank.name}`, `<div class="timeline professional-timeline">${rows || `<div class="empty">Nenhuma movimentação registrada.</div>`}</div>`, "RASTREABILIDADE");
+    }
+
+    if (button.dataset.qhseActions) {
+      const record = state.data.qhse.find(x => x.id === button.dataset.qhseActions);
+      const actions = state.data.actionItems.filter(x => x.qhse_record_id === record.id);
+      return openModal(`Ações — ${record.title}`, `
+        ${hasRole(["supervisor", "lider", "qhse"]) ? `<button class="btn primary" data-add-action="${record.id}">+ Nova ação</button>` : ""}
+        <div class="section-title">Itens de ação</div>
+        <div class="attachment-list">${actions.map(item => `<div class="attachment-item"><div class="attachment-icon">✓</div><div class="attachment-info"><strong>${esc(item.title)}</strong><small>${esc(item.responsible || "Sem responsável")} • Prazo ${dateOnly(item.due_date)}</small></div>${badge(item.status)}${isAdmin() ? `<button class="btn small primary" data-edit-action="${item.id}">Editar</button>` : ""}</div>`).join("") || `<div class="empty">Nenhuma ação cadastrada.</div>`}</div>
+      `, "QHSE");
+    }
+
+    if (button.dataset.addAction) return openModal("Nova ação QHSE", actionItemForm(button.dataset.addAction), "AÇÃO");
+    if (button.dataset.editAction) {
+      const item = state.data.actionItems.find(x => x.id === button.dataset.editAction);
+      return openModal("Editar ação QHSE", actionItemForm(item.qhse_record_id, item), "ADMIN");
+    }
+
+    if (button.dataset.newOrderEquipment) return openModal("Nova ordem de serviço", maintenanceOrderForm({}, button.dataset.newOrderEquipment), "MANUTENÇÃO");
+
+    if (button.dataset.editOrder) {
+      const order = state.data.maintenanceOrders.find(x => x.id === button.dataset.editOrder);
+      return openModal("Editar ordem de serviço", maintenanceOrderForm(order), "MANUTENÇÃO");
+    }
+
+    if (button.dataset.editUser) {
+      const user = state.data.users.find(x => x.id === button.dataset.editUser);
+      return openModal(`Gerenciar ${user.name}`, userForm(user), "USUÁRIO");
+    }
+
+    if (button.dataset.attachments) {
+      const [module, recordId] = button.dataset.attachments.split(":");
+      return showAttachments(module, recordId, button.dataset.attachmentTitle || "Registro");
+    }
+
+    if (button.dataset.deleteAttachment) {
+      if (!confirm("Excluir este anexo permanentemente?")) return;
+      const item = state.data.attachments.find(x => x.id === button.dataset.deleteAttachment);
+      const { error: storageError } = await state.client.storage.from("opscontrol-files").remove([item.file_path]);
+      if (storageError) return toast(storageError.message, "error");
+      const { error } = await state.client.from("attachments").delete().eq("id", item.id);
+      if (error) return toast(error.message, "error");
+      await loadData(); closeModal(); renderAll(); return toast("Anexo excluído.");
+    }
+
+    if (button.dataset.printPage) {
+      const oldPage = state.page;
+      showPage(button.dataset.printPage);
+      setTimeout(() => { window.print(); showPage(oldPage); }, 120);
+    }
+  });
+
+  document.addEventListener("change", async event => {
+
+    if (event.target.matches("[data-tank-page-filter]")) {
+      ensureTankPageState().filters[event.target.dataset.tankPageFilter]=event.target.value;
+      renderTanks(); return;
+    }
+    if (event.target.closest("#tankMovementForm") && ["movement_type","direction","operation_id"].includes(event.target.name)) {
+      const form=event.target.closest("#tankMovementForm");
+      if(event.target.name==="operation_id") {
+        const op=state.data.operations.find(o=>o.id===event.target.value);
+        if(op){form.elements.vessel.value=op.vessel||"";form.elements.client.value=TANK_CLIENTS.includes(op.client)?op.client:form.elements.client.value;}
+      }
+      updateTankMovementPreview(form);
+    }
+
+    const changedForm = event.target.closest("#modalBody form");
+    if (changedForm) scheduleDraftSave(changedForm);
+    if (event.target.closest("#chemicalProductForm") && event.target.name === "packaging_type") syncChemicalPackagingFields(event.target.closest("#chemicalProductForm"), true);
+    if (event.target.closest("#truckForm") && event.target.name === "truck_type") syncTruckForm(event.target.closest("#truckForm"), true);
+    if (event.target.closest("#truckForm") && ["fluid_type_id","movement"].includes(event.target.name)) syncTruckSingleProduct(event.target.closest("#truckForm"));
+    if (event.target.closest("#truckForm") && event.target.matches("[data-truck-item-product]")) {
+      syncTruckPlatformRow(event.target.closest("[data-truck-platform-row]"));
+      updateTruckPlatformSummary(event.target.closest("#truckForm"));
+    }
+    if (event.target.closest("#operationForm") && event.target.name === "fluid_type_id") syncOperationCatalogFields(event.target.closest("#operationForm"), true);
+    if (event.target.closest("#operationForm") && ["activity","status","apply_tank_movement"].includes(event.target.name)) syncOperationTankFields(event.target.closest("#operationForm"));
+    if (event.target.closest("#operationForm") && event.target.matches("[data-allocation-tank]")) updateOperationAllocationSummary(event.target.closest("#operationForm"));
+    if (event.target.closest("#tankTransferForm")) updateTransferPreview(event.target.closest("#tankTransferForm"));
+    if (event.target.closest("#tankForm") && event.target.name === "fluid_type_id") syncTankCatalogFields(event.target.closest("#tankForm"));
+    if (event.target.closest("#tankForm") && ["name", "phase", "kind"].includes(event.target.name)) syncOfficialTankCapacity(event.target.closest("#tankForm"), false);
+    if (event.target.closest("#tankForm") && event.target.name === "kind") syncSiloCapacityPreview(event.target.closest("#tankForm"));
+    if (event.target.closest('#genericForm[data-kind="fluid"]') && event.target.name === "type") syncFluidDensityUnit(event.target.closest("form"));
+    if (event.target.closest('#genericForm[data-kind="certificate"]') && event.target.name === "user_id") {
+      const form = event.target.closest("form");
+      const option = event.target.selectedOptions?.[0];
+      const owner = form.elements.owner;
+      if (owner && option?.dataset.userName) owner.value = option.dataset.userName;
+    }
+    if (event.target.matches("[data-shift-checklist]")) {
+      if (state.testMode) {
+        addTestLog("checklist", { key:event.target.dataset.shiftChecklist, completed:event.target.checked });
+        toast("Checklist simulado na homologação local.", "success");
+        return;
+      }
+      const selection=ensureHandoverSelection(); const key=event.target.dataset.shiftChecklist;
+      const template=SHIFT_CHECKLIST_TEMPLATE.find(item=>item[0]===key); const note=document.querySelector(`[data-shift-checklist-note="${key}"]`)?.value||"";
+      const completed=event.target.checked;
+      const {error}=await state.client.from("shift_checklist_items").upsert({shift_date:selection.date,shift_type:selection.shift,item_key:key,item_label:template?.[1]||key,category:template?.[2]||"Operacional",completed,notes:note,completed_by:completed?state.user.id:null,completed_at:completed?new Date().toISOString():null,created_by:state.user.id},{onConflict:"shift_date,shift_type,item_key"});
+      if(error){event.target.checked=!completed;return toast(error.message,"error");} await loadData();renderReports();
+    }
+  });
+
+  document.addEventListener("input", event => {
+
+    if (event.target.id === "tankPageSearch") { ensureTankPageState().filters.query=event.target.value; renderTanks(); return; }
+    if (event.target.closest("#tankMovementForm") && event.target.name==="quantity") updateTankMovementPreview(event.target.closest("#tankMovementForm"));
+
+    if (event.target.matches("[data-target-select]")) filterLinkedSelectOptions(event.target);
+    if (event.target.id === "mobileTankSearch") {
+      state.mobile.tankFilters.query = event.target.value;
+      applyTankMobileFilters();
+    }
+    if (event.target.closest("#operationForm")) updateOperationReview(event.target.closest("#operationForm"));
+    if (event.target.id === "globalSearchInput") {
+      state.searchQuery = event.target.value;
+      renderGlobalSearchResults(state.searchQuery);
+    }
+    const draftForm = event.target.closest("#modalBody form");
+    if (draftForm) scheduleDraftSave(draftForm);
+    if (event.target.closest("#truckForm") && event.target.matches("[data-truck-item-quantity]")) updateTruckPlatformSummary(event.target.closest("#truckForm"));
+    if (event.target.closest("#tankTransferForm") && event.target.name === "quantity") updateTransferPreview(event.target.closest("#tankTransferForm"));
+    if (event.target.closest("#operationForm") && (event.target.name === "executed" || event.target.matches("[data-allocation-quantity]"))) updateOperationAllocationSummary(event.target.closest("#operationForm"));
+    if (event.target.closest("#tankForm") && event.target.name === "name") {
+      syncOfficialTankCapacity(event.target.closest("#tankForm"));
+    }
+    if (event.target.closest("#tankForm") && ["density","physical_capacity_m3","volume"].includes(event.target.name)) {
+      syncSiloCapacityPreview(event.target.closest("#tankForm"));
+    }
+  });
+
+  $("#modal").addEventListener("click", event => {
+    if (event.target === $("#modal")) closeModal();
+  });
+  $("#actionConfirm").addEventListener("click", event => {
+    if (event.target === $("#actionConfirm")) resolveActionConfirmation(false);
+  });
+
+  document.addEventListener("keydown", event => {
+    if (event.key !== "Escape") return;
+    if (!$("#actionConfirm")?.classList.contains("hidden")) return resolveActionConfirmation(false);
+    if (!$("#modal")?.classList.contains("hidden")) return closeModal();
+    if (state.mobile.moreOpen || state.mobile.quickOpen) return closeMobileSheets();
+    $("#sidebar")?.classList.remove("open");
+    $("#sidebarBackdrop")?.classList.remove("visible");
+  });
+
+  $("#loginPassword").addEventListener("keydown", event => {
+    if (event.key === "Enter") login();
+  });
+
+
+
+
+  document.addEventListener("click", event => {
+    if (event.target.closest("button,a,input,select,textarea,label")) return;
+    if (event.target.closest("[data-equipment-card]")) return;
+    const card = event.target.closest("[data-industrial-equipment-card]");
+    if (!card || card.classList.contains("tv-mode")) return;
+    const demo = card.dataset.demo === "true";
+    const tank = demo
+      ? industrialDemoTanks().find(item => item.id === card.dataset.tankId)
+      : state.data?.tanks?.find(item => item.id === card.dataset.tankId);
+    if (!tank) return;
+    openModal(`${tank.name} — detalhes e histórico`, industrialEquipmentDetails(tank, demo), demo ? "DADOS FICTÍCIOS" : "EQUIPAMENTO INDUSTRIAL");
+    setTimeout(() => animateIndustrialEquipmentLevels($("#modalBody")), 0);
+  });
+
+  document.addEventListener("touchstart", event => {
+    if (window.innerWidth > 820 || state.page !== "tanks") return;
+    if (event.target.closest("button,input,select,textarea")) return;
+    const card = event.target.closest("[data-tank-card]");
+    if (!card) return;
+    const touch = event.changedTouches[0];
+    state.mobile.tankSwipe = { card, x: touch.clientX, y: touch.clientY, time: Date.now() };
+  }, { passive: true });
+
+  document.addEventListener("touchend", event => {
+    const swipe = state.mobile.tankSwipe;
+    state.mobile.tankSwipe = null;
+    if (!swipe || window.innerWidth > 820) return;
+    const touch = event.changedTouches[0];
+    const dx = touch.clientX - swipe.x;
+    const dy = touch.clientY - swipe.y;
+    if (Date.now() - swipe.time > 700 || Math.abs(dx) < 85 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+    if (dx > 0) swipe.card.querySelector("[data-edit-tank]")?.click();
+    else swipe.card.querySelector("[data-tank-history]")?.click();
+  }, { passive: true });
+
+  document.addEventListener("focusout", async event => {
+    if (!event.target.matches("[data-shift-checklist-note]")) return;
+    if (state.testMode) {
+      addTestLog("checklist-note", { key:event.target.dataset.shiftChecklistNote, notes:event.target.value });
+      return;
+    }
+    const selection=ensureHandoverSelection(); const key=event.target.dataset.shiftChecklistNote;
+    const template=SHIFT_CHECKLIST_TEMPLATE.find(item=>item[0]===key);
+    const current=checklistForShift(selection).find(item=>item.item_key===key);
+    const {error}=await state.client.from("shift_checklist_items").upsert({shift_date:selection.date,shift_type:selection.shift,item_key:key,item_label:template?.[1]||key,category:template?.[2]||"Operacional",completed:current?.completed||false,notes:event.target.value||null,completed_by:current?.completed_by||null,completed_at:current?.completed_at||null,created_by:state.user.id},{onConflict:"shift_date,shift_type,item_key"});
+    if(error)toast(error.message,"error"); else await loadData();
+  });
+
+  window.addEventListener("beforeinstallprompt", event => {
+    event.preventDefault();
+    state.installPrompt = event;
+    renderMobileShell();
+  });
+
+  window.addEventListener("appinstalled", () => {
+    state.installPrompt = null;
+    toast("OpsControl instalado com sucesso.", "success");
+    renderMobileShell();
+  });
+
+  window.addEventListener("popstate", event => {
+    if (!$("#modal")?.classList.contains("hidden")) return closeModal();
+    if (state.mobile.moreOpen || state.mobile.quickOpen) return closeMobileSheets();
+    if ($("#sidebar")?.classList.contains("open")) {
+      $("#sidebar").classList.remove("open");
+      $("#sidebarBackdrop")?.classList.remove("visible");
+      return;
+    }
+    const page = event.state?.page || String(location.hash || "").replace("#", "") || "dashboard";
+    if (moduleAllowed(page)) showPage(page, { history: false });
+  });
+
+  window.addEventListener("online", () => {
+    updateConnectionBadge();
+    syncOfflineQueue();
+    refreshRealtime("conexão restaurada");
+  });
+  window.addEventListener("offline", updateConnectionBadge);
+  window.addEventListener("afterprint", () => {
+    document.body.classList.remove("print-handover");
+    document.body.classList.remove("print-asset-qr");
+  });
+  document.addEventListener("fullscreenchange", () => {
+    if (state.page === "tv") renderTv();
+  });
+
+  if ("serviceWorker" in navigator) {
+    window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(console.error));
+  }
+
+  $("#connectionHint").textContent = "Acesse com seu e-mail e senha cadastrados.";
+  bootApplication();
+})();

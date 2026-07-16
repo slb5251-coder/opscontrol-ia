@@ -1,10 +1,10 @@
-const CACHE="opscontrol-20260716-reference-tank-shape-light-theme-1";
+const CACHE="opscontrol-20260716-tv-steps-operations-phase1-phase2-silos-1";
 const FILES=[
   "./",
   "./index.html",
-  "./app.css?v=20260716-reference-tank-shape-light-theme-1",
-  "./js/config.js?v=20260716-reference-tank-shape-light-theme-1",
-  "./js/app.js?v=20260716-reference-tank-shape-light-theme-1",
+  "./app.css?v=20260716-tv-steps-operations-phase1-phase2-silos-1",
+  "./js/config.js?v=20260716-tv-steps-operations-phase1-phase2-silos-1",
+  "./js/app.js?v=20260716-tv-steps-operations-phase1-phase2-silos-1",
   "./manifest.json",
   "./assets/icon.svg","./assets/slb-logo.png","./vendor/qrcode.js"
 ];

@@ -1217,3 +1217,309 @@ body.sidebar-collapsed .shell{grid-template-columns:76px 1fr}body.sidebar-collap
 @media(prefers-reduced-motion:reduce){
   .reference-material{transition-duration:.01ms!important}
 }
+
+
+/* ==========================================================
+   PALETA ORIGINAL OPSCONTROL — CONTRASTE CORRIGIDO
+   Mantém o desenho novo dos equipamentos.
+   ========================================================== */
+:root[data-theme="light"]{
+  --navy:#071a35;
+  --blue:#1768ff;
+  --blue-soft:#eaf2ff;
+  --bg:#f4f7fb;
+  --card:#ffffff;
+  --card-2:#f7f9fc;
+  --text:#172033;
+  --muted:#69778f;
+  --line:#d9e3ee;
+  --green:#169c55;
+  --green-soft:#dcf7e8;
+  --amber:#df9415;
+  --amber-soft:#fff0cf;
+  --red:#d83949;
+  --red-soft:#ffe2e6;
+  --shadow:0 12px 34px rgba(22,39,70,.09);
+  color-scheme:light;
+}
+
+/* Estrutura principal original */
+:root[data-theme="light"] body,
+:root[data-theme="light"] .app-view,
+:root[data-theme="light"] .main-content{
+  background:#f4f7fb!important;
+  color:#172033!important;
+}
+:root[data-theme="light"] .topbar.industrial-topbar{
+  background:#071a35!important;
+  border-color:#15345d!important;
+  color:#fff!important;
+  box-shadow:0 3px 12px rgba(7,26,53,.18);
+}
+:root[data-theme="light"] .topbar-page-copy strong,
+:root[data-theme="light"] .topbar-datetime strong,
+:root[data-theme="light"] .user-chip strong{
+  color:#fff!important;
+}
+:root[data-theme="light"] .topbar-page-copy small,
+:root[data-theme="light"] .topbar-datetime span,
+:root[data-theme="light"] .user-chip small{
+  color:#b9c9e4!important;
+}
+:root[data-theme="light"] .topbar .icon-btn{color:#fff!important}
+:root[data-theme="light"] .topbar .icon-btn:hover{background:#ffffff14!important}
+:root[data-theme="light"] .user-chip{
+  background:#ffffff10!important;
+  border-color:#ffffff1f!important;
+  color:#fff!important;
+}
+:root[data-theme="light"] .user-chip>span{
+  background:#fff!important;
+  color:#071a35!important;
+}
+:root[data-theme="light"] .theme-toggle-btn{color:#ffd978!important}
+
+/* Menu lateral original */
+:root[data-theme="light"] .sidebar{
+  background:#fff!important;
+  border-color:#d9e3ee!important;
+  color:#172033!important;
+}
+:root[data-theme="light"] .sidebar-brand,
+:root[data-theme="light"] .sidebar-nav-label.additional{
+  border-color:#e4ebf3!important;
+}
+:root[data-theme="light"] .sidebar-brand-copy strong{color:#172033!important}
+:root[data-theme="light"] .sidebar-brand-copy small{color:#69778f!important}
+:root[data-theme="light"] .nav-item{
+  color:#46556d!important;
+}
+:root[data-theme="light"] .nav-item:hover,
+:root[data-theme="light"] .nav-item.active{
+  background:#eaf2ff!important;
+  color:#1256ca!important;
+}
+:root[data-theme="light"] .nav-icon{
+  background:#f3f6fb!important;
+  color:#5f718c!important;
+}
+:root[data-theme="light"] .nav-item.active .nav-icon,
+:root[data-theme="light"] .nav-item:hover .nav-icon{
+  background:#dbe8ff!important;
+  color:#1256ca!important;
+  box-shadow:inset 0 0 0 1px #bfd2ff!important;
+}
+:root[data-theme="light"] .sidebar-general-status,
+:root[data-theme="light"] .plant-card{
+  background:#f3f6fa!important;
+  border-color:#d9e3ee!important;
+}
+:root[data-theme="light"] .sidebar-status-title strong,
+:root[data-theme="light"] .plant-card strong{color:#172033!important}
+:root[data-theme="light"] .sidebar-status-list small,
+:root[data-theme="light"] .plant-card small,
+:root[data-theme="light"] .plant-card span{color:#69778f!important}
+
+/* Cartões e áreas gerais */
+:root[data-theme="light"] .card,
+:root[data-theme="light"] .modal-card,
+:root[data-theme="light"] .equipment-card-v3,
+:root[data-theme="light"] .equipment-list-row,
+:root[data-theme="light"] .industrial-user-card{
+  background:#fff!important;
+  border-color:#d9e3ee!important;
+  color:#172033!important;
+  box-shadow:0 10px 28px rgba(22,39,70,.08)!important;
+}
+:root[data-theme="light"] .modal-header{
+  background:#fff!important;
+  border-color:#d9e3ee!important;
+}
+:root[data-theme="light"] .page-header h1,
+:root[data-theme="light"] .tanks-page-heading h1,
+:root[data-theme="light"] .equipment-section-head h2,
+:root[data-theme="light"] .equipment-card-head h3,
+:root[data-theme="light"] .equipment-product strong,
+:root[data-theme="light"] .equipment-volume strong,
+:root[data-theme="light"] .equipment-card-metrics strong,
+:root[data-theme="light"] .equipment-card-update b,
+:root[data-theme="light"] .section-title{
+  color:#172033!important;
+}
+:root[data-theme="light"] .page-header p,
+:root[data-theme="light"] .tanks-page-heading p,
+:root[data-theme="light"] .equipment-product small,
+:root[data-theme="light"] .equipment-card-update span,
+:root[data-theme="light"] .equipment-card-metrics span,
+:root[data-theme="light"] .muted{
+  color:#69778f!important;
+}
+
+/* Página Tanques e Silos: separação clara entre fundo, cartão e equipamento */
+:root[data-theme="light"] .tank-source-switch,
+:root[data-theme="light"] .tanks-page-filters,
+:root[data-theme="light"] .tanks-page-footer,
+:root[data-theme="light"] .view-switch{
+  background:#fff!important;
+  border-color:#d6e1ec!important;
+  box-shadow:0 5px 16px rgba(22,39,70,.05);
+}
+:root[data-theme="light"] .tank-source-switch button{
+  color:#52647a!important;
+}
+:root[data-theme="light"] .tank-source-switch button.active{
+  background:#1768ff!important;
+  color:#fff!important;
+}
+:root[data-theme="light"] .tank-page-summary span{
+  background:#fff!important;
+  border-color:#d9e3ee!important;
+  box-shadow:0 6px 18px rgba(22,39,70,.06);
+}
+:root[data-theme="light"] .tank-page-summary small{color:#69778f!important}
+:root[data-theme="light"] .tank-page-summary strong{color:#172033!important}
+:root[data-theme="light"] .equipment-section-head{
+  background:#eef4fb!important;
+  border:1px solid #d9e3ee!important;
+  border-radius:12px;
+}
+:root[data-theme="light"] .equipment-section-head>div>span{
+  background:#dbe8ff!important;
+  color:#1256ca!important;
+}
+:root[data-theme="light"] .reference-card-main{
+  background:#eef3f8!important;
+  border:1px solid #d7e2ed!important;
+  border-radius:12px;
+  padding:8px;
+}
+:root[data-theme="light"] .reference-scale{color:#526b84!important}
+:root[data-theme="light"] .reference-view-window{
+  background:linear-gradient(90deg,#1b2a38,#304252 48%,#172431)!important;
+}
+:root[data-theme="light"] .reference-logo{
+  color:#0a43c9!important;
+  text-shadow:0 1px 0 #fff,0 0 2px #fff!important;
+}
+:root[data-theme="light"] .reference-card-info .equipment-volume{
+  background:#fff!important;
+  border:1px solid #d9e3ee!important;
+  border-radius:9px;
+  padding:8px!important;
+}
+:root[data-theme="light"] .reference-card-info .equipment-volume b{color:#1768ff!important}
+:root[data-theme="light"] .equipment-card-update{
+  border-color:#dfe7ef!important;
+  background:#fafcff;
+  margin-left:-11px;
+  margin-right:-11px;
+  margin-bottom:-11px;
+  padding:9px 11px!important;
+}
+:root[data-theme="light"] .equipment-card-v3:hover{
+  border-color:#9dbce2!important;
+  box-shadow:0 13px 30px rgba(22,39,70,.12)!important;
+}
+
+/* Formulários, filtros e tabelas */
+:root[data-theme="light"] input,
+:root[data-theme="light"] select,
+:root[data-theme="light"] textarea,
+:root[data-theme="light"] .tanks-search{
+  background:#fff!important;
+  border-color:#cfdbe7!important;
+  color:#172033!important;
+}
+:root[data-theme="light"] input::placeholder,
+:root[data-theme="light"] textarea::placeholder{color:#8b99aa!important}
+:root[data-theme="light"] label{color:#526078!important}
+:root[data-theme="light"] .data-table th{
+  background:#f4f7fb!important;
+  color:#65728a!important;
+  border-color:#d9e3ee!important;
+}
+:root[data-theme="light"] .data-table td{
+  color:#172033!important;
+  border-color:#e2e9f1!important;
+}
+:root[data-theme="light"] .data-table tr:hover td{background:#f8fbff!important}
+:root[data-theme="light"] .btn.secondary{
+  background:#edf2f7!important;
+  color:#34435a!important;
+  border-color:#d5dfe9!important;
+}
+:root[data-theme="light"] .btn.primary{
+  background:#1768ff!important;
+  color:#fff!important;
+}
+:root[data-theme="light"] .info-box{
+  background:#eaf2ff!important;
+  border-color:#bfd4ff!important;
+  color:#174c9d!important;
+}
+:root[data-theme="light"] .warning-box{
+  background:#fff0cf!important;
+  border-color:#f2d28d!important;
+  color:#80570d!important;
+}
+
+/* Alertas e estados com contraste original */
+:root[data-theme="light"] .equipment-card-v3.level-low{
+  border-color:#e0a620!important;
+}
+:root[data-theme="light"] .equipment-card-v3.level-high{
+  border-color:#e47c32!important;
+}
+:root[data-theme="light"] .equipment-card-v3.level-critical-low,
+:root[data-theme="light"] .equipment-card-v3.level-critical-high,
+:root[data-theme="light"] .equipment-card-v3.level-maximum{
+  border-color:#d83949!important;
+}
+:root[data-theme="light"] .equipment-card-v3.level-maintenance{
+  background:#fff6f7!important;
+  border-color:#d83949!important;
+}
+:root[data-theme="light"] .equipment-card-v3.level-blocked{
+  background:#fbf6ff!important;
+  border-color:#8d55b7!important;
+}
+
+/* Tema escuro também retorna à paleta escura original */
+:root[data-theme="dark"]{
+  --bg:#08111f;
+  --card:#101d2f;
+  --card-2:#0c1828;
+  --text:#eaf1fb;
+  --muted:#9bacbf;
+  --line:#26364b;
+  --navy:#071a35;
+  --blue:#1768ff;
+  --blue-soft:#132c55;
+  --green:#169c55;
+  --green-soft:#123724;
+  --amber:#df9415;
+  --amber-soft:#3c2c10;
+  --red:#d83949;
+  --red-soft:#421b22;
+  --shadow:0 12px 34px rgba(0,0,0,.22);
+}
+:root[data-theme="dark"] .topbar.industrial-topbar{background:#071a35!important}
+:root[data-theme="dark"] .sidebar{background:#0c1828!important}
+:root[data-theme="dark"] .equipment-card-v3,
+:root[data-theme="dark"] .card,
+:root[data-theme="dark"] .modal-card{background:#101d2f!important}
+:root[data-theme="dark"] .reference-card-main{
+  background:#0c1828!important;
+  border-color:#26364b!important;
+}
+:root[data-theme="dark"] .equipment-section-head{
+  background:#0c1828!important;
+  border-color:#26364b!important;
+}
+
+/* Evita áreas brancas sem separação em telas pequenas */
+@media(max-width:820px){
+  :root[data-theme="light"] .main-content{background:#f4f7fb!important}
+  :root[data-theme="light"] .equipment-card-v3{border-width:1px!important}
+  :root[data-theme="light"] .reference-card-main{padding:7px!important}
+}

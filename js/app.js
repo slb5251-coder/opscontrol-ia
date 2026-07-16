@@ -12,7 +12,7 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const APP_VERSION = "20260716-v33-3-tanques-silos-profissional-1";
+  const APP_VERSION = "20260716-v33-4-carretas-profissional-1";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -3428,14 +3428,36 @@
 
   function renderTrucks() {
     const trucks = filteredTrucks();
+    const today = localDateKey();
     const typeCount = type => trucks.filter(item => item.truckType === type).length;
+    const movementCount = movement => trucks.filter(item => String(item.movement || "").toLowerCase() === movement.toLowerCase()).length;
+    const todayCount = trucks.filter(item => recordDateKey(item.date || item.created_at) === today).length;
+    const pendingStock = trucks.filter(item => item.truckType !== "Plataforma" && !item.stockApplied && ["Recebida", "Concluída"].includes(item.status)).length;
+    const pendingDocs = trucks.filter(item => !item.invoice || !item.plate || (item.truckType !== "Plataforma" && !item.lot)).length;
+    const activeQueue = trucks.filter(item => !["Concluída", "Cancelada"].includes(item.status));
+    const completed = trucks.filter(item => item.status === "Concluída").length;
+
+    const quantityByUnit = trucks.reduce((acc, item) => {
+      if (item.truckType === "Plataforma") {
+        (item.items || []).forEach(row => {
+          const unit = row.unit || "un";
+          acc[unit] = (acc[unit] || 0) + Number(row.quantity || 0);
+        });
+      } else {
+        const unit = item.unit || "un";
+        acc[unit] = (acc[unit] || 0) + Number(item.quantity || 0);
+      }
+      return acc;
+    }, {});
+    const volumeSummary = Object.entries(quantityByUnit).slice(0, 3).map(([unit, quantity]) => `${fmt.format(quantity)} ${esc(unit)}`).join(" • ") || "Sem volume no período";
+
     const rows = trucks.map(item => `<tr>
-      <td>${dateOnly(item.date)}</td>
+      <td><strong>${dateOnly(item.date)}</strong><br><small>${recordDateKey(item.date || item.created_at) === today ? "Hoje" : "Movimentação"}</small></td>
       <td>${badge(item.movement)}<br><small>${badge(item.truckType)}</small></td>
-      <td>${esc(item.supplier)}<br><small>${esc(item.client || "-")}</small></td>
+      <td><strong>${esc(item.supplier || "-")}</strong><br><small>${esc(item.client || "Sem cliente")}</small></td>
       <td>${truckItemsSummary(item)}</td>
-      <td>${esc(item.plate || "-")}<br><small>${esc(item.driver || "-")}</small></td>
-      <td>${esc(item.invoice || "-")}</td>
+      <td><strong>${esc(item.plate || "-")}</strong><br><small>${esc(item.driver || "Motorista não informado")}</small></td>
+      <td><strong>${esc(item.invoice || "-")}</strong><br><small>${esc(item.lot || "Sem lote")}</small></td>
       <td>${badge(item.status)}<br><small>${esc(truckInventoryLabel(item))}</small></td>
       <td><div class="row-actions">
         ${item.truckType === "Plataforma" ? `<button class="btn small secondary" data-truck-items="${item.id}">Ver ${item.items.length} itens</button>` : ""}
@@ -3445,21 +3467,39 @@
     </tr>`).join("");
 
     const mobile = trucks.map(item => `<article class="card mobile-record-card truck-mobile-card truck-type-${String(item.truckType).toLowerCase()}">
-      <div class="mobile-record-head"><div><strong>${esc(item.plate || item.product)}</strong><small>${dateOnly(item.date)} • ${esc(item.movement)}</small></div>${badge(item.truckType)}</div>
+      <div class="mobile-record-head"><div><strong>${esc(item.plate || item.product || "Movimentação")}</strong><small>${dateOnly(item.date)} • ${esc(item.movement)}</small></div>${badge(item.truckType)}</div>
       <div class="truck-mobile-products">${truckItemsSummary(item)}</div>
-      <div class="mobile-record-grid"><span>Origem/Destino<strong>${esc(item.supplier)}</strong></span><span>NF<strong>${esc(item.invoice || "-")}</strong></span><span>Motorista<strong>${esc(item.driver || "-")}</strong></span><span>Status<strong>${esc(item.status)}</strong></span><span>Integração<strong>${item.truckType === "Plataforma" ? "Sem inventário" : (item.stockApplied ? "Aplicado" : "Pendente")}</strong></span></div>
+      <div class="mobile-record-grid"><span>Origem/Destino<strong>${esc(item.supplier || "-")}</strong></span><span>Cliente<strong>${esc(item.client || "-")}</strong></span><span>NF<strong>${esc(item.invoice || "-")}</strong></span><span>Lote<strong>${esc(item.lot || "-")}</strong></span><span>Motorista<strong>${esc(item.driver || "-")}</strong></span><span>Status<strong>${esc(item.status)}</strong></span><span>Integração<strong>${item.truckType === "Plataforma" ? "Sem inventário" : (item.stockApplied ? "Aplicado" : "Pendente")}</strong></span></div>
       <div class="row-actions">${item.truckType === "Plataforma" ? `<button class="btn small secondary" data-truck-items="${item.id}">Ver itens</button>` : ""}<button class="btn small secondary" data-attachments="truck:${item.id}" data-attachment-title="${esc(item.plate || item.product)}">Anexos</button>${canManageTrucks() ? `<button class="btn small primary" data-edit-truck="${item.id}">Editar</button>` : ""}</div>
     </article>`).join("");
 
+    const queueCards = activeQueue.slice(0, 6).map(item => `<article class="truck-queue-card">
+      <div class="truck-queue-icon">${uiIcon("truck")}</div>
+      <div class="truck-queue-main"><div><strong>${esc(item.plate || item.invoice || "Carreta")}</strong>${badge(item.status)}</div><p>${esc(item.movement || "Movimentação")} • ${esc(item.truckType || "Tipo não definido")} • ${esc(item.product || (item.items || [])[0]?.productName || "Carga não informada")}</p><small>${esc(item.supplier || "Origem/Destino não informado")} ${item.client ? `→ ${esc(item.client)}` : ""}</small></div>
+      ${canManageTrucks() ? `<button class="btn small secondary" data-edit-truck="${item.id}">Abrir</button>` : ""}
+    </article>`).join("");
+
     $("#page-trucks").innerHTML =
-      header("Carretas", "Controle separado de Bulk, Tank e Plataforma com vários insumos.",
+      header("Central de carretas", "Entradas, saídas, documentação, produtos e integração com estoque.",
         `<button class="btn secondary" data-export="trucks">Exportar CSV</button>${canManageTrucks() ? `<button class="btn primary" data-action="new-truck">+ Nova movimentação</button>` : ""}`) +
-      `<div class="grid three truck-type-kpis">
-        <div class="card"><span>Bulk</span><strong>${typeCount("Bulk")}</strong><small>Carretas de granel</small></div>
-        <div class="card"><span>Tank</span><strong>${typeCount("Tank")}</strong><small>Carretas tanque</small></div>
-        <div class="card"><span>Plataforma</span><strong>${typeCount("Plataforma")}</strong><small>Vários insumos</small></div>
-      </div>
-      <div class="card table-wrap desktop-record-table"><table class="data-table"><thead><tr><th>Data</th><th>Movimento / Tipo</th><th>Origem / Cliente</th><th>Produtos</th><th>Placa / Motorista</th><th>NF</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows || `<tr><td colspan="8" class="empty">Nenhuma movimentação.</td></tr>`}</tbody></table></div>
+      `<section class="truck-overview-grid">
+        ${statCard("Carretas hoje", fmt.format(todayCount), "movimentações registradas", uiIcon("truck"), "Entradas e saídas do dia", "blue")}
+        ${statCard("Em andamento", fmt.format(activeQueue.length), "fila operacional", uiIcon("activity"), "Aguardando conclusão", "orange")}
+        ${statCard("Estoque pendente", fmt.format(pendingStock), "movimentações", uiIcon("alert"), "Necessitam aplicação", "red")}
+        ${statCard("Documentação pendente", fmt.format(pendingDocs), "placa, NF ou lote", uiIcon("file"), "Conferência necessária", "purple")}
+      </section>
+      <section class="truck-control-grid">
+        <div class="card truck-flow-card"><div class="truck-section-heading"><div><small>FLUXO LOGÍSTICO</small><h3>Resumo do período</h3></div><span>${trucks.length} registros</span></div>
+          <div class="truck-flow-stats"><div><span>Entradas</span><strong>${movementCount("Entrada")}</strong></div><div><span>Saídas</span><strong>${movementCount("Saída")}</strong></div><div><span>Concluídas</span><strong>${completed}</strong></div></div>
+          <div class="truck-volume-summary"><small>VOLUME MOVIMENTADO</small><strong>${volumeSummary}</strong></div>
+        </div>
+        <div class="card truck-types-card"><div class="truck-section-heading"><div><small>TIPOS DE CARRETA</small><h3>Distribuição</h3></div></div>
+          <div class="truck-type-professional"><div><span class="truck-type-mark bulk"></span><p>Bulk<small>Granéis</small></p><strong>${typeCount("Bulk")}</strong></div><div><span class="truck-type-mark tank"></span><p>Tank<small>Fluidos</small></p><strong>${typeCount("Tank")}</strong></div><div><span class="truck-type-mark platform"></span><p>Plataforma<small>Insumos diversos</small></p><strong>${typeCount("Plataforma")}</strong></div></div>
+        </div>
+      </section>
+      <section class="card truck-queue-panel"><div class="truck-section-heading"><div><small>FILA OPERACIONAL</small><h3>Movimentações que exigem acompanhamento</h3></div><span>${activeQueue.length} abertas</span></div><div class="truck-queue-list">${queueCards || `<div class="empty">Nenhuma movimentação pendente.</div>`}</div></section>
+      <div class="section-title truck-record-title"><span>Histórico de movimentações</span><small>${trucks.length} registro(s) no filtro atual</small></div>
+      <div class="card table-wrap desktop-record-table truck-professional-table"><table class="data-table"><thead><tr><th>Data</th><th>Movimento / Tipo</th><th>Origem / Cliente</th><th>Produtos</th><th>Placa / Motorista</th><th>NF / Lote</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows || `<tr><td colspan="8" class="empty">Nenhuma movimentação.</td></tr>`}</tbody></table></div>
       <div class="mobile-record-list">${mobile || `<div class="card empty">Nenhuma movimentação.</div>`}</div>`;
   }
 

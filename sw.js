@@ -1,11 +1,11 @@
-const CACHE="opscontrol-20260717-v33-12-6-vessel-registry";
+const CACHE="opscontrol-20260717-v33-12-7-vessel-mobile-map";
 const FILES=[
   "./",
   "./index.html",
-  "./app.css?v=20260717-v33-12-6-vessel-registry",
-  "./v33.css?v=20260717-v33-12-6-vessel-registry",
-  "./js/config.js?v=20260717-v33-12-6-vessel-registry",
-  "./js/app.js?v=20260717-v33-12-6-vessel-registry",
+  "./app.css?v=20260717-v33-12-7-vessel-mobile-map",
+  "./v33.css?v=20260717-v33-12-7-vessel-mobile-map",
+  "./js/config.js?v=20260717-v33-12-7-vessel-mobile-map",
+  "./js/app.js?v=20260717-v33-12-7-vessel-mobile-map",
   "./manifest.json",
   "./assets/icon.svg","./vendor/qrcode.js"
 ];

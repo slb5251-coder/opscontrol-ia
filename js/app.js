@@ -12,7 +12,7 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const APP_VERSION = "20260717-v33-12-6-vessel-registry";
+  const APP_VERSION = "20260717-v33-12-7-vessel-mobile-map";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -2723,8 +2723,8 @@
     return `<form id="vesselRegistryForm" data-id="${item.id || ""}" novalidate><div class="form-grid">
       <div class="wide"><label>Nome da embarcação *</label><input name="name" required maxlength="120" value="${esc(item.name || "")}" placeholder="Ex.: Starnav Ursus"></div>
       <div><label>IMO</label><input name="imo" inputmode="numeric" maxlength="7" pattern="[0-9]{7}" value="${esc(item.imo || "")}" placeholder="7 dígitos"></div>
-      <div><label>MMSI</label><input name="mmsi" inputmode="numeric" maxlength="9" pattern="[0-9]{9}" value="${esc(item.mmsi || "")}" placeholder="9 dígitos"></div>
-      <div class="wide info-box"><strong>Identificação para o MarineTraffic:</strong> informe o IMO, o MMSI ou os dois. O botão da operação usará primeiro o IMO e depois o MMSI.</div>
+      <div><label>MMSI *</label><input name="mmsi" inputmode="numeric" maxlength="9" pattern="[0-9]{9}" required value="${esc(item.mmsi || "")}" placeholder="9 dígitos"></div>
+      <div class="wide info-box"><strong>Abertura direta no mapa:</strong> o MMSI é obrigatório para centralizar a embarcação no mapa do MarineTraffic. O IMO permanece como identificação complementar.</div>
     </div>${formActions(item.id ? "Salvar alterações" : "Cadastrar embarcação")}</form>`;
   }
 
@@ -2736,7 +2736,7 @@
     if (!name) throw new Error("Informe o nome da embarcação.");
     if (rawImo && rawImo.length !== 7) throw new Error("O IMO precisa ter exatamente 7 dígitos.");
     if (rawMmsi && rawMmsi.length !== 9) throw new Error("O MMSI precisa ter exatamente 9 dígitos.");
-    if (!rawImo && !rawMmsi) throw new Error("Informe pelo menos o IMO ou o MMSI.");
+    if (!rawMmsi) throw new Error("Informe o MMSI para abrir a embarcação diretamente no mapa.");
     const row = { name, imo: rawImo || null, mmsi: rawMmsi || null, active: true, updated_by: state.user.id };
     const query = id
       ? state.client.from("vessel_registry").update(row).eq("id", id).select("id").single()
@@ -2757,12 +2757,12 @@
     const cards = items.map(item => `<article class="card vessel-registry-card">
       <div class="vessel-registry-card-head"><div class="vessel-registry-icon">${uiIcon("anchor")}</div><div><small>EMBARCAÇÃO</small><h3>${esc(item.name)}</h3></div>${badge(item.active ? "Ativa" : "Inativa")}</div>
       <div class="vessel-registry-identifiers"><span>IMO<strong>${esc(item.imo || "Não informado")}</strong></span><span>MMSI<strong>${esc(item.mmsi || "Não informado")}</strong></span></div>
-      <div class="vessel-registry-preview"><span>Destino do botão</span>${marineTrafficVesselButton({ vesselName:item.name, imo:item.imo, mmsi:item.mmsi }, true)}</div>
+      <div class="vessel-registry-preview"><span>Mapa da embarcação</span>${marineTrafficVesselButton({ vesselName:item.name, imo:item.imo, mmsi:item.mmsi }, true)}</div>
       <div class="row-actions">${canManageVesselRegistry() ? `<button class="btn small primary" data-edit-vessel-registry="${item.id}">Editar</button>` : ""}${canDeleteVesselRegistry() ? `<button class="btn small danger" data-delete-vessel-registry="${item.id}">Excluir</button>` : ""}</div>
     </article>`).join("");
     const rows = items.map(item => `<tr><td><strong>${esc(item.name)}</strong></td><td>${esc(item.imo || "-")}</td><td>${esc(item.mmsi || "-")}</td><td>${marineTrafficVesselButton({ vesselName:item.name, imo:item.imo, mmsi:item.mmsi }, true)}</td><td><div class="row-actions">${canManageVesselRegistry() ? `<button class="btn small primary" data-edit-vessel-registry="${item.id}">Editar</button>` : ""}${canDeleteVesselRegistry() ? `<button class="btn small danger" data-delete-vessel-registry="${item.id}">Excluir</button>` : ""}</div></td></tr>`).join("");
-    page.innerHTML = header("Cadastro de Embarcações", "Cadastre o nome, IMO e MMSI uma única vez e selecione a embarcação nas operações programadas.", canManageVesselRegistry() ? `<button class="btn primary" data-action="new-vessel-registry">${uiIcon("plus", "ui-icon btn-icon")} Nova embarcação</button>` : "") +
-      `<section class="vessel-registry-hero"><div><span>CADASTRO MESTRE</span><h2>MarineTraffic sem erro de embarcação</h2><p>O vínculo pelo cadastro garante que cada botão abra o navio correto pelo IMO ou MMSI.</p></div><div class="vessel-registry-summary"><span>Embarcações cadastradas<strong>${items.length}</strong></span><span>Com IMO<strong>${items.filter(item=>item.imo).length}</strong></span><span>Com MMSI<strong>${items.filter(item=>item.mmsi).length}</strong></span></div></section>
+    page.innerHTML = header("Cadastro de Embarcações", "Cadastre nome, IMO e MMSI uma única vez. No celular, os cartões e botões se adaptam automaticamente.", canManageVesselRegistry() ? `<button class="btn primary" data-action="new-vessel-registry">${uiIcon("plus", "ui-icon btn-icon")} Nova embarcação</button>` : "") +
+      `<section class="vessel-registry-hero"><div><span>CADASTRO MESTRE</span><h2>Mapa direto da embarcação</h2><p>O botão usa o MMSI cadastrado para abrir o mapa do MarineTraffic já focado no navio, sem passar pela página de informações.</p></div><div class="vessel-registry-summary"><span>Embarcações cadastradas<strong>${items.length}</strong></span><span>Com IMO<strong>${items.filter(item=>item.imo).length}</strong></span><span>Com MMSI<strong>${items.filter(item=>item.mmsi).length}</strong></span></div></section>
       <div class="vessel-registry-grid">${cards || `<div class="card empty">Nenhuma embarcação cadastrada.</div>`}</div>
       <div class="card table-wrap desktop-record-table"><table class="data-table"><thead><tr><th>Embarcação</th><th>IMO</th><th>MMSI</th><th>MarineTraffic</th><th>Ações</th></tr></thead><tbody>${rows || `<tr><td colspan="5" class="empty">Nenhuma embarcação cadastrada.</td></tr>`}</tbody></table></div>`;
   }
@@ -2936,7 +2936,7 @@
     if (info) {
       info.textContent = selected
         ? `IMO ${selected.imo || "não informado"} • MMSI ${selected.mmsi || "não informado"}`
-        : "Cadastre ou selecione a embarcação para abrir corretamente no MarineTraffic.";
+        : "Cadastre ou selecione a embarcação com MMSI para abrir diretamente o mapa.";
     }
     updateOperationReview(form);
   }
@@ -2972,7 +2972,7 @@
     return `<form id="operationForm" data-id="${op.id || ""}" data-step="1" data-allocation-mode="${mode}" data-allocation-locked="${applied}" novalidate>${nav}
       <section class="operation-step active" data-operation-step="1"><div class="form-grid">
         <div><label>Cliente *</label><input name="client" required value="${esc(op.client || "")}"></div>
-        <div class="wide operation-vessel-field"><div class="catalog-linked-heading"><div><label>Embarcação cadastrada *</label><small>O IMO/MMSI será usado no botão MarineTraffic.</small></div>${canManageVesselRegistry() ? `<button type="button" class="btn small secondary" data-action="open-vessel-registry">Cadastrar embarcação</button>` : ""}</div><select name="vessel_registry_id" required><option value="">Selecione a embarcação</option>${vesselOptions}</select><input type="hidden" name="vessel" value="${esc(matchedVessel?.name || op.vessel || "")}"><small class="field-help" data-operation-vessel-info>${matchedVessel ? `IMO ${esc(matchedVessel.imo || "não informado")} • MMSI ${esc(matchedVessel.mmsi || "não informado")}` : "Cadastre ou selecione a embarcação para abrir corretamente no MarineTraffic."}</small>${op.vessel && !matchedVessel ? `<div class="message warning"><strong>Embarcação antiga não vinculada:</strong> ${esc(op.vessel)}. Selecione o cadastro correto antes de salvar.</div>` : ""}</div>
+        <div class="wide operation-vessel-field"><div class="catalog-linked-heading"><div><label>Embarcação cadastrada *</label><small>O MMSI será usado para abrir diretamente o mapa.</small></div>${canManageVesselRegistry() ? `<button type="button" class="btn small secondary" data-action="open-vessel-registry">Cadastrar embarcação</button>` : ""}</div><select name="vessel_registry_id" required><option value="">Selecione a embarcação</option>${vesselOptions}</select><input type="hidden" name="vessel" value="${esc(matchedVessel?.name || op.vessel || "")}"><small class="field-help" data-operation-vessel-info>${matchedVessel ? `IMO ${esc(matchedVessel.imo || "não informado")} • MMSI ${esc(matchedVessel.mmsi || "não informado")}` : "Cadastre ou selecione a embarcação com MMSI para abrir diretamente o mapa."}</small>${op.vessel && !matchedVessel ? `<div class="message warning"><strong>Embarcação antiga não vinculada:</strong> ${esc(op.vessel)}. Selecione o cadastro correto antes de salvar.</div>` : ""}</div>
         <div><label>Sonda</label><input name="rig" value="${esc(op.rig || "")}" placeholder="Ex.: NS-58"></div>
         <div><label>Poço</label><input name="well" value="${esc(op.well || "")}" placeholder="Ex.: 7-WAH-12D-RJS"></div>
         <div><label>Número do ticket</label><input name="ticket_number" value="${esc(op.ticketNumber || "")}"></div>
@@ -3264,22 +3264,23 @@
   }
 
   function marineTrafficVesselUrl(item = {}) {
-    const imo = String(item.imo || "").replace(/\D/g, "");
     const mmsi = String(item.mmsi || "").replace(/\D/g, "");
-    if (/^\d{7}$/.test(imo) && imo !== "0000000") {
-      return `https://www.marinetraffic.com/en/ais/details/ships/imo:${imo}`;
-    }
     if (/^\d{9}$/.test(mmsi) && mmsi !== "000000000") {
-      return `https://www.marinetraffic.com/en/ais/details/ships/mmsi:${mmsi}`;
+      return `https://www.marinetraffic.com/en/ais/embed/showmenu:true/shownames:true/mmsi:${mmsi}/zoom:10/`;
     }
     return "https://www.marinetraffic.com/en/ais/home";
   }
 
   function marineTrafficVesselButton(item, compact = false) {
     const vesselName = String(item.vesselName || item.vessel || "embarcação").trim();
+    const mmsi = String(item.mmsi || "").replace(/\D/g, "");
+    const hasMmsi = /^\d{9}$/.test(mmsi) && mmsi !== "000000000";
     const url = marineTrafficVesselUrl(item);
-    const label = compact ? "MarineTraffic" : "Ver no MarineTraffic";
-    return `<a class="btn small secondary marine-traffic-btn" href="${esc(url)}" target="_blank" rel="noopener noreferrer" aria-label="Abrir ${esc(vesselName)} no MarineTraffic">${label} ↗</a>`;
+    const label = compact ? "Abrir mapa" : "Ver no mapa";
+    const hint = hasMmsi
+      ? `Abrir ${vesselName} diretamente no mapa do MarineTraffic`
+      : `Abrir o mapa geral do MarineTraffic. Cadastre o MMSI de ${vesselName} para centralizar a embarcação.`;
+    return `<a class="btn small secondary marine-traffic-btn" href="${esc(url)}" target="_blank" rel="noopener noreferrer" aria-label="${esc(hint)}" title="${esc(hint)}">${label} ↗</a>`;
   }
 
   function marineTrafficOperationButton(operation, compact = false) {

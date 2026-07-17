@@ -1,11 +1,11 @@
-const CACHE="opscontrol-20260716-v33-12-mapa-ais-alertas-profissional-1";
+const CACHE="opscontrol-20260717-v33-12-4-marinetraffic-operacoes";
 const FILES=[
   "./",
   "./index.html",
-  "./app.css?v=20260716-v33-12-mapa-ais-alertas-profissional-1",
-  "./v33.css?v=20260716-v33-12-mapa-ais-alertas-profissional-1",
-  "./js/config.js?v=20260716-v33-12-mapa-ais-alertas-profissional-1",
-  "./js/app.js?v=20260716-v33-12-mapa-ais-alertas-profissional-1",
+  "./app.css?v=20260717-v33-12-4-marinetraffic-operacoes",
+  "./v33.css?v=20260717-v33-12-4-marinetraffic-operacoes",
+  "./js/config.js?v=20260717-v33-12-4-marinetraffic-operacoes",
+  "./js/app.js?v=20260717-v33-12-4-marinetraffic-operacoes",
   "./manifest.json",
   "./assets/icon.svg","./vendor/qrcode.js"
 ];

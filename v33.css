@@ -470,3 +470,204 @@ body.kiosk-mode .tv-light-screen{height:100vh;min-height:0;border-radius:0}
   .vessel-registry-identifiers{grid-template-columns:1fr}
   .vessel-registry-card .row-actions{grid-template-columns:1fr}
 }
+
+/* =========================================================
+   v33.12.8 — Correção estrutural completa para celular
+   Evita cortes horizontais em páginas, cartões, formulários,
+   tabelas, cabeçalhos e navegação em telas de 320–820 px.
+   ========================================================= */
+@media (max-width:820px){
+  html,body{width:100%;max-width:100%;overflow-x:hidden}
+  body{position:relative}
+  #appView,.shell,.main-content,.page,.page-header,.page-header>div,
+  .grid,.grid>*,.card,.card>*,.table-wrap,.form-grid,.form-grid>div,
+  .modal-card,.modal-header,.modal-header>div,.modal-body,
+  .mobile-record-list,.mobile-record-card,.mobile-record-grid,
+  .operations-command-bar,.operation-focus-card,.planning-card,
+  .vessel-registry-hero,.vessel-registry-grid,.vessel-registry-card,
+  .tank-grid,.chemical-product-stock-grid-list,.chemical-catalog-grid{
+    min-width:0;max-width:100%
+  }
+
+  .shell{display:block;width:100%;min-height:calc(100dvh - var(--mobile-topbar-height))}
+  .main-content{
+    width:100%;max-width:100%;margin:0;
+    padding-left:max(10px,env(safe-area-inset-left));
+    padding-right:max(10px,env(safe-area-inset-right));
+    overflow-x:clip
+  }
+  .page{width:100%;max-width:100%;overflow:visible}
+  .page>*{min-width:0;max-width:100%}
+
+  /* Barra superior: título usa apenas o espaço disponível. */
+  .topbar{width:100%;max-width:100%;padding-left:max(8px,env(safe-area-inset-left));padding-right:max(8px,env(safe-area-inset-right))}
+  .topbar-left{flex:1 1 auto;min-width:0;overflow:hidden}
+  .topbar-right{flex:0 0 auto;min-width:0}
+  .brand{flex:1 1 auto;min-width:0;overflow:hidden}
+  .mobile-page-copy{flex:1 1 auto;min-width:0;overflow:hidden}
+  .mobile-page-copy strong{width:100%;max-width:none;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .brand-mark{flex:0 0 auto}
+
+  /* Cabeçalho e ações: deixa de usar uma faixa maior que a tela. */
+  .page-header{display:flex;flex-direction:column;align-items:stretch;width:100%;gap:10px}
+  .page-header h1,.page-header p{max-width:100%;overflow-wrap:anywhere}
+  .page-header .actions{
+    width:100%;max-width:100%;margin:0;padding:0;overflow:visible;
+    display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px
+  }
+  .page-header .actions .btn{
+    width:100%;min-width:0;max-width:100%;white-space:normal;
+    line-height:1.2;text-align:center;overflow-wrap:anywhere
+  }
+  .page-header .actions .btn:only-child{grid-column:1/-1}
+
+  /* Qualquer conteúdo flexível pode encolher sem escapar do cartão. */
+  .card h1,.card h2,.card h3,.card h4,.card p,.card strong,
+  .mobile-record-card h3,.mobile-record-card strong,
+  .professional-section-heading h3,.section-heading-row h2,
+  .operation-focus-head h3,.truck-section-heading h3,
+  .chemical-section-heading h3,.catalog-section-heading h2{
+    max-width:100%;overflow-wrap:anywhere;word-break:normal
+  }
+  .badge,.status-badge,.tag{max-width:100%;width:auto;white-space:normal;text-align:center;overflow-wrap:anywhere}
+  img,video,canvas,iframe,svg{max-width:100%}
+  input,select,textarea,button{max-width:100%;min-width:0}
+
+  /* Grades principais passam para uma coluna no telefone. */
+  .dashboard-command-bar,.dashboard-main-grid,.dashboard-smart-query,
+  .operations-command-bar,.truck-control-grid,.chemical-control-grid,
+  .qhse-control-grid,.maintenance-control-grid,.audit-control-grid,
+  .certificate-control-grid,.alert-priority-layout,.settings-command-grid,
+  .settings-control-grid,.vessel-command-grid,.vessel-map-command,
+  .vessel-registry-hero,.tank-filter-bar,.chemical-filter-bar,
+  .dashboard-filters,.handover-controls,.handover-layout,.closing-layout,
+  .asset-qr-layout,.smart-query,.alert-center-layout,.chat-layout{
+    grid-template-columns:minmax(0,1fr)!important;width:100%
+  }
+
+  /* Indicadores: duas colunas confortáveis; telas estreitas recebem uma. */
+  .operations-kpi-grid,.operation-focus-meta,.operation-focus-kpis,
+  .truck-overview-grid,.truck-flow-stats,.truck-type-kpis,
+  .chemical-command-grid,.certificate-kpi-grid,.alert-professional-kpis,
+  .settings-kpi-grid,.vessel-kpi-grid,.tank-command-center,
+  .closing-summary-grid,.handover-summary-grid,.quality-score-bars,
+  .role-home-metrics,.vessel-registry-summary,.planning-kpis,
+  .history-summary-grid,.metric-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important
+  }
+  .operations-kpi-grid>*,.operation-focus-meta>*,.operation-focus-kpis>*,
+  .truck-overview-grid>*,.truck-flow-stats>*,.truck-type-kpis>*,
+  .chemical-command-grid>*,.certificate-kpi-grid>*,.alert-professional-kpis>*,
+  .settings-kpi-grid>*,.vessel-kpi-grid>*,.tank-command-center>*,
+  .closing-summary-grid>*,.handover-summary-grid>*,.quality-score-bars>*,
+  .role-home-metrics>*,.vessel-registry-summary>*{min-width:0}
+
+  /* Seções com título e controles deixam de espremer os textos. */
+  .section-heading-row,.truck-section-heading,.chemical-section-heading,
+  .professional-section-heading,.catalog-section-heading,
+  .operation-focus-head,.dashboard-section-heading,.tank-section-heading{
+    align-items:stretch;flex-direction:column;gap:9px
+  }
+  .section-heading-row>.actions,.truck-section-heading>.actions,
+  .chemical-section-heading>.actions,.professional-section-heading>.actions{
+    width:100%
+  }
+
+  /* Cartões e listas operacionais. */
+  .row-actions{width:100%;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
+  .row-actions .btn{min-width:0;max-width:100%;white-space:normal;line-height:1.2;overflow-wrap:anywhere}
+  .mobile-record-grid{grid-template-columns:repeat(2,minmax(0,1fr));width:100%}
+  .mobile-record-grid span{min-width:0;overflow-wrap:anywhere}
+  .planning-card-actions,.operation-focus-actions{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));width:100%}
+  .planning-card-actions .btn,.operation-focus-actions .btn{width:100%;min-width:0;white-space:normal}
+
+  /* Cadastro de embarcações. */
+  #page-vessel-registry{width:100%;overflow:visible}
+  .vessel-registry-hero{padding:15px;gap:12px}
+  .vessel-registry-summary{gap:7px}
+  .vessel-registry-summary span{min-width:0;padding:9px 6px;overflow-wrap:anywhere}
+  .vessel-registry-grid{grid-template-columns:minmax(0,1fr)!important;width:100%}
+  .vessel-registry-card-head{grid-template-columns:38px minmax(0,1fr);width:100%}
+  .vessel-registry-card-head>.badge{grid-column:2;justify-self:start}
+  .vessel-registry-identifiers{grid-template-columns:repeat(2,minmax(0,1fr));width:100%}
+  .vessel-registry-identifiers span,.vessel-registry-identifiers strong{min-width:0;overflow-wrap:anywhere}
+  .vessel-registry-preview{flex-direction:column;align-items:stretch;width:100%}
+  .vessel-registry-preview .btn{width:100%;white-space:normal}
+
+  /* Formulários e modais não ultrapassam a folha inferior. */
+  .modal{width:100%;max-width:100%;overflow:hidden}
+  .modal-card{width:100%;max-width:100vw;overflow-x:hidden}
+  .modal-header{width:100%;gap:8px}
+  .modal-header>div{flex:1 1 auto;overflow:hidden}
+  .modal-header h2{max-width:100%;overflow-wrap:anywhere}
+  .modal-body{width:100%;max-width:100%;overflow-x:hidden}
+  .form-grid{width:100%;grid-template-columns:minmax(0,1fr)!important}
+  .form-grid .wide{grid-column:auto}
+  .form-actions{
+    width:100%;max-width:100%;margin:18px 0 0;padding:10px 0 calc(10px + env(safe-area-inset-bottom));
+    grid-template-columns:repeat(2,minmax(0,1fr))
+  }
+  .operation-allocation-row,.truck-platform-row,.closing-count-row,
+  .settings-department-row,.shift-checklist-row{
+    min-width:0;max-width:100%
+  }
+
+  /* Tabelas permanecem acessíveis, mas o excesso rola dentro do cartão. */
+  .table-wrap{
+    width:100%;max-width:100%;margin-inline:0;overflow-x:auto;overflow-y:hidden;
+    -webkit-overflow-scrolling:touch;overscroll-behavior-x:contain;
+    border:1px solid var(--line);border-radius:14px
+  }
+  .data-table{width:max-content;min-width:640px;max-width:none}
+  .data-table th,.data-table td{white-space:nowrap}
+  .desktop-record-table{max-width:100%}
+
+  /* Navegação inferior respeita as áreas seguras do iPhone. */
+  .mobile-bottom-nav{
+    padding-left:max(4px,env(safe-area-inset-left));
+    padding-right:max(4px,env(safe-area-inset-right))
+  }
+  .mobile-nav-item{min-width:0;overflow:hidden}
+  .mobile-nav-item>span:last-child{max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .mobile-sheet{max-width:100%;overflow-x:hidden}
+  .mobile-quick-button,.mobile-module-button{grid-template-columns:auto minmax(0,1fr) auto}
+  .mobile-quick-button strong,.mobile-quick-button small,
+  .mobile-module-button strong,.mobile-module-button small{overflow-wrap:anywhere}
+}
+
+@media (max-width:480px){
+  .main-content{padding-left:max(8px,env(safe-area-inset-left));padding-right:max(8px,env(safe-area-inset-right))}
+  .page-header .actions,.row-actions,.planning-card-actions,.operation-focus-actions,
+  .form-actions,.asset-qr-actions,.filter-actions{
+    grid-template-columns:minmax(0,1fr)!important
+  }
+  .page-header .actions .btn{grid-column:auto!important}
+  .operations-kpi-grid,.operation-focus-meta,.operation-focus-kpis,
+  .truck-overview-grid,.truck-flow-stats,.truck-type-kpis,
+  .chemical-command-grid,.certificate-kpi-grid,.alert-professional-kpis,
+  .settings-kpi-grid,.vessel-kpi-grid,.tank-command-center,
+  .closing-summary-grid,.handover-summary-grid,.quality-score-bars,
+  .role-home-metrics,.vessel-registry-summary,.planning-kpis,
+  .history-summary-grid,.metric-grid,.mobile-record-grid,
+  .vessel-registry-identifiers,.settings-user-mobile .mobile-record-grid,
+  .certificate-mobile-card .mobile-record-grid{
+    grid-template-columns:minmax(0,1fr)!important
+  }
+  .vessel-registry-summary span:first-child{grid-column:auto}
+  .operations-command-bar{padding:16px;border-radius:17px}
+  .operations-command-bar h2{font-size:21px;line-height:1.15}
+  .card{padding:12px;border-radius:14px}
+  .modal-header{padding-inline:12px}.modal-body{padding-inline:12px}
+  .mobile-page-copy strong{font-size:14px}
+  .data-table{min-width:580px}
+}
+
+@media (max-width:360px){
+  .main-content{padding-left:max(6px,env(safe-area-inset-left));padding-right:max(6px,env(safe-area-inset-right))}
+  .topbar{padding-left:max(4px,env(safe-area-inset-left));padding-right:max(4px,env(safe-area-inset-right))}
+  .brand-mark{width:31px;height:31px}
+  .mobile-page-copy small{display:none}
+  .mobile-nav-item{font-size:7px}
+  .mobile-nav-item svg{width:20px;height:20px}
+  .mobile-nav-main .mobile-plus{width:48px;height:48px}
+}

@@ -7,8 +7,8 @@
   <title>OpsControl IA Pro</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="app.css?v=20260717-v33-12-4-marinetraffic-operacoes">
-  <link rel="stylesheet" href="v33.css?v=20260717-v33-12-4-marinetraffic-operacoes">
+  <link rel="stylesheet" href="app.css?v=20260717-v33-12-6-vessel-registry">
+  <link rel="stylesheet" href="v33.css?v=20260717-v33-12-6-vessel-registry">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
@@ -61,6 +61,7 @@
           <button class="nav-item" data-page="quality"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8.7-7 10-4-1.3-7-5.5-7-10V6l7-3z"></path><path d="M8.5 12l2.2 2.2 4.8-5"></path></svg></span><span class="nav-label">Qualidade dos Dados</span></button>
           <button class="nav-item" data-page="sanitation"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16"></path><path d="M7 5v14h10V5"></path><path d="M9 9h6"></path><path d="M9 13h6"></path><path d="M9 17h4"></path></svg></span><span class="nav-label">Saneamento de Dados</span></button>
           <button class="nav-item" data-page="operations"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v15"></path><path d="M8 7l4-4 4 4"></path><path d="M5 21h14"></path><path d="M4 17c2.5 0 3.5 1 5 1s2.5-1 4-1 2.5 1 4 1 2.5-1 3-1"></path></svg></span><span class="nav-label">Operações</span></button>
+          <button class="nav-item" data-page="vessel-registry"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18h18"></path><path d="M5 18l2-8h10l2 8"></path><path d="M9 10V6h6v4"></path><path d="M7 21h10"></path></svg></span><span class="nav-label">Cadastro de Embarcações</span></button>
           <button class="nav-item" data-page="tanks"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4h10"></path><path d="M7 20h10"></path><path d="M8 4v16"></path><path d="M16 4v16"></path><path d="M8 9h8"></path><path d="M8 15h8"></path></svg></span><span class="nav-label">Tanques e Silos</span></button>
           <button class="nav-item" data-page="fluids"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v5.5L5.4 15a5 5 0 0 0 4.6 7h4a5 5 0 0 0 4.6-7L14 7.5V2"></path><path d="M8 2h8"></path><path d="M8 14h8"></path></svg></span><span class="nav-label">Fluidos e Granéis</span></button>
           <button class="nav-item" data-page="chemical-catalog"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path></svg></span><span class="nav-label">Catálogo Químico</span></button>
@@ -86,6 +87,7 @@
         <section id="page-sanitation" class="page"></section>
         <section id="page-tv" class="page"></section>
         <section id="page-operations" class="page"></section>
+        <section id="page-vessel-registry" class="page"></section>
         <section id="page-tanks" class="page"></section>
         <section id="page-fluids" class="page"></section>
         <section id="page-chemical-catalog" class="page"></section>
@@ -152,8 +154,8 @@
   </div>
 
   <div id="toastContainer" class="toast-container"></div>
-  <script src="js/config.js?v=20260717-v33-12-4-marinetraffic-operacoes"></script>
-  <script src="vendor/qrcode.js?v=20260717-v33-12-4-marinetraffic-operacoes"></script>
-  <script src="js/app.js?v=20260717-v33-12-4-marinetraffic-operacoes"></script>
+  <script src="js/config.js?v=20260717-v33-12-6-vessel-registry"></script>
+  <script src="vendor/qrcode.js?v=20260717-v33-12-6-vessel-registry"></script>
+  <script src="js/app.js?v=20260717-v33-12-6-vessel-registry"></script>
 </body>
 </html>

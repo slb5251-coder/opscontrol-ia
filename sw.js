@@ -1,11 +1,11 @@
-const CACHE="opscontrol-20260717-v33-12-4-marinetraffic-operacoes";
+const CACHE="opscontrol-20260717-v33-12-6-vessel-registry";
 const FILES=[
   "./",
   "./index.html",
-  "./app.css?v=20260717-v33-12-4-marinetraffic-operacoes",
-  "./v33.css?v=20260717-v33-12-4-marinetraffic-operacoes",
-  "./js/config.js?v=20260717-v33-12-4-marinetraffic-operacoes",
-  "./js/app.js?v=20260717-v33-12-4-marinetraffic-operacoes",
+  "./app.css?v=20260717-v33-12-6-vessel-registry",
+  "./v33.css?v=20260717-v33-12-6-vessel-registry",
+  "./js/config.js?v=20260717-v33-12-6-vessel-registry",
+  "./js/app.js?v=20260717-v33-12-6-vessel-registry",
   "./manifest.json",
   "./assets/icon.svg","./vendor/qrcode.js"
 ];

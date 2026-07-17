@@ -12,7 +12,7 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const APP_VERSION = "20260717-v33-12-4-marinetraffic-operacoes";
+  const APP_VERSION = "20260717-v33-12-6-vessel-registry";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -184,6 +184,7 @@
     sanitation: ["Saneamento de Dados", "Registros antigos e vínculos"],
     tv: ["Painel TV", "Exibição coletiva"],
     operations: ["Operações", "Serviços e movimentações"],
+    "vessel-registry": ["Cadastro de Embarcações", "Nome, IMO e MMSI"],
     tanks: ["Tanques e Silos", "Inventário da planta"],
     fluids: ["Fluidos e Granéis", "Catálogo de produtos"],
     "chemical-catalog": ["Catálogo Químico", "Nomes e unidades oficiais"],
@@ -229,7 +230,7 @@
 
   function mobileModuleButton(page, label, description = "") {
     const moduleIcons = {
-      fluids: "droplet", "chemical-catalog": "products", quality: "shield", sanitation: "database", vessels: "anchor",
+      fluids: "droplet", "chemical-catalog": "products", quality: "shield", sanitation: "database", vessels: "anchor", "vessel-registry": "anchor",
       reports: "gauge", chemicals: "flask", trucks: "truck", qhse: "shield", maintenance: "wrench",
       certificates: "file", alerts: "bell", audit: "check", settings: "settings", tv: "monitor"
     };
@@ -262,6 +263,7 @@
     });
 
     const morePages = [
+      ["vessel-registry", "Cadastro de Embarcações", "Nome, IMO e MMSI para o MarineTraffic"],
       ["fluids", "Fluidos e Granéis", "Cadastrar produtos vinculados à tancagem"],
       ["chemical-catalog", "Catálogo Químico", "Nomes oficiais dos insumos"],
       ["quality", "Qualidade", "Conciliação e inconsistências"],
@@ -291,6 +293,9 @@
     }
     if (moduleAllowed("operations") && hasRole(["supervisor", "lider", "operador"])) {
       quickActions.push(mobileQuickButton("new-operation", "Nova operação", "Bombeio, fabricação, backload ou descarga", uiIcon("anchor")));
+    }
+    if (moduleAllowed("vessel-registry") && canManageVesselRegistry()) {
+      quickActions.push(mobileQuickButton("new-vessel-registry", "Cadastrar embarcação", "Nome, IMO e MMSI", uiIcon("anchor")));
     }
     if (moduleAllowed("trucks") && hasRole(["supervisor", "lider", "logistica"])) {
       quickActions.push(mobileQuickButton("new-truck", "Movimentar carreta", "Entrada, saída, NF e produto", uiIcon("truck")));
@@ -355,6 +360,7 @@
 
     (d.tanks || []).forEach(x => add("tank", x.id, "tanks", x.name, `${x.product || "Sem produto"} • lote ${x.lot || "-"}`, `${x.phase} ${x.kind} ${x.status}`));
     (d.operations || []).forEach(x => add("operation", x.id, "operations", `${x.client} • ${x.vessel}`, `${x.activity} de ${x.product}`, `${x.service_order} ${x.ticketNumber} ${x.rig} ${x.well} ${x.lot} ${x.status}`));
+    (d.vesselRegistry || []).forEach(x => add("vessel-registry", x.id, "vessel-registry", x.name, `IMO ${x.imo || "-"} • MMSI ${x.mmsi || "-"}`, x.active ? "ativa" : "inativa"));
     (d.trucks || []).forEach(x => {
       const itemTerms = (x.items || []).map(item => `${item.productName} ${item.quantity} ${item.unit}`).join(" ");
       add("truck", x.id, "trucks", x.plate || x.product, `${x.truckType} • ${x.product} • NF ${x.invoice || "-"}`, `${x.driver} ${x.supplier} ${x.client} ${x.lot} ${itemTerms}`);
@@ -751,6 +757,14 @@
     return hasRole(["supervisor", "lider", "operador", "logistica", "qhse", "mecanico"]);
   }
 
+  function canManageVesselRegistry() {
+    return hasRole(["supervisor", "lider", "logistica"]);
+  }
+
+  function canDeleteVesselRegistry() {
+    return hasRole(["supervisor"]);
+  }
+
   function canDeleteHandoverPending() {
     return hasRole(["supervisor", "lider"]);
   }
@@ -772,10 +786,10 @@
     if (Object.prototype.hasOwnProperty.call(permissions, module)) return permissions[module] !== false;
 
     const defaults = {
-      supervisor: ["dashboard", "quality", "sanitation",  "tv", "operations", "tanks", "fluids", "chemical-catalog", "chemicals", "trucks", "qhse", "maintenance", "certificates", "alerts", "reports", "audit"],
-      lider: ["dashboard", "quality",  "tv", "operations", "tanks", "fluids", "chemical-catalog", "chemicals", "trucks", "qhse", "maintenance", "certificates", "alerts", "reports"],
-      operador: ["dashboard", "quality", "tv", "operations", "tanks", "fluids", "chemical-catalog", "chemicals", "trucks", "qhse", "alerts", "reports"],
-      logistica: ["dashboard", "quality",  "tv", "operations", "tanks", "fluids", "chemical-catalog", "chemicals", "trucks", "certificates", "alerts", "reports"],
+      supervisor: ["dashboard", "quality", "sanitation",  "tv", "operations", "vessel-registry", "tanks", "fluids", "chemical-catalog", "chemicals", "trucks", "qhse", "maintenance", "certificates", "alerts", "reports", "audit"],
+      lider: ["dashboard", "quality",  "tv", "operations", "vessel-registry", "tanks", "fluids", "chemical-catalog", "chemicals", "trucks", "qhse", "maintenance", "certificates", "alerts", "reports"],
+      operador: ["dashboard", "quality", "tv", "operations", "vessel-registry", "tanks", "fluids", "chemical-catalog", "chemicals", "trucks", "qhse", "alerts", "reports"],
+      logistica: ["dashboard", "quality",  "tv", "operations", "vessel-registry", "tanks", "fluids", "chemical-catalog", "chemicals", "trucks", "certificates", "alerts", "reports"],
       mecanico: ["dashboard", "quality", "tv", "maintenance", "certificates", "alerts", "reports"],
       qhse: ["dashboard", "quality",  "tv", "operations", "chemicals", "qhse", "certificates", "alerts", "reports"],
       tv: ["tv"],
@@ -818,6 +832,7 @@
     $("#modalBody").innerHTML = body;
     $("#modal").classList.remove("hidden");
     document.body.classList.add("modal-open");
+    syncOperationVessel($("#operationForm"));
     syncOperationCatalogFields($("#operationForm"));
     setOperationStep($("#operationForm"), 1);
     syncTruckForm($("#truckForm"));
@@ -825,6 +840,7 @@
     const modalForm = $("#modalBody form");
     if (modalForm?.id === "tankForm") clearLegacyTankDrafts();
     else if (modalForm) restoreFormDraft(modalForm);
+    if (modalForm?.id === "operationForm") syncOperationVessel(modalForm);
     setTimeout(() => {
       const firstField = $("#modalBody input:not([type='hidden']):not([disabled]), #modalBody select:not([disabled]), #modalBody textarea:not([disabled])");
       firstField?.focus({ preventScroll: true });
@@ -1468,7 +1484,8 @@
       c.from("vessel_positions").select("*").order("position_time", { ascending: false }).limit(3000),
       c.from("vessel_geofences").select("*").eq("active", true).order("created_at", { ascending: true }),
       c.from("vessel_ais_alerts").select("*").order("event_at", { ascending: false }).limit(1000),
-      c.from("vessel_ais_sync_runs").select("*").order("started_at", { ascending: false }).limit(100)
+      c.from("vessel_ais_sync_runs").select("*").order("started_at", { ascending: false }).limit(100),
+      c.from("vessel_registry").select("*").order("name", { ascending: true }).limit(2000)
     ]);
 
     if (results[0]?.error) throw results[0].error;
@@ -1479,7 +1496,8 @@
       vesselPositionHistory: !results[38]?.error,
       vesselGeofences: !results[39]?.error,
       vesselAlerts: !results[40]?.error,
-      vesselSyncRuns: !results[41]?.error
+      vesselSyncRuns: !results[41]?.error,
+      vesselRegistry: !results[42]?.error
     };
 
     results.forEach((result, index) => {
@@ -1534,7 +1552,7 @@
       operations: (results[5].data || []).map(x => {
         const linkedProduct = (results[2].data || []).find(item => item.id === x.fluid_type_id);
         return {
-        id: x.id, client: x.client, vessel: x.vessel, service_order: x.service_order || "",
+        id: x.id, client: x.client, vessel: x.vessel, vesselRegistryId: x.vessel_registry_id || null, service_order: x.service_order || "",
         rig: x.rig || "", well: x.well || "", ticketNumber: x.ticket_number || "",
         fluidTypeId: x.fluid_type_id || null,
         activity: x.activity, product: linkedProduct?.name || x.product, lot: x.lot || "",
@@ -1776,6 +1794,12 @@
         failed:Number(item.failed_count || 0), message:item.message || "",
         startedAt:item.started_at, finishedAt:item.finished_at, requestedBy:item.requested_by
       })),
+      vesselRegistry: (results[42].data || []).map(item => ({
+        id:item.id, name:item.name, imo:item.imo || "", mmsi:item.mmsi || "",
+        active:item.active !== false, createdBy:item.created_by, updatedBy:item.updated_by,
+        createdAt:item.created_at, updatedAt:item.updated_at
+      })),
+      vesselRegistryAvailable: optionalAvailability.vesselRegistry,
       vesselModuleAvailable: optionalAvailability.vessels,
       vesselPositionsAvailable: optionalAvailability.vesselPositions,
       vesselMonitoringAvailable: optionalAvailability.vesselPositionHistory && optionalAvailability.vesselGeofences && optionalAvailability.vesselAlerts
@@ -1942,6 +1966,7 @@
       ["Saneamento de Dados", "sanitation", renderSanitation],
       ["Painel TV", "tv", renderTv],
       ["Operações", "operations", renderOperations],
+      ["Cadastro de Embarcações", "vessel-registry", renderVesselRegistry],
       ["Tanques e silos", "tanks", renderTanks],
       ["Fluidos e granéis", "fluids", renderFluids],
       ["Catálogo químico", "chemical-catalog", renderChemicalCatalog],
@@ -2689,6 +2714,59 @@
       <div class="section-title">Registros que exigem conferência</div><div class="sanitation-grid">${issues.map(item=>`<article class="card sanitation-card"><div>${badge(item.type)}<h3>${esc(item.title)}</h3><p>${esc(item.detail)}</p></div><button class="btn small primary" data-sanitation-page="${item.page}" data-sanitation-id="${item.id}">Abrir registro</button></article>`).join("")||`<div class="card quality-all-good"><strong>✓ Base saneada</strong><p>Nenhum vínculo antigo pendente foi encontrado.</p></div>`}</div>`;
   }
 
+  function cleanVesselIdentifier(value = "", length = 0) {
+    const digits = String(value || "").replace(/\D/g, "");
+    return digits && (!length || digits.length === length) ? digits : "";
+  }
+
+  function vesselRegistryForm(item = {}) {
+    return `<form id="vesselRegistryForm" data-id="${item.id || ""}" novalidate><div class="form-grid">
+      <div class="wide"><label>Nome da embarcação *</label><input name="name" required maxlength="120" value="${esc(item.name || "")}" placeholder="Ex.: Starnav Ursus"></div>
+      <div><label>IMO</label><input name="imo" inputmode="numeric" maxlength="7" pattern="[0-9]{7}" value="${esc(item.imo || "")}" placeholder="7 dígitos"></div>
+      <div><label>MMSI</label><input name="mmsi" inputmode="numeric" maxlength="9" pattern="[0-9]{9}" value="${esc(item.mmsi || "")}" placeholder="9 dígitos"></div>
+      <div class="wide info-box"><strong>Identificação para o MarineTraffic:</strong> informe o IMO, o MMSI ou os dois. O botão da operação usará primeiro o IMO e depois o MMSI.</div>
+    </div>${formActions(item.id ? "Salvar alterações" : "Cadastrar embarcação")}</form>`;
+  }
+
+  async function saveVesselRegistry(payload, id = null) {
+    if (!canManageVesselRegistry()) throw new Error("Seu perfil não pode cadastrar ou editar embarcações.");
+    const name = String(payload.name || "").trim();
+    const rawImo = String(payload.imo || "").replace(/\D/g, "");
+    const rawMmsi = String(payload.mmsi || "").replace(/\D/g, "");
+    if (!name) throw new Error("Informe o nome da embarcação.");
+    if (rawImo && rawImo.length !== 7) throw new Error("O IMO precisa ter exatamente 7 dígitos.");
+    if (rawMmsi && rawMmsi.length !== 9) throw new Error("O MMSI precisa ter exatamente 9 dígitos.");
+    if (!rawImo && !rawMmsi) throw new Error("Informe pelo menos o IMO ou o MMSI.");
+    const row = { name, imo: rawImo || null, mmsi: rawMmsi || null, active: true, updated_by: state.user.id };
+    const query = id
+      ? state.client.from("vessel_registry").update(row).eq("id", id).select("id").single()
+      : state.client.from("vessel_registry").insert({ ...row, created_by: state.user.id }).select("id").single();
+    const { data, error } = await query;
+    if (error) {
+      if (String(error.code) === "23505") throw new Error("Já existe uma embarcação com este nome, IMO ou MMSI.");
+      if (String(error.code) === "23514") throw new Error("Confira o formato do IMO e do MMSI.");
+      throw error;
+    }
+    return data.id;
+  }
+
+  function renderVesselRegistry() {
+    const page = $("#page-vessel-registry");
+    if (!page) return;
+    const items = [...(state.data.vesselRegistry || [])].sort((a,b) => a.name.localeCompare(b.name, "pt-BR"));
+    const cards = items.map(item => `<article class="card vessel-registry-card">
+      <div class="vessel-registry-card-head"><div class="vessel-registry-icon">${uiIcon("anchor")}</div><div><small>EMBARCAÇÃO</small><h3>${esc(item.name)}</h3></div>${badge(item.active ? "Ativa" : "Inativa")}</div>
+      <div class="vessel-registry-identifiers"><span>IMO<strong>${esc(item.imo || "Não informado")}</strong></span><span>MMSI<strong>${esc(item.mmsi || "Não informado")}</strong></span></div>
+      <div class="vessel-registry-preview"><span>Destino do botão</span>${marineTrafficVesselButton({ vesselName:item.name, imo:item.imo, mmsi:item.mmsi }, true)}</div>
+      <div class="row-actions">${canManageVesselRegistry() ? `<button class="btn small primary" data-edit-vessel-registry="${item.id}">Editar</button>` : ""}${canDeleteVesselRegistry() ? `<button class="btn small danger" data-delete-vessel-registry="${item.id}">Excluir</button>` : ""}</div>
+    </article>`).join("");
+    const rows = items.map(item => `<tr><td><strong>${esc(item.name)}</strong></td><td>${esc(item.imo || "-")}</td><td>${esc(item.mmsi || "-")}</td><td>${marineTrafficVesselButton({ vesselName:item.name, imo:item.imo, mmsi:item.mmsi }, true)}</td><td><div class="row-actions">${canManageVesselRegistry() ? `<button class="btn small primary" data-edit-vessel-registry="${item.id}">Editar</button>` : ""}${canDeleteVesselRegistry() ? `<button class="btn small danger" data-delete-vessel-registry="${item.id}">Excluir</button>` : ""}</div></td></tr>`).join("");
+    page.innerHTML = header("Cadastro de Embarcações", "Cadastre o nome, IMO e MMSI uma única vez e selecione a embarcação nas operações programadas.", canManageVesselRegistry() ? `<button class="btn primary" data-action="new-vessel-registry">${uiIcon("plus", "ui-icon btn-icon")} Nova embarcação</button>` : "") +
+      `<section class="vessel-registry-hero"><div><span>CADASTRO MESTRE</span><h2>MarineTraffic sem erro de embarcação</h2><p>O vínculo pelo cadastro garante que cada botão abra o navio correto pelo IMO ou MMSI.</p></div><div class="vessel-registry-summary"><span>Embarcações cadastradas<strong>${items.length}</strong></span><span>Com IMO<strong>${items.filter(item=>item.imo).length}</strong></span><span>Com MMSI<strong>${items.filter(item=>item.mmsi).length}</strong></span></div></section>
+      <div class="vessel-registry-grid">${cards || `<div class="card empty">Nenhuma embarcação cadastrada.</div>`}</div>
+      <div class="card table-wrap desktop-record-table"><table class="data-table"><thead><tr><th>Embarcação</th><th>IMO</th><th>MMSI</th><th>MarineTraffic</th><th>Ações</th></tr></thead><tbody>${rows || `<tr><td colspan="5" class="empty">Nenhuma embarcação cadastrada.</td></tr>`}</tbody></table></div>`;
+  }
+
   function planningAssessment(operation) {
     const allocations = normalizedOperationAllocations(operation);
     const mode = tankMovementMode(operation.activity);
@@ -2831,7 +2909,8 @@
   function validateOperationStep(form, step) {
     if (step === 1) {
       if (!form.elements.client?.value.trim()) throw new Error("Informe o cliente.");
-      if (!form.elements.vessel?.value.trim()) throw new Error("Informe a embarcação.");
+      if (!form.elements.vessel_registry_id?.value) throw new Error("Selecione uma embarcação cadastrada.");
+      if (!form.elements.vessel?.value.trim()) throw new Error("A embarcação selecionada não possui nome válido.");
     }
     if (step === 2) {
       if (!form.elements.fluid_type_id?.value) throw new Error("Selecione o fluido ou granel.");
@@ -2844,6 +2923,22 @@
       if (mode !== "none" && apply) collectOperationAllocations(form);
     }
     return true;
+  }
+
+  function syncOperationVessel(form) {
+    if (!form) return;
+    const select = form.elements.vessel_registry_id;
+    const hiddenName = form.elements.vessel;
+    const info = form.querySelector("[data-operation-vessel-info]");
+    if (!select || !hiddenName) return;
+    const selected = (state.data?.vesselRegistry || []).find(item => item.id === select.value);
+    hiddenName.value = selected?.name || "";
+    if (info) {
+      info.textContent = selected
+        ? `IMO ${selected.imo || "não informado"} • MMSI ${selected.mmsi || "não informado"}`
+        : "Cadastre ou selecione a embarcação para abrir corretamente no MarineTraffic.";
+    }
+    updateOperationReview(form);
   }
 
   function updateOperationReview(form) {
@@ -2860,6 +2955,10 @@
 
   function operationForm(op = {}) {
     const responsibleOptions = state.data.users.map(user => `<option value="${user.id}" ${op.responsible_id === user.id ? "selected" : ""}>${esc(user.name)}</option>`).join("");
+    const registry = (state.data.vesselRegistry || []).filter(item => item.active !== false);
+    const matchedVessel = registry.find(item => item.id === op.vesselRegistryId) || registry.find(item => normalizeSearch(item.name) === normalizeSearch(op.vessel || ""));
+    const selectedVesselId = matchedVessel?.id || "";
+    const vesselOptions = registry.map(item => `<option value="${item.id}" ${selectedVesselId === item.id ? "selected" : ""}>${esc(item.name)}${item.imo ? ` • IMO ${esc(item.imo)}` : ""}${item.mmsi ? ` • MMSI ${esc(item.mmsi)}` : ""}</option>`).join("");
     const applied = op.tank_movement_applied === true && !isAdmin();
     const activity = op.activity || "Bombeio";
     const mode = tankMovementMode(activity);
@@ -2873,7 +2972,7 @@
     return `<form id="operationForm" data-id="${op.id || ""}" data-step="1" data-allocation-mode="${mode}" data-allocation-locked="${applied}" novalidate>${nav}
       <section class="operation-step active" data-operation-step="1"><div class="form-grid">
         <div><label>Cliente *</label><input name="client" required value="${esc(op.client || "")}"></div>
-        <div><label>Embarcação *</label><input name="vessel" required value="${esc(op.vessel || "")}"></div>
+        <div class="wide operation-vessel-field"><div class="catalog-linked-heading"><div><label>Embarcação cadastrada *</label><small>O IMO/MMSI será usado no botão MarineTraffic.</small></div>${canManageVesselRegistry() ? `<button type="button" class="btn small secondary" data-action="open-vessel-registry">Cadastrar embarcação</button>` : ""}</div><select name="vessel_registry_id" required><option value="">Selecione a embarcação</option>${vesselOptions}</select><input type="hidden" name="vessel" value="${esc(matchedVessel?.name || op.vessel || "")}"><small class="field-help" data-operation-vessel-info>${matchedVessel ? `IMO ${esc(matchedVessel.imo || "não informado")} • MMSI ${esc(matchedVessel.mmsi || "não informado")}` : "Cadastre ou selecione a embarcação para abrir corretamente no MarineTraffic."}</small>${op.vessel && !matchedVessel ? `<div class="message warning"><strong>Embarcação antiga não vinculada:</strong> ${esc(op.vessel)}. Selecione o cadastro correto antes de salvar.</div>` : ""}</div>
         <div><label>Sonda</label><input name="rig" value="${esc(op.rig || "")}" placeholder="Ex.: NS-58"></div>
         <div><label>Poço</label><input name="well" value="${esc(op.well || "")}" placeholder="Ex.: 7-WAH-12D-RJS"></div>
         <div><label>Número do ticket</label><input name="ticket_number" value="${esc(op.ticketNumber || "")}"></div>
@@ -3165,8 +3264,15 @@
   }
 
   function marineTrafficVesselUrl(item = {}) {
-    const identifier = String(item.mmsi || item.imo || item.vesselName || item.vessel || "").trim();
-    return `https://www.marinetraffic.com/en/ais/index/search/all/keyword:${encodeURIComponent(identifier)}`;
+    const imo = String(item.imo || "").replace(/\D/g, "");
+    const mmsi = String(item.mmsi || "").replace(/\D/g, "");
+    if (/^\d{7}$/.test(imo) && imo !== "0000000") {
+      return `https://www.marinetraffic.com/en/ais/details/ships/imo:${imo}`;
+    }
+    if (/^\d{9}$/.test(mmsi) && mmsi !== "000000000") {
+      return `https://www.marinetraffic.com/en/ais/details/ships/mmsi:${mmsi}`;
+    }
+    return "https://www.marinetraffic.com/en/ais/home";
   }
 
   function marineTrafficVesselButton(item, compact = false) {
@@ -3179,7 +3285,9 @@
   function marineTrafficOperationButton(operation, compact = false) {
     const vesselName = String(operation?.vessel || "").trim();
     if (!vesselName) return "";
-    const matched = (state.data.vessels || []).find(item => normalizeSearch(item.vesselName) === normalizeSearch(vesselName));
+    const registry = state.data?.vesselRegistry || [];
+    const matched = registry.find(item => item.id === operation?.vesselRegistryId)
+      || registry.find(item => normalizeSearch(item.name) === normalizeSearch(vesselName));
     return marineTrafficVesselButton({ vesselName, mmsi: matched?.mmsi || "", imo: matched?.imo || "" }, compact);
   }
 
@@ -5007,7 +5115,7 @@
 
   function userForm(user) {
     const modules = [
-      ["dashboard", "Dashboard"], ["quality", "Qualidade dos Dados"], ["sanitation", "Saneamento de Dados"], ["tv", "Painel TV"], ["operations", "Operações"], ["tanks", "Tanques"],
+      ["dashboard", "Dashboard"], ["quality", "Qualidade dos Dados"], ["sanitation", "Saneamento de Dados"], ["tv", "Painel TV"], ["operations", "Operações"], ["vessel-registry", "Cadastro de Embarcações"], ["tanks", "Tanques"],
       ["fluids", "Fluidos e Granéis"], ["chemical-catalog", "Catálogo Químico"], ["chemicals", "Inventário Químico"], ["trucks", "Carretas"], ["qhse", "QHSE"],
       ["maintenance", "Manutenção"], ["certificates", "Certificados"],
       ["alerts", "Alertas"], ["reports", "Relatórios"], ["audit", "Auditoria"]
@@ -5359,6 +5467,9 @@
     const executed = parseTankVolume(payload.executed || "0");
     const catalogItem = state.data.fluids.find(item => item.id === payload.fluid_type_id);
     if (!catalogItem) throw new Error("Selecione um produto cadastrado em Fluidos e Granéis.");
+    const selectedVessel = (state.data.vesselRegistry || []).find(item => item.id === payload.vessel_registry_id && item.active !== false);
+    if (!selectedVessel) throw new Error("Selecione uma embarcação ativa no Cadastro de Embarcações.");
+    payload.vessel = selectedVessel.name;
     const existing = id ? state.data.operations.find(item => item.id === id) : null;
     if (catalogItem.active === false && existing?.fluidTypeId !== catalogItem.id) {
       throw new Error("O produto selecionado está inativo. Ative-o em Fluidos e Granéis.");
@@ -5390,6 +5501,7 @@
     const operationPayload = {
       client: payload.client,
       vessel: payload.vessel,
+      vessel_registry_id: payload.vessel_registry_id || null,
       rig: payload.rig || null,
       well: payload.well || null,
       ticket_number: payload.ticket_number || null,
@@ -5422,6 +5534,10 @@
     if (error) throw error;
     const row = Array.isArray(data) ? data[0] : data;
     if (!row?.id) throw new Error("O Supabase não confirmou a operação e sua distribuição.");
+    if (payload.vessel_registry_id && payload.status !== "Concluída") {
+      const { error: linkError } = await state.client.from("operations").update({ vessel_registry_id: payload.vessel_registry_id }).eq("id", row.id);
+      if (linkError) throw new Error(`A operação foi salva, mas o vínculo da embarcação falhou: ${linkError.message}`);
+    }
     return row.id;
   }
 
@@ -5679,6 +5795,11 @@
           created_by: state.user.id
         });
         if (error) throw error;
+      }
+
+      if (form.id === "vesselRegistryForm") {
+        const payload = Object.fromEntries(new FormData(form));
+        await saveVesselRegistry(payload, form.dataset.id || null);
       }
 
       if (form.id === "operationForm") {
@@ -5951,7 +6072,7 @@
           throw new Error("O administrador atual não pode remover o próprio cargo.");
         }
         const permissions = {};
-        ["dashboard", "quality", "sanitation", "tv", "operations", "tanks", "fluids", "chemical-catalog", "chemicals", "trucks", "qhse", "maintenance", "certificates", "alerts", "reports", "audit"].forEach(module => {
+        ["dashboard", "quality", "sanitation", "tv", "operations", "vessel-registry", "tanks", "fluids", "chemical-catalog", "chemicals", "trucks", "qhse", "maintenance", "certificates", "alerts", "reports", "audit"].forEach(module => {
           permissions[module] = form.querySelector(`[name="perm_${module}"]`)?.checked === true;
         });
         if (payload.role === "tv") Object.keys(permissions).forEach(key => permissions[key] = key === "tv");
@@ -6295,6 +6416,8 @@
       return;
     }
     if (action === "new-operation") return openModal("Nova operação", operationForm(), "OPERAÇÃO");
+    if (action === "new-vessel-registry") { if (!canManageVesselRegistry()) return toast("Seu perfil não pode cadastrar embarcações.", "error"); return openModal("Cadastrar embarcação", vesselRegistryForm(), "EMBARCAÇÃO"); }
+    if (action === "open-vessel-registry") { closeModal(); showPage("vessel-registry"); return; }
     if (action === "new-vessel") { if (!canManageVessels()) return toast("Seu perfil não pode programar embarcações.", "error"); return openModal("Programar embarcação", vesselScheduleForm({ status:"Programada", priority:"Normal", unit:"bbl", operationType:"Bombeio" }), "EMBARCAÇÃO"); }
     if (action === "clear-vessel-filters") {
       state.vesselFilters = { query: "", client: "", status: "", window: "30" };
@@ -6585,6 +6708,26 @@
       return openModal(`Editar programação — ${vessel.vesselName}`, vesselScheduleForm(vessel), "EMBARCAÇÃO");
     }
 
+    if (button.dataset.editVesselRegistry) {
+      if (!canManageVesselRegistry()) return toast("Seu perfil não pode editar embarcações.", "error");
+      const vessel = (state.data.vesselRegistry || []).find(item => item.id === button.dataset.editVesselRegistry);
+      if (!vessel) return toast("Embarcação não localizada.", "error");
+      return openModal(`Editar embarcação — ${vessel.name}`, vesselRegistryForm(vessel), "EMBARCAÇÃO");
+    }
+
+    if (button.dataset.deleteVesselRegistry) {
+      if (!canDeleteVesselRegistry()) return toast("Somente Supervisor ou Administrador pode excluir embarcações.", "error");
+      const vessel = (state.data.vesselRegistry || []).find(item => item.id === button.dataset.deleteVesselRegistry);
+      if (!vessel) return toast("Embarcação não localizada.", "error");
+      const linked = (state.data.operations || []).filter(item => item.vesselRegistryId === vessel.id).length;
+      if (linked) return toast(`Esta embarcação está vinculada a ${linked} operação(ões) e não pode ser excluída.`, "error");
+      if (!confirm(`Excluir o cadastro de ${vessel.name}?`)) return;
+      const { error } = await state.client.from("vessel_registry").delete().eq("id", vessel.id);
+      if (error) return toast(error.message, "error");
+      await loadData(); renderAll(); showPage("vessel-registry", { history:false, scroll:false });
+      return toast("Embarcação excluída.", "success");
+    }
+
     if (button.dataset.editOperation) {
       const operation = state.data.operations.find(x => x.id === button.dataset.editOperation);
       return openModal("Editar operação", operationForm(operation), "OPERAÇÃO");
@@ -6710,6 +6853,7 @@
       syncTruckPlatformRow(event.target.closest("[data-truck-platform-row]"));
       updateTruckPlatformSummary(event.target.closest("#truckForm"));
     }
+    if (event.target.closest("#operationForm") && event.target.name === "vessel_registry_id") syncOperationVessel(event.target.closest("#operationForm"));
     if (event.target.closest("#operationForm") && event.target.name === "fluid_type_id") syncOperationCatalogFields(event.target.closest("#operationForm"), true);
     if (event.target.closest("#operationForm") && ["activity","status","apply_tank_movement"].includes(event.target.name)) syncOperationTankFields(event.target.closest("#operationForm"));
     if (event.target.closest("#operationForm") && event.target.matches("[data-allocation-tank]")) updateOperationAllocationSummary(event.target.closest("#operationForm"));

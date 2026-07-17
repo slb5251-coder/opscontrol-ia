@@ -42,6 +42,19 @@
       ]
     },
     {
+      "name": "Embarcações",
+      "short_name": "Embarcações",
+      "description": "Abrir mapa AIS e programação de embarcações",
+      "url": "./index.html#vessels",
+      "icons": [
+        {
+          "src": "assets/icon.svg",
+          "sizes": "any",
+          "type": "image/svg+xml"
+        }
+      ]
+    },
+    {
       "name": "Tanques e Silos",
       "short_name": "Tancagem",
       "description": "Abrir inventário da planta",
@@ -81,5 +94,5 @@
       ]
     }
   ],
-  "version": "20260716-v33-10-usuarios-configuracoes-profissionais-1"
+  "version": "20260716-v33-12-mapa-ais-alertas-profissional-1"
 }

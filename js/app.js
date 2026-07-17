@@ -12,7 +12,7 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const APP_VERSION = "20260716-v33-10-usuarios-configuracoes-profissionais-1";
+  const APP_VERSION = "20260716-v33-12-mapa-ais-alertas-profissional-1";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -30,6 +30,8 @@
     lastRefreshError: null,
     lastSync: null,
     filters: { start: "", end: "", client: "", product: "" },
+    vesselFilters: { query: "", client: "", status: "", window: "30" },
+    vesselMap: { instance: null, markers: new Map(), selected: "" },
     handover: { date: "", shift: "" },
     closing: { date: "", shift: "" },
     tv: { slide: 0, paused: false, timer: null, clockTimer: null, intervalMs: 15000 },
@@ -182,6 +184,7 @@
     sanitation: ["Saneamento de Dados", "Registros antigos e vínculos"],
     tv: ["Painel TV", "Exibição coletiva"],
     operations: ["Operações", "Serviços e movimentações"],
+    vessels: ["Embarcações", "Programação semanal e acompanhamento AIS"],
     tanks: ["Tanques e Silos", "Inventário da planta"],
     fluids: ["Fluidos e Granéis", "Catálogo de produtos"],
     "chemical-catalog": ["Catálogo Químico", "Nomes e unidades oficiais"],
@@ -227,7 +230,7 @@
 
   function mobileModuleButton(page, label, description = "") {
     const moduleIcons = {
-      fluids: "droplet", "chemical-catalog": "products", quality: "shield", sanitation: "database",
+      fluids: "droplet", "chemical-catalog": "products", quality: "shield", sanitation: "database", vessels: "anchor",
       reports: "gauge", chemicals: "flask", trucks: "truck", qhse: "shield", maintenance: "wrench",
       certificates: "file", alerts: "bell", audit: "check", settings: "settings", tv: "monitor"
     };
@@ -265,6 +268,7 @@
       ["quality", "Qualidade", "Conciliação e inconsistências"],
       ["sanitation", "Saneamento", "Corrigir vínculos antigos"],
       ["reports", "Relatórios", "Passagem e indicadores"],
+      ["vessels", "Embarcações", "Programação, ETA e acompanhamento AIS"],
       ["chemicals", "Químicos", "Estoque e validade"],
       ["trucks", "Carretas", "Entradas e saídas"],
       ["qhse", "QHSE", "Segurança e ocorrências"],
@@ -289,6 +293,9 @@
     }
     if (moduleAllowed("operations") && hasRole(["supervisor", "lider", "operador"])) {
       quickActions.push(mobileQuickButton("new-operation", "Nova operação", "Bombeio, fabricação, backload ou descarga", uiIcon("anchor")));
+    }
+    if (moduleAllowed("vessels") && canManageVessels()) {
+      quickActions.push(mobileQuickButton("new-vessel", "Programar embarcação", "ETA, berço, cliente e operação", uiIcon("anchor")));
     }
     if (moduleAllowed("trucks") && hasRole(["supervisor", "lider", "logistica"])) {
       quickActions.push(mobileQuickButton("new-truck", "Movimentar carreta", "Entrada, saída, NF e produto", uiIcon("truck")));
@@ -729,6 +736,10 @@
     return hasRole(["supervisor", "lider", "logistica"]);
   }
 
+  function canManageVessels() {
+    return hasRole(["supervisor", "lider", "logistica"]);
+  }
+
   function canManageChemicals() {
     return hasRole(["supervisor", "lider", "logistica", "qhse"]);
   }
@@ -762,10 +773,10 @@
     if (Object.prototype.hasOwnProperty.call(permissions, module)) return permissions[module] !== false;
 
     const defaults = {
-      supervisor: ["dashboard", "quality", "sanitation",  "tv", "operations", "tanks", "fluids", "chemical-catalog", "chemicals", "trucks", "qhse", "maintenance", "certificates", "alerts", "reports", "audit"],
-      lider: ["dashboard", "quality",  "tv", "operations", "tanks", "fluids", "chemical-catalog", "chemicals", "trucks", "qhse", "maintenance", "certificates", "alerts", "reports"],
-      operador: ["dashboard", "quality", "tv", "operations", "tanks", "fluids", "chemical-catalog", "chemicals", "trucks", "qhse", "alerts", "reports"],
-      logistica: ["dashboard", "quality",  "tv", "operations", "tanks", "fluids", "chemical-catalog", "chemicals", "trucks", "certificates", "alerts", "reports"],
+      supervisor: ["dashboard", "quality", "sanitation",  "tv", "operations", "vessels", "tanks", "fluids", "chemical-catalog", "chemicals", "trucks", "qhse", "maintenance", "certificates", "alerts", "reports", "audit"],
+      lider: ["dashboard", "quality",  "tv", "operations", "vessels", "tanks", "fluids", "chemical-catalog", "chemicals", "trucks", "qhse", "maintenance", "certificates", "alerts", "reports"],
+      operador: ["dashboard", "quality", "tv", "operations", "vessels", "tanks", "fluids", "chemical-catalog", "chemicals", "trucks", "qhse", "alerts", "reports"],
+      logistica: ["dashboard", "quality",  "tv", "operations", "vessels", "tanks", "fluids", "chemical-catalog", "chemicals", "trucks", "certificates", "alerts", "reports"],
       mecanico: ["dashboard", "quality", "tv", "maintenance", "certificates", "alerts", "reports"],
       qhse: ["dashboard", "quality",  "tv", "operations", "chemicals", "qhse", "certificates", "alerts", "reports"],
       tv: ["tv"],
@@ -1011,6 +1022,7 @@
     return {
       generated_at: new Date().toISOString(), generated_by: d.profile?.name || "-", version: APP_VERSION,
       tanks: d.tanks || [], operations: d.operations || [], operationAllocations: d.operationAllocations || [],
+      vessels: d.vessels || [], vesselPositions: d.vesselPositions || [],
       trucks: d.trucks || [], truckItems: d.truckItems || [],
       chemicalProducts: d.chemicalProducts || [], chemicals: d.chemicals || [], chemicalMovements: d.chemicalMovements || [],
       closings:d.closings || [], closingItems:d.closingItems || [], inventoryCounts:d.inventoryCounts || [],
@@ -1042,6 +1054,10 @@
     if (kind === "operations") {
       const rows = filteredOperations().map(op => [op.client, op.vessel, op.rig, op.well, op.ticketNumber, op.service_order, op.activity, op.product, op.fluidTypeId, op.lot, op.planned, op.executed, op.unit, operationAllocationText(op), op.status, op.start_at, op.end_at, op.paused_minutes, op.tank_movement_applied ? "Aplicada" : "Não aplicada"]);
       return downloadCsv(`operacoes-${date}.csv`, ["Cliente", "Embarcação", "Sonda", "Poço", "Ticket", "OS", "Atividade", "Produto", "ID do produto", "Lote", "Planejado", "Executado", "Unidade", "Distribuição tanques/silos", "Status", "Início", "Término", "Parado (min)", "Tancagem"], rows);
+    }
+    if (kind === "vessels") {
+      const rows = filteredVessels().map(item => [item.vesselName, item.imo, item.mmsi, item.client, item.berth, item.destination, item.operationType, item.product, item.plannedQuantity, item.unit, item.eta, item.aisEta, item.distanceToPortNm ?? "", item.etb, item.etd, item.status, item.priority, item.aisEnabled ? "Sim" : "Não", item.aisSyncStatus, item.lastAisAt || ""]);
+      return downloadCsv(`embarcacoes-${date}.csv`, ["Embarcação", "IMO", "MMSI", "Cliente", "Berço", "Destino AIS", "Operação", "Produto", "Quantidade planejada", "Unidade", "ETA programado", "ETA AIS", "Distância ao Porto (mn)", "ETB", "ETD", "Status", "Prioridade", "AIS", "Status sincronização", "Último AIS"], rows);
     }
     if (kind === "tanks") {
       const rows = state.data.tanks.map(t => [t.phase, t.name, t.kind, t.product, t.lot, t.volume, t.capacity, t.unit, t.physicalCapacityM3 || "", t.status, t.updated_at]);
@@ -1447,10 +1463,25 @@
       c.from("chemical_products").select("*").order("name"),
       c.from("operational_closings").select("*").order("closing_date", { ascending: false }).order("shift", { ascending: true }).limit(200),
       c.from("closing_reconciliation_items").select("*").order("created_at", { ascending: false }).limit(10000),
-      c.from("inventory_counts").select("*").order("counted_at", { ascending: false }).limit(5000)
+      c.from("inventory_counts").select("*").order("counted_at", { ascending: false }).limit(5000),
+      c.from("vessel_schedules").select("*").order("eta", { ascending: true }).limit(1000),
+      c.from("latest_vessel_positions").select("*").order("position_time", { ascending: false }).limit(1000),
+      c.from("vessel_positions").select("*").order("position_time", { ascending: false }).limit(3000),
+      c.from("vessel_geofences").select("*").eq("active", true).order("created_at", { ascending: true }),
+      c.from("vessel_ais_alerts").select("*").order("event_at", { ascending: false }).limit(1000),
+      c.from("vessel_ais_sync_runs").select("*").order("started_at", { ascending: false }).limit(100)
     ]);
 
     if (results[0]?.error) throw results[0].error;
+
+    const optionalAvailability = {
+      vessels: !results[36]?.error,
+      vesselPositions: !results[37]?.error,
+      vesselPositionHistory: !results[38]?.error,
+      vesselGeofences: !results[39]?.error,
+      vesselAlerts: !results[40]?.error,
+      vesselSyncRuns: !results[41]?.error
+    };
 
     results.forEach((result, index) => {
       if (!result?.error) return;
@@ -1700,7 +1731,55 @@
         id:item.id, countedAt:item.counted_at, shift:item.shift, itemType:item.item_type,
         itemId:item.item_id, measured:Number(item.measured_quantity || 0),
         unit:item.unit, notes:item.notes || "", createdBy:item.created_by
-      }))
+      })),
+      vessels: (results[36].data || []).map(item => ({
+        id:item.id, vesselName:item.vessel_name, imo:item.imo || "", mmsi:item.mmsi || "",
+        client:item.client, berth:item.berth || "", operationType:item.operation_type || "Bombeio",
+        product:item.product || "", plannedQuantity:Number(item.planned_quantity || 0), unit:item.unit || "bbl",
+        eta:item.eta, etb:item.etb, etd:item.etd, destination:item.destination || "", status:item.status || "Programada",
+        priority:item.priority || "Normal", notes:item.notes || "", aisEnabled:item.ais_enabled === true,
+        aisProvider:item.ais_provider || "MarineTraffic", aisEta:item.ais_eta,
+        distanceToPortNm:item.distance_to_port_nm === null || item.distance_to_port_nm === undefined ? null : Number(item.distance_to_port_nm),
+        aisSyncStatus:item.ais_sync_status || "Pendente", aisSyncMessage:item.ais_sync_message || "",
+        lastAisAt:item.last_ais_at, createdBy:item.created_by, updatedBy:item.updated_by,
+        createdAt:item.created_at, updatedAt:item.updated_at
+      })),
+      vesselPositions: (results[37].data || []).map(item => ({
+        id:item.id, scheduleId:item.schedule_id, latitude:Number(item.latitude), longitude:Number(item.longitude),
+        speedKnots:item.speed_knots === null ? null : Number(item.speed_knots),
+        courseDegrees:item.course_degrees === null ? null : Number(item.course_degrees),
+        headingDegrees:item.heading_degrees === null ? null : Number(item.heading_degrees),
+        navigationStatus:item.navigation_status || "", positionTime:item.position_time,
+        source:item.source || "manual", createdAt:item.created_at
+      })),
+      vesselPositionHistory: (results[38].data || []).map(item => ({
+        id:item.id, scheduleId:item.schedule_id, latitude:Number(item.latitude), longitude:Number(item.longitude),
+        speedKnots:item.speed_knots === null ? null : Number(item.speed_knots),
+        courseDegrees:item.course_degrees === null ? null : Number(item.course_degrees),
+        headingDegrees:item.heading_degrees === null ? null : Number(item.heading_degrees),
+        navigationStatus:item.navigation_status || "", positionTime:item.position_time,
+        source:item.source || "manual", createdAt:item.created_at
+      })),
+      vesselGeofences: (results[39].data || []).map(item => ({
+        id:item.id, name:item.name, latitude:Number(item.latitude), longitude:Number(item.longitude),
+        radiusNm:Number(item.radius_nm || 25), alertOnEntry:item.alert_on_entry !== false,
+        active:item.active !== false, createdAt:item.created_at, updatedAt:item.updated_at
+      })),
+      vesselAisAlerts: (results[40].data || []).map(item => ({
+        id:item.id, scheduleId:item.schedule_id, type:item.alert_type, severity:item.severity,
+        title:item.title, message:item.message || "", eventAt:item.event_at,
+        resolvedAt:item.resolved_at, resolvedBy:item.resolved_by,
+        metadata:item.metadata || {}, createdAt:item.created_at
+      })),
+      vesselAisSyncRuns: (results[41].data || []).map(item => ({
+        id:item.id, provider:item.provider, status:item.status,
+        processed:Number(item.processed_count || 0), updated:Number(item.updated_count || 0),
+        failed:Number(item.failed_count || 0), message:item.message || "",
+        startedAt:item.started_at, finishedAt:item.finished_at, requestedBy:item.requested_by
+      })),
+      vesselModuleAvailable: optionalAvailability.vessels,
+      vesselPositionsAvailable: optionalAvailability.vesselPositions,
+      vesselMonitoringAvailable: optionalAvailability.vesselPositionHistory && optionalAvailability.vesselGeofences && optionalAvailability.vesselAlerts
     };
     state.data.systemAlerts = [...state.data.systemAlerts, ...state.data.alertCenter]
       .filter((item,index,all) => all.findIndex(other => String(other.id || other.alert_key || other.title) === String(item.id || item.alert_key || item.title)) === index);
@@ -1863,6 +1942,7 @@
       ["Saneamento de Dados", "sanitation", renderSanitation],
       ["Painel TV", "tv", renderTv],
       ["Operações", "operations", renderOperations],
+      ["Embarcações", "vessels", renderVessels],
       ["Tanques e silos", "tanks", renderTanks],
       ["Fluidos e granéis", "fluids", renderFluids],
       ["Catálogo químico", "chemical-catalog", renderChemicalCatalog],
@@ -1929,20 +2009,28 @@
     const volume = Number(tank.volume || 0);
     const capacity = Number(tank.capacity || 0);
     const pct = capacity > 0 ? Math.max(0, Math.min(100, volume / capacity * 100)) : 0;
-    const visualPct = volume > 0 ? Math.max(2, pct) : 0;
     const tone = productClass(tank.product, tank.kind, volume);
     const status = tank.status || (volume > 0 ? "Operacional" : "Vazio");
+    const equipmentType = esc(tank.kind || "Equipamento");
+    const location = esc(tank.phase || "B-Port LMP");
+    const product = esc(tank.product || (volume > 0 ? "Produto não informado" : "Sem produto"));
+    const secondary = tank.client ? esc(tank.client) : location;
+    const trailingMeta = tank.lot ? `Lote ${esc(tank.lot)}` : equipmentType;
     return `<article class="tv-equipment-tile ${tone} ${status === "Bloqueado" ? "blocked" : ""}">
-      <div class="tv-equipment-head"><strong>${esc(tank.name)}</strong><span>${esc(status)}</span></div>
-      <div class="tv-equipment-body">
-        <div class="tv-equipment-gauge"><span style="height:${visualPct}%"></span><b>${fmt.format(pct)}%</b></div>
-        <div class="tv-equipment-info">
-          <h3>${esc(tank.product || (volume > 0 ? "Produto não informado" : "Vazio"))}</h3>
-          <p>${tank.client ? esc(tank.client) : esc(tank.phase || "B-Port LMP")}</p>
-          <strong>${fmt.format(volume)} <small>/ ${fmt.format(capacity)} ${esc(tank.unit)}</small></strong>
-          <em>${tank.lot ? `Lote ${esc(tank.lot)}` : esc(tank.kind || "Equipamento")}</em>
+      <div class="tv-equipment-head">
+        <div class="tv-equipment-title-wrap">
+          <strong>${esc(tank.name)}</strong>
+          <small>${equipmentType} • ${location}</small>
         </div>
+        <span class="tv-equipment-status-chip">${esc(status)}</span>
       </div>
+      <div class="tv-equipment-product-row">
+        <h3>${product}</h3>
+        <b>${fmt.format(pct)}%</b>
+      </div>
+      <div class="tv-equipment-progress"><span style="width:${pct}%"></span></div>
+      <div class="tv-equipment-values"><strong>${fmt.format(volume)} ${esc(tank.unit)}</strong><small>de ${fmt.format(capacity)} ${esc(tank.unit)}</small></div>
+      <div class="tv-equipment-meta"><span>${secondary}</span><span>${trailingMeta}</span></div>
     </article>`;
   }
 
@@ -2815,6 +2903,328 @@
         ${hasRole(["supervisor"])?`<div class="wide check-line"><input id="lockOperation" name="locked" type="checkbox" ${op.locked?"checked":""}><label for="lockOperation">Bloquear edição após o encerramento</label></div>`:""}
       </div><div class="operation-step-actions"><button type="button" class="btn secondary" data-action="operation-prev-step">Voltar</button><button class="btn primary">Salvar operação</button></div></section>
     </form>`;
+  }
+
+
+  function vesselLatestPosition(scheduleId) {
+    return (state.data.vesselPositions || []).find(item => item.scheduleId === scheduleId) || null;
+  }
+
+  function vesselGeofence() {
+    return (state.data.vesselGeofences || []).find(item => item.active) || {
+      id: "porto-acu-default", name: "Porto do Açu - zona operacional",
+      latitude: -21.846944, longitude: -40.997778, radiusNm: 25, alertOnEntry: true, active: true
+    };
+  }
+
+  function haversineNm(lat1, lon1, lat2, lon2) {
+    const toRad = value => Number(value) * Math.PI / 180;
+    const dLat = toRad(lat2 - lat1);
+    const dLon = toRad(lon2 - lon1);
+    const a = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) ** 2;
+    return 3440.065 * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  }
+
+  function vesselDistanceNm(item, position = vesselLatestPosition(item.id)) {
+    if (Number.isFinite(item.distanceToPortNm)) return item.distanceToPortNm;
+    if (!position) return null;
+    const zone = vesselGeofence();
+    return haversineNm(position.latitude, position.longitude, zone.latitude, zone.longitude);
+  }
+
+  function vesselSignalInfo(item) {
+    const position = vesselLatestPosition(item.id);
+    if (!item.aisEnabled) return { label: "AIS desativado", tone: "neutral", ageMinutes: null };
+    if (!position) return { label: "Aguardando posição", tone: "amber", ageMinutes: null };
+    const ageMinutes = Math.max(0, (Date.now() - new Date(position.positionTime).getTime()) / 60000);
+    if (ageMinutes > 120) return { label: `Sinal há ${Math.round(ageMinutes)} min`, tone: "red", ageMinutes };
+    if (ageMinutes > 30) return { label: `Atualizado há ${Math.round(ageMinutes)} min`, tone: "amber", ageMinutes };
+    return { label: ageMinutes < 2 ? "Posição ao vivo" : `Atualizado há ${Math.round(ageMinutes)} min`, tone: "green", ageMinutes };
+  }
+
+  function vesselEtaInfo(item) {
+    if (!item.eta) return { label: "Sem ETA", tone: "neutral", hours: null };
+    const eta = new Date(item.eta);
+    const hours = (eta.getTime() - Date.now()) / 3600000;
+    if (["Concluída", "Cancelada"].includes(item.status)) return { label: item.status, tone: statusClass(item.status), hours };
+    if (["Atracada", "Em operação"].includes(item.status)) return { label: item.status, tone: "green", hours };
+    if (hours < 0 || item.status === "Atrasada") return { label: "ETA vencido", tone: "red", hours };
+    if (hours <= 24) return { label: `${Math.max(0, Math.round(hours))}h para ETA`, tone: "amber", hours };
+    return { label: `${Math.ceil(hours / 24)} dia(s)`, tone: "blue", hours };
+  }
+
+  function filteredVessels() {
+    const filters = state.vesselFilters || {};
+    const query = String(filters.query || "").trim().toLowerCase();
+    const days = Number(filters.window || 0);
+    const limit = days > 0 ? Date.now() + days * 86400000 : null;
+    return [...(state.data.vessels || [])]
+      .filter(item => !query || [item.vesselName, item.imo, item.mmsi, item.client, item.berth, item.operationType, item.product, item.destination].some(value => String(value || "").toLowerCase().includes(query)))
+      .filter(item => !filters.client || item.client === filters.client)
+      .filter(item => !filters.status || item.status === filters.status)
+      .filter(item => !limit || !item.eta || new Date(item.eta).getTime() <= limit || ["Atracada", "Em operação", "Atrasada"].includes(item.status))
+      .sort((a, b) => new Date(a.eta || "2999-12-31").getTime() - new Date(b.eta || "2999-12-31").getTime());
+  }
+
+  function vesselPositionSummary(item) {
+    const position = vesselLatestPosition(item.id);
+    if (!position) return item.aisEnabled ? "Aguardando posição" : "AIS desativado";
+    const speed = position.speedKnots === null ? "-" : `${fmt.format(position.speedKnots)} kn`;
+    const distance = vesselDistanceNm(item, position);
+    return `${speed}${distance === null ? "" : ` • ${fmt.format(distance)} mn`} • ${dateTime(position.positionTime)}`;
+  }
+
+  function vesselAlertTone(severity = "") {
+    const value = String(severity).toLowerCase();
+    if (value.includes("crítica") || value.includes("critica")) return "red";
+    if (value.includes("alta")) return "amber";
+    if (value.includes("média") || value.includes("media")) return "blue";
+    return "neutral";
+  }
+
+  function vesselMapFallback() {
+    const container = $("#vesselAisMap");
+    if (!container) return;
+    const positions = state.data.vesselPositions || [];
+    container.innerHTML = `<div class="vessel-map-fallback"><strong>Mapa indisponível neste momento</strong><span>${positions.length ? `${positions.length} posição(ões) continuam disponíveis na lista.` : "Cadastre uma posição manual ou sincronize o AIS."}</span></div>`;
+  }
+
+  function initVesselMap() {
+    const container = $("#vesselAisMap");
+    if (!container || state.page !== "vessels") return;
+    if (!window.L) return vesselMapFallback();
+    if (state.vesselMap.instance) {
+      try { state.vesselMap.instance.remove(); } catch (_) {}
+      state.vesselMap.instance = null;
+      state.vesselMap.markers = new Map();
+    }
+    const zone = vesselGeofence();
+    const map = window.L.map(container, { zoomControl: true, attributionControl: true }).setView([zone.latitude, zone.longitude], 8);
+    state.vesselMap.instance = map;
+    window.L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+      maxZoom: 18,
+      attribution: "&copy; OpenStreetMap"
+    }).addTo(map);
+    window.L.circle([zone.latitude, zone.longitude], {
+      radius: Number(zone.radiusNm || 25) * 1852,
+      weight: 2,
+      fillOpacity: 0.08
+    }).addTo(map).bindTooltip(`${zone.name} • raio ${fmt.format(zone.radiusNm)} mn`);
+    window.L.circleMarker([zone.latitude, zone.longitude], { radius: 7, weight: 3, fillOpacity: 1 })
+      .addTo(map).bindPopup(`<strong>Porto do Açu</strong><br>${esc(zone.name)}`);
+
+    const bounds = window.L.latLngBounds([[zone.latitude, zone.longitude]]);
+    const all = state.data.vessels || [];
+    const history = state.data.vesselPositionHistory || [];
+    all.forEach(item => {
+      const route = history.filter(position => position.scheduleId === item.id)
+        .sort((a,b) => new Date(a.positionTime) - new Date(b.positionTime)).slice(-80);
+      if (route.length > 1) window.L.polyline(route.map(position => [position.latitude, position.longitude]), { weight: 3, opacity: state.vesselMap.selected && state.vesselMap.selected !== item.id ? 0.2 : 0.65 }).addTo(map);
+      const position = vesselLatestPosition(item.id);
+      if (!position) return;
+      const signal = vesselSignalInfo(item);
+      const distance = vesselDistanceNm(item, position);
+      const heading = Number.isFinite(position.headingDegrees) ? position.headingDegrees : Number.isFinite(position.courseDegrees) ? position.courseDegrees : 0;
+      const markerIcon = window.L.divIcon({
+        className: "vessel-map-marker-wrap",
+        html: `<span class="vessel-map-marker tone-${signal.tone}" style="transform:rotate(${heading}deg)">▲</span>`,
+        iconSize: [28, 28], iconAnchor: [14, 14]
+      });
+      const marker = window.L.marker([position.latitude, position.longitude], { icon: markerIcon })
+        .addTo(map)
+        .bindPopup(`<strong>${esc(item.vesselName)}</strong><br>${esc(item.client)}<br>${position.speedKnots === null ? "Velocidade indisponível" : `${fmt.format(position.speedKnots)} kn`}${distance === null ? "" : `<br>${fmt.format(distance)} mn do Porto do Açu`}<br><small>${esc(signal.label)}</small>`);
+      marker.on("click", () => { state.vesselMap.selected = item.id; });
+      state.vesselMap.markers.set(item.id, marker);
+      bounds.extend([position.latitude, position.longitude]);
+    });
+    if ((state.data.vesselPositions || []).length) map.fitBounds(bounds.pad(0.25), { maxZoom: 11 });
+    setTimeout(() => map.invalidateSize(), 80);
+  }
+
+  async function syncVesselAis(scheduleId = null) {
+    if (!canManageVessels()) throw new Error("Seu perfil não pode sincronizar o AIS.");
+    const { data, error } = await state.client.functions.invoke("sync-vessel-ais", { body: scheduleId ? { schedule_id: scheduleId } : {} });
+    if (error) {
+      let detail = error.message || "Falha ao sincronizar AIS.";
+      try { const body = await error.context?.json(); if (body?.message || body?.error) detail = body.message || body.error; } catch (_) {}
+      throw new Error(detail);
+    }
+    return data;
+  }
+
+  function vesselPositionForm(item) {
+    const position = vesselLatestPosition(item.id) || {};
+    return `<form id="vesselPositionForm" data-id="${item.id}"><div class="form-grid">
+      <div class="wide info-box"><strong>${esc(item.vesselName)}</strong><br>Use este registro manual quando a API AIS ainda não estiver configurada ou para corrigir uma posição operacional.</div>
+      <div><label>Latitude *</label><input name="latitude" type="number" min="-90" max="90" step="0.000001" required value="${position.latitude ?? ""}" placeholder="-21.846944"></div>
+      <div><label>Longitude *</label><input name="longitude" type="number" min="-180" max="180" step="0.000001" required value="${position.longitude ?? ""}" placeholder="-40.997778"></div>
+      <div><label>Velocidade (kn)</label><input name="speed_knots" type="number" min="0" step="0.1" value="${position.speedKnots ?? ""}"></div>
+      <div><label>Rumo / course (°)</label><input name="course_degrees" type="number" min="0" max="360" step="0.1" value="${position.courseDegrees ?? ""}"></div>
+      <div><label>Heading (°)</label><input name="heading_degrees" type="number" min="0" max="360" step="0.1" value="${position.headingDegrees ?? ""}"></div>
+      <div><label>Data e hora da posição *</label><input name="position_time" type="datetime-local" required value="${toLocalInput(new Date().toISOString())}"></div>
+      <div class="wide"><label>Status de navegação</label><input name="navigation_status" value="${esc(position.navigationStatus || "Manual")}" placeholder="Em navegação, fundeado, atracado..."></div>
+    </div>${formActions("Registrar posição")}</form>`;
+  }
+
+  async function saveVesselPosition(payload, scheduleId) {
+    if (!canManageVessels()) throw new Error("Seu perfil não pode registrar posições AIS.");
+    const latitude = Number(payload.latitude);
+    const longitude = Number(payload.longitude);
+    if (!Number.isFinite(latitude) || latitude < -90 || latitude > 90) throw new Error("Latitude inválida.");
+    if (!Number.isFinite(longitude) || longitude < -180 || longitude > 180) throw new Error("Longitude inválida.");
+    const positionTime = payload.position_time ? new Date(payload.position_time).toISOString() : new Date().toISOString();
+    const row = {
+      schedule_id: scheduleId, latitude, longitude,
+      speed_knots: payload.speed_knots === "" ? null : Number(payload.speed_knots),
+      course_degrees: payload.course_degrees === "" ? null : Number(payload.course_degrees),
+      heading_degrees: payload.heading_degrees === "" ? null : Number(payload.heading_degrees),
+      navigation_status: String(payload.navigation_status || "Manual").trim(),
+      position_time: positionTime, source: "manual"
+    };
+    const { error } = await state.client.from("vessel_positions").upsert(row, { onConflict: "schedule_id,position_time", ignoreDuplicates: false });
+    if (error) throw error;
+    const zone = vesselGeofence();
+    const distance = haversineNm(latitude, longitude, zone.latitude, zone.longitude);
+    const { error: updateError } = await state.client.from("vessel_schedules").update({
+      last_ais_at: positionTime, distance_to_port_nm: Number(distance.toFixed(2)),
+      ais_sync_status: "Manual", ais_sync_message: null, updated_by: state.user.id
+    }).eq("id", scheduleId);
+    if (updateError) throw updateError;
+  }
+
+  async function resolveVesselAlert(alertId) {
+    const { error } = await state.client.from("vessel_ais_alerts").update({ resolved_at: new Date().toISOString(), resolved_by: state.user.id }).eq("id", alertId);
+    if (error) throw error;
+  }
+
+  function renderVessels() {
+    if (state.vesselMap.instance) {
+      try { state.vesselMap.instance.remove(); } catch (_) {}
+      state.vesselMap.instance = null;
+      state.vesselMap.markers = new Map();
+    }
+    const page = $("#page-vessels");
+    const all = state.data.vessels || [];
+    const rows = filteredVessels();
+    const now = Date.now();
+    const weekEnd = now + 7 * 86400000;
+    const scheduledWeek = all.filter(item => item.eta && new Date(item.eta).getTime() >= now && new Date(item.eta).getTime() <= weekEnd && !["Concluída", "Cancelada"].includes(item.status)).length;
+    const atPort = all.filter(item => ["Atracada", "Em operação"].includes(item.status)).length;
+    const arriving24 = all.filter(item => {
+      if (!item.eta || ["Atracada", "Em operação", "Concluída", "Cancelada"].includes(item.status)) return false;
+      const diff = new Date(item.eta).getTime() - now;
+      return diff >= 0 && diff <= 86400000;
+    }).length;
+    const openAlerts = (state.data.vesselAisAlerts || []).filter(item => !item.resolvedAt);
+    const attention = Math.max(all.filter(item => vesselEtaInfo(item).tone === "red").length, openAlerts.filter(item => ["Alta","Crítica"].includes(item.severity)).length);
+    const clients = [...new Set(all.map(item => item.client).filter(Boolean))].sort();
+    const statuses = [...new Set(all.map(item => item.status).filter(Boolean))].sort();
+    const tracked = all.filter(item => item.aisEnabled).length;
+    const positioned = (state.data.vesselPositions || []).length;
+    const zone = vesselGeofence();
+    const latestRun = (state.data.vesselAisSyncRuns || [])[0];
+
+    const cards = rows.slice(0, 6).map(item => {
+      const etaInfo = vesselEtaInfo(item);
+      const signal = vesselSignalInfo(item);
+      const position = vesselLatestPosition(item.id);
+      const distance = vesselDistanceNm(item, position);
+      return `<article class="vessel-schedule-card tone-${etaInfo.tone}">
+        <div class="vessel-card-top"><span class="vessel-symbol">${uiIcon("anchor")}</span><div><small>${esc(item.client)}</small><h3>${esc(item.vesselName)}</h3></div>${badge(item.status)}</div>
+        <div class="vessel-card-grid"><span>ETA programado<strong>${item.eta ? dateTime(item.eta) : "Não informado"}</strong></span><span>ETA AIS<strong>${item.aisEta ? dateTime(item.aisEta) : "Não disponível"}</strong></span><span>Berço<strong>${esc(item.berth || "A definir")}</strong></span><span>Carga<strong>${item.product ? `${esc(item.product)} • ${fmt.format(item.plannedQuantity)} ${esc(item.unit)}` : "A definir"}</strong></span></div>
+        <div class="vessel-live-strip"><span class="vessel-live-dot tone-${signal.tone}"></span><strong>${esc(signal.label)}</strong><small>${distance === null ? "Distância indisponível" : `${fmt.format(distance)} mn do Porto do Açu`}</small></div>
+        <div class="vessel-card-footer"><span class="vessel-eta-pill tone-${etaInfo.tone}">${esc(etaInfo.label)}</span><small>${position ? esc(vesselPositionSummary(item)) : item.aisEnabled ? "AIS aguardando sincronização" : "AIS não habilitado"}</small><button class="btn small secondary" data-focus-vessel="${item.id}" ${position ? "" : "disabled"}>Mapa</button>${canManageVessels() ? `<button class="btn small secondary" data-manual-vessel-position="${item.id}">Posição manual</button><button class="btn small primary" data-edit-vessel="${item.id}">Editar</button>` : ""}</div>
+      </article>`;
+    }).join("");
+
+    const tableRows = rows.map(item => {
+      const etaInfo = vesselEtaInfo(item);
+      const signal = vesselSignalInfo(item);
+      const distance = vesselDistanceNm(item);
+      return `<tr><td><strong>${esc(item.vesselName)}</strong><br><small>${item.imo ? `IMO ${esc(item.imo)}` : "IMO não informado"}${item.mmsi ? ` • MMSI ${esc(item.mmsi)}` : ""}</small></td><td>${esc(item.client)}<br><small>${esc(item.operationType)}</small></td><td>${item.eta ? dateTime(item.eta) : "-"}<br><small>${esc(etaInfo.label)}</small></td><td>${item.aisEta ? dateTime(item.aisEta) : "-"}<br><small>${distance === null ? "distância indisponível" : `${fmt.format(distance)} mn`}</small></td><td>${esc(item.berth || "A definir")}</td><td>${esc(item.product || "-")}<br><small>${fmt.format(item.plannedQuantity)} ${esc(item.unit)}</small></td><td>${badge(item.status)}<br><small>${esc(item.priority)}</small></td><td>${badge(signal.label)}<br><small>${esc(item.aisSyncStatus || "Pendente")}</small></td><td><div class="row-actions"><button class="btn small secondary" data-focus-vessel="${item.id}" ${vesselLatestPosition(item.id) ? "" : "disabled"}>Mapa</button>${canManageVessels() ? `<button class="btn small primary" data-edit-vessel="${item.id}">Editar</button>` : ""}</div></td></tr>`;
+    }).join("");
+
+    const positionRows = (state.data.vesselPositions || []).slice(0, 8).map(position => {
+      const vessel = all.find(item => item.id === position.scheduleId);
+      const signal = vessel ? vesselSignalInfo(vessel) : { tone:"neutral" };
+      const distance = vessel ? vesselDistanceNm(vessel, position) : null;
+      return `<button class="vessel-position-row" data-focus-vessel="${position.scheduleId}"><span class="vessel-position-dot tone-${signal.tone}"></span><div><strong>${esc(vessel?.vesselName || "Embarcação")}</strong><small>${fmt.format(position.latitude)}, ${fmt.format(position.longitude)} • ${position.speedKnots === null ? "velocidade indisponível" : `${fmt.format(position.speedKnots)} kn`}${distance === null ? "" : ` • ${fmt.format(distance)} mn`}</small></div><time>${dateTime(position.positionTime)}</time></button>`;
+    }).join("");
+
+    const alertRows = openAlerts.slice(0, 6).map(alert => {
+      const vessel = all.find(item => item.id === alert.scheduleId);
+      return `<div class="vessel-alert-row tone-${vesselAlertTone(alert.severity)}"><span>${uiIcon("alert")}</span><div><strong>${esc(alert.title)}</strong><small>${esc(vessel?.vesselName || "Embarcação")} • ${dateTime(alert.eventAt)}</small><p>${esc(alert.message)}</p></div>${canManageVessels() ? `<button class="btn small secondary" data-resolve-vessel-alert="${alert.id}">Resolver</button>` : ""}</div>`;
+    }).join("");
+
+    page.innerHTML = header("Mapa AIS e Programação", "Cronograma semanal conectado ao mapa, posições, rotas, geofence e alertas marítimos.",
+      `<button class="btn secondary" data-export="vessels">Exportar CSV</button>${canManageVessels() ? `<button class="btn secondary" data-action="sync-vessel-ais">Sincronizar AIS</button><button class="btn primary" data-action="new-vessel">+ Programar embarcação</button>` : ""}`) +
+      `${!state.data.vesselModuleAvailable ? `<div class="card module-error-card"><strong>Estrutura do banco não encontrada.</strong><p>Execute as migrações v33.11 e v33.12 para habilitar o módulo.</p></div>` : ""}` +
+      `${!state.data.vesselMonitoringAvailable ? `<div class="card module-error-card"><strong>Monitoramento AIS parcialmente indisponível.</strong><p>A programação continua funcionando, mas mapa, histórico ou alertas precisam da migração v33.12.</p></div>` : ""}` +
+      `<section class="vessel-kpi-grid">${statCard("Próximos 7 dias", fmt.format(scheduledWeek), "embarcações programadas", uiIcon("anchor"), `${all.length} no cronograma`, "blue")}${statCard("Na planta / porto", fmt.format(atPort), "atracadas ou em operação", uiIcon("gauge"), "Acompanhamento operacional", "green")}${statCard("ETA em 24h", fmt.format(arriving24), "chegadas previstas", uiIcon("hourglass"), arriving24 ? "Preparar atendimento" : "Sem chegada imediata", "orange")}${statCard("Alertas AIS", fmt.format(openAlerts.length), "ocorrências abertas", uiIcon("alert"), attention ? "Requer atenção" : "Monitoramento regular", "red")}</section>
+      <section class="card vessel-filter-bar"><div><label>Buscar</label><input data-vessel-filter="query" value="${esc(state.vesselFilters.query)}" placeholder="Embarcação, IMO, MMSI, cliente ou produto"></div><div><label>Cliente</label><select data-vessel-filter="client"><option value="">Todos</option>${clients.map(value => `<option ${state.vesselFilters.client === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></div><div><label>Status</label><select data-vessel-filter="status"><option value="">Todos</option>${statuses.map(value => `<option ${state.vesselFilters.status === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></div><div><label>Janela</label><select data-vessel-filter="window">${[[7,"7 dias"],[14,"14 dias"],[30,"30 dias"],[0,"Todos"]].map(([value,label]) => `<option value="${value}" ${String(state.vesselFilters.window) === String(value) ? "selected" : ""}>${label}</option>`).join("")}</select></div></section>
+      <section class="vessel-map-command"><div class="card vessel-map-card"><div class="professional-section-heading"><div><small>MAPA OPERACIONAL</small><h3>Posições e rotas AIS</h3></div><span>${positioned} embarcação(ões) posicionada(s)</span></div><div id="vesselAisMap" class="vessel-ais-map" aria-label="Mapa AIS das embarcações"></div><div class="vessel-map-legend"><span><i class="tone-green"></i> Atual</span><span><i class="tone-amber"></i> Atenção</span><span><i class="tone-red"></i> Sinal antigo</span><span><i class="geofence"></i> Zona ${fmt.format(zone.radiusNm)} mn</span></div></div>
+      <aside class="card vessel-ais-panel"><div class="professional-section-heading"><div><small>CENTRAL AIS</small><h3>Monitoramento marítimo</h3></div>${badge(positioned ? "Com posições" : "Preparado")}</div><div class="vessel-ais-metrics"><span>Rastreamento habilitado<strong>${tracked}</strong></span><span>Posições atuais<strong>${positioned}</strong></span><span>Zona operacional<strong>${fmt.format(zone.radiusNm)} mn</strong></span><span>Última sincronização<strong>${latestRun ? dateTime(latestRun.startedAt) : "Nunca"}</strong></span></div><div class="ais-provider-status"><strong>MarineTraffic</strong><span>${latestRun ? `${esc(latestRun.status)} • ${latestRun.updated} atualizada(s)${latestRun.failed ? ` • ${latestRun.failed} falha(s)` : ""}` : "Edge Function instalada; chave da API pendente."}</span></div><div class="vessel-position-list">${positionRows || `<div class="empty">Nenhuma posição AIS sincronizada.</div>`}</div></aside></section>
+      <section class="vessel-command-grid"><div><div class="professional-section-heading"><div><small>PROGRAMAÇÃO PRIORITÁRIA</small><h3>Próximas embarcações</h3></div><span>${rows.length} registro(s)</span></div><div class="vessel-card-list">${cards || `<div class="card empty">Nenhuma embarcação encontrada para os filtros selecionados.</div>`}</div></div>
+      <aside class="card vessel-alert-panel"><div class="professional-section-heading"><div><small>ALERTAS AUTOMÁTICOS</small><h3>Chegada, ETA e sinal AIS</h3></div>${badge(openAlerts.length ? `${openAlerts.length} aberto(s)` : "Regular")}</div><div class="vessel-alert-list">${alertRows || `<div class="empty">Nenhum alerta AIS aberto.</div>`}</div></aside></section>
+      <div class="section-title professional-record-title"><span>Cronograma completo</span><small>${rows.length} registro(s)</small></div><div class="card table-wrap desktop-record-table professional-table"><table class="data-table"><thead><tr><th>Embarcação</th><th>Cliente / operação</th><th>ETA programado</th><th>ETA AIS / distância</th><th>Berço</th><th>Carga</th><th>Status</th><th>AIS</th><th>Ações</th></tr></thead><tbody>${tableRows || `<tr><td colspan="9" class="empty">Nenhuma embarcação programada.</td></tr>`}</tbody></table></div>`;
+    if (state.page === "vessels") setTimeout(initVesselMap, 0);
+  }
+
+  function vesselScheduleForm(item = {}) {
+    return `<form id="vesselScheduleForm" data-id="${item.id || ""}"><div class="form-grid">
+      <div class="wide"><label>Embarcação *</label><input name="vessel_name" required value="${esc(item.vesselName || "")}" placeholder="Ex.: Scotsman Tide"></div>
+      <div><label>IMO</label><input name="imo" value="${esc(item.imo || "")}" inputmode="numeric" placeholder="7 dígitos"></div>
+      <div><label>MMSI</label><input name="mmsi" value="${esc(item.mmsi || "")}" inputmode="numeric" placeholder="9 dígitos"></div>
+      <div><label>Cliente *</label><input name="client" required value="${esc(item.client || "")}" placeholder="Petrobras, PRIO, Equinor..."></div>
+      <div><label>Berço</label><input name="berth" value="${esc(item.berth || "")}" placeholder="Ex.: B-Port 2"></div>
+      <div><label>Destino AIS</label><input name="destination" value="${esc(item.destination || "")}" placeholder="Ex.: PORTO DO ACU"></div>
+      <div><label>Operação *</label><select name="operation_type">${["Bombeio","Backload","Load","Recebimento","Fabricação / apoio","Manuseio de granéis","Outro"].map(value => `<option ${item.operationType === value ? "selected" : ""}>${value}</option>`).join("")}</select></div>
+      <div><label>Produto / fluido</label><input name="product" value="${esc(item.product || "")}" placeholder="Brine, WBM, SBM, Barita..."></div>
+      <div><label>Quantidade planejada</label><input name="planned_quantity" type="number" min="0" step="0.01" value="${item.plannedQuantity || 0}"></div>
+      <div><label>Unidade</label><select name="unit">${["bbl","ton","m³","kg","unidade"].map(value => `<option ${item.unit === value ? "selected" : ""}>${value}</option>`).join("")}</select></div>
+      <div><label>ETA</label><input name="eta" type="datetime-local" value="${toLocalInput(item.eta)}"></div>
+      <div><label>ETB / Atracação</label><input name="etb" type="datetime-local" value="${toLocalInput(item.etb)}"></div>
+      <div><label>ETD / Saída</label><input name="etd" type="datetime-local" value="${toLocalInput(item.etd)}"></div>
+      <div><label>Status</label><select name="status">${["Programada","Em aproximação","Aguardando berço","Atracada","Em operação","Concluída","Atrasada","Cancelada"].map(value => `<option ${item.status === value ? "selected" : ""}>${value}</option>`).join("")}</select></div>
+      <div><label>Prioridade</label><select name="priority">${["Baixa","Normal","Alta","Crítica"].map(value => `<option ${item.priority === value ? "selected" : ""}>${value}</option>`).join("")}</select></div>
+      <div class="wide checkbox-row"><input id="vesselAisEnabled" name="ais_enabled" type="checkbox" ${item.aisEnabled ? "checked" : ""}><label for="vesselAisEnabled">Habilitar acompanhamento AIS para esta embarcação</label></div>
+      <div class="wide"><label>Observações</label><textarea name="notes" placeholder="Janela operacional, restrições, documentação, contato...">${esc(item.notes || "")}</textarea></div>
+      <div class="wide info-box"><strong>Integração segura:</strong> informe MMSI ou IMO. O site chama a Edge Function <code>sync-vessel-ais</code>; a chave do MarineTraffic permanece somente nos segredos do Supabase.</div>
+    </div>${formActions(item.id ? "Salvar programação" : "Programar embarcação")}</form>`;
+  }
+
+  async function saveVesselSchedule(payload, id = null) {
+    if (!canManageVessels()) throw new Error("Seu perfil não pode alterar a programação de embarcações.");
+    const row = {
+      vessel_name: String(payload.vessel_name || "").trim(),
+      imo: String(payload.imo || "").trim() || null,
+      mmsi: String(payload.mmsi || "").trim() || null,
+      client: String(payload.client || "").trim(),
+      berth: String(payload.berth || "").trim() || null,
+      destination: String(payload.destination || "").trim() || null,
+      ais_provider: "MarineTraffic",
+      operation_type: payload.operation_type || "Bombeio",
+      product: String(payload.product || "").trim() || null,
+      planned_quantity: Number(payload.planned_quantity || 0),
+      unit: payload.unit || "bbl",
+      eta: payload.eta ? new Date(payload.eta).toISOString() : null,
+      etb: payload.etb ? new Date(payload.etb).toISOString() : null,
+      etd: payload.etd ? new Date(payload.etd).toISOString() : null,
+      status: payload.status || "Programada",
+      priority: payload.priority || "Normal",
+      notes: String(payload.notes || "").trim() || null,
+      ais_enabled: payload.ais_enabled === true,
+      updated_by: state.user.id
+    };
+    if (!row.vessel_name || !row.client) throw new Error("Informe a embarcação e o cliente.");
+    if (row.imo && !/^\d{7}$/.test(row.imo)) throw new Error("O IMO deve ter 7 dígitos.");
+    if (row.mmsi && !/^\d{9}$/.test(row.mmsi)) throw new Error("O MMSI deve ter 9 dígitos.");
+    const query = id
+      ? state.client.from("vessel_schedules").update(row).eq("id", id).select("id").single()
+      : state.client.from("vessel_schedules").insert({ ...row, created_by: state.user.id }).select("id").single();
+    const { data, error } = await query;
+    if (error) throw error;
+    return data.id;
   }
 
   function renderTanks() {
@@ -4495,7 +4905,7 @@
 
   function userForm(user) {
     const modules = [
-      ["dashboard", "Dashboard"], ["quality", "Qualidade dos Dados"], ["sanitation", "Saneamento de Dados"], ["tv", "Painel TV"], ["operations", "Operações"], ["tanks", "Tanques"],
+      ["dashboard", "Dashboard"], ["quality", "Qualidade dos Dados"], ["sanitation", "Saneamento de Dados"], ["tv", "Painel TV"], ["operations", "Operações"], ["vessels", "Embarcações"], ["tanks", "Tanques"],
       ["fluids", "Fluidos e Granéis"], ["chemical-catalog", "Catálogo Químico"], ["chemicals", "Inventário Químico"], ["trucks", "Carretas"], ["qhse", "QHSE"],
       ["maintenance", "Manutenção"], ["certificates", "Certificados"],
       ["alerts", "Alertas"], ["reports", "Relatórios"], ["audit", "Auditoria"]
@@ -5018,6 +5428,7 @@
     } else {
       stopTvMode();
     }
+    if (page === "vessels") setTimeout(initVesselMap, 60);
     renderMobileShell();
   }
 
@@ -5105,6 +5516,11 @@
       return `O inventário químico possui ${d.chemicals.length} produto(s)/lote(s), sendo ${low.length} em baixo estoque e ${expired.length} vencido(s).`;
     }
 
+    if (q.includes("embarca") || q.includes("navio") || q.includes("eta")) {
+      const upcoming = (d.vessels || []).filter(item => item.eta && new Date(item.eta) >= new Date() && !["Concluída", "Cancelada"].includes(item.status)).sort((a,b)=>new Date(a.eta)-new Date(b.eta));
+      return upcoming.length ? `Próxima embarcação: ${upcoming[0].vesselName}, cliente ${upcoming[0].client}, ETA ${dateTime(upcoming[0].eta)}.` : "Não há embarcações futuras programadas.";
+    }
+
     if (q.includes("carreta")) {
       const weekAgo = Date.now() - 7 * 86400000;
       const total = d.trucks.filter(item => new Date(`${item.date}T12:00`) >= weekAgo).length;
@@ -5128,7 +5544,7 @@
       const blocked = d.tanks.filter(t => t.status === "Bloqueado");
       return blocked.length ? `Tanques bloqueados: ${blocked.map(x => x.name).join(", ")}.` : "Não há tanques bloqueados.";
     }
-    return "Posso responder sobre Brine, WBM, SBM, Barita, inventário químico, carretas, diesel, certificados e tanques bloqueados.";
+    return "Posso responder sobre Brine, WBM, SBM, Barita, embarcações, ETA, inventário químico, carretas, diesel, certificados e tanques bloqueados.";
   }
 
   document.addEventListener("submit", async event => {
@@ -5172,6 +5588,17 @@
         const allocations = collectOperationAllocations(form);
         const recordId = await saveOperation(payload, form.dataset.id || null, allocations);
         if (files.length) await uploadAttachments("operation", recordId, files);
+      }
+
+      if (form.id === "vesselScheduleForm") {
+        const payload = Object.fromEntries(new FormData(form));
+        payload.ais_enabled = form.querySelector('[name="ais_enabled"]')?.checked === true;
+        await saveVesselSchedule(payload, form.dataset.id || null);
+      }
+
+      if (form.id === "vesselPositionForm") {
+        const payload = Object.fromEntries(new FormData(form));
+        await saveVesselPosition(payload, form.dataset.id);
       }
 
       if (form.id === "tankForm") {
@@ -5422,7 +5849,7 @@
           throw new Error("O administrador atual não pode remover o próprio cargo.");
         }
         const permissions = {};
-        ["dashboard", "quality", "sanitation", "tv", "operations", "tanks", "fluids", "chemical-catalog", "chemicals", "trucks", "qhse", "maintenance", "certificates", "alerts", "reports", "audit"].forEach(module => {
+        ["dashboard", "quality", "sanitation", "tv", "operations", "vessels", "tanks", "fluids", "chemical-catalog", "chemicals", "trucks", "qhse", "maintenance", "certificates", "alerts", "reports", "audit"].forEach(module => {
           permissions[module] = form.querySelector(`[name="perm_${module}"]`)?.checked === true;
         });
         if (payload.role === "tv") Object.keys(permissions).forEach(key => permissions[key] = key === "tv");
@@ -5766,6 +6193,19 @@
       return;
     }
     if (action === "new-operation") return openModal("Nova operação", operationForm(), "OPERAÇÃO");
+    if (action === "new-vessel") { if (!canManageVessels()) return toast("Seu perfil não pode programar embarcações.", "error"); return openModal("Programar embarcação", vesselScheduleForm({ status:"Programada", priority:"Normal", unit:"bbl", operationType:"Bombeio" }), "EMBARCAÇÃO"); }
+    if (action === "sync-vessel-ais") {
+      try {
+        button.disabled = true; button.textContent = "Sincronizando...";
+        const result = await syncVesselAis();
+        await loadData(); renderAll(); showPage("vessels", { history:false, scroll:false });
+        return toast(`AIS sincronizado: ${result.updated || 0} atualizada(s), ${result.failed || 0} falha(s).`, result.failed ? "normal" : "success");
+      } catch (error) {
+        return toast(error.message, "error");
+      } finally {
+        button.disabled = false; button.textContent = "Sincronizar AIS";
+      }
+    }
     if (action === "new-tank-transfer") return openModal("Transferência entre tanques", tankTransferForm(), "TRANSFERÊNCIA");
     if (action === "new-user") return openModal("Novo usuário", newUserForm(), "USUÁRIO");
     if (action === "show-fefo") {
@@ -5981,6 +6421,40 @@
       await loadData(); renderAll(); return toast("Movimentação aplicada à tancagem.", "success");
     }
 
+    if (button.dataset.focusVessel) {
+      const vessel = state.data.vessels.find(x => x.id === button.dataset.focusVessel);
+      const position = vesselLatestPosition(button.dataset.focusVessel);
+      if (!vessel || !position) return toast("Esta embarcação ainda não possui posição.", "error");
+      state.vesselMap.selected = vessel.id;
+      showPage("vessels", { history:false, scroll:false });
+      setTimeout(() => {
+        initVesselMap();
+        const marker = state.vesselMap.markers.get(vessel.id);
+        if (marker && state.vesselMap.instance) { state.vesselMap.instance.setView(marker.getLatLng(), 10); marker.openPopup(); }
+      }, 80);
+      return;
+    }
+
+    if (button.dataset.manualVesselPosition) {
+      if (!canManageVessels()) return toast("Seu perfil não pode registrar posições.", "error");
+      const vessel = state.data.vessels.find(x => x.id === button.dataset.manualVesselPosition);
+      if (!vessel) return toast("Embarcação não localizada.", "error");
+      return openModal(`Posição manual — ${vessel.vesselName}`, vesselPositionForm(vessel), "AIS MANUAL");
+    }
+
+    if (button.dataset.resolveVesselAlert) {
+      if (!canManageVessels()) return toast("Seu perfil não pode resolver alertas AIS.", "error");
+      try { await resolveVesselAlert(button.dataset.resolveVesselAlert); await loadData(); renderAll(); showPage("vessels", { history:false, scroll:false }); return toast("Alerta AIS resolvido.", "success"); }
+      catch (error) { return toast(error.message, "error"); }
+    }
+
+    if (button.dataset.editVessel) {
+      if (!canManageVessels()) return toast("Seu perfil não pode editar embarcações.", "error");
+      const vessel = state.data.vessels.find(x => x.id === button.dataset.editVessel);
+      if (!vessel) return toast("Embarcação não localizada.", "error");
+      return openModal(`Editar programação — ${vessel.vesselName}`, vesselScheduleForm(vessel), "EMBARCAÇÃO");
+    }
+
     if (button.dataset.editOperation) {
       const operation = state.data.operations.find(x => x.id === button.dataset.editOperation);
       return openModal("Editar operação", operationForm(operation), "OPERAÇÃO");
@@ -6094,6 +6568,7 @@
   document.addEventListener("change", async event => {
     if (event.target.matches("[data-tank-filter]")) applyTankFilters();
     if (event.target.matches("[data-chemical-filter]")) applyChemicalFilters();
+    if (event.target.matches("[data-vessel-filter]")) { state.vesselFilters[event.target.dataset.vesselFilter] = event.target.value; renderVessels(); }
     const changedForm = event.target.closest("#modalBody form");
     if (changedForm) scheduleDraftSave(changedForm);
     if (event.target.closest("#truckForm") && event.target.name === "truck_type") syncTruckForm(event.target.closest("#truckForm"), true);
@@ -6132,6 +6607,7 @@
   document.addEventListener("input", event => {
     if (event.target.matches("[data-tank-filter]")) applyTankFilters();
     if (event.target.matches("[data-chemical-filter]")) applyChemicalFilters();
+    if (event.target.matches("[data-vessel-filter]")) { state.vesselFilters[event.target.dataset.vesselFilter] = event.target.value; renderVessels(); }
     if (event.target.closest("#operationForm")) updateOperationReview(event.target.closest("#operationForm"));
     if (event.target.id === "globalSearchInput") {
       state.searchQuery = event.target.value;

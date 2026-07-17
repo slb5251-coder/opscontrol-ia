@@ -1,11 +1,11 @@
-const CACHE="opscontrol-20260717-v33-12-9-silos-capacity-model";
+const CACHE="opscontrol-20260717-v33-12-10-silo-auto-capacity";
 const FILES=[
   "./",
   "./index.html",
-  "./app.css?v=20260717-v33-12-9-silos-capacity-model",
-  "./v33.css?v=20260717-v33-12-9-silos-capacity-model",
-  "./js/config.js?v=20260717-v33-12-9-silos-capacity-model",
-  "./js/app.js?v=20260717-v33-12-9-silos-capacity-model",
+  "./app.css?v=20260717-v33-12-10-silo-auto-capacity",
+  "./v33.css?v=20260717-v33-12-10-silo-auto-capacity",
+  "./js/config.js?v=20260717-v33-12-10-silo-auto-capacity",
+  "./js/app.js?v=20260717-v33-12-10-silo-auto-capacity",
   "./manifest.json",
   "./assets/icon.svg","./vendor/qrcode.js"
 ];

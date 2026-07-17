@@ -1536,7 +1536,7 @@
         densityUnit: x.density_unit || (["granel", "insumo"].includes(String(x.category || "").toLowerCase()) ? "t/m³" : "ppg"),
         active: x.active !== false
       })),
-      tanks: withVirtualSiloModels((results[3].data || []).map(x => ({
+      tanks: applySiloCapacityModels((results[3].data || []).map(x => ({
         id: x.id, name: x.name, phase: x.phase, kind: x.kind,
         capacity: Number(x.capacity), unit: x.unit, volume: Number(x.current_volume || 0),
         physicalCapacityM3: x.physical_capacity_m3 === null || x.physical_capacity_m3 === undefined
@@ -3438,53 +3438,26 @@
     return data.id;
   }
 
-  function withVirtualSiloModels(tanks) {
-    const list = Array.isArray(tanks) ? [...tanks] : [];
-    const hasCutSilo = list.some(item => normalizeTankName(item?.name).includes("silo de corte"));
-    if (!hasCutSilo) {
-      list.push({
-        id: "virtual-silo-corte-phase1",
-        name: "Silo de Corte",
-        phase: "Phase #1",
-        kind: "Silo",
-        capacity: 27,
-        unit: "ton",
-        volume: 0,
-        physicalCapacityM3: 14,
-        fluidTypeId: null,
-        product: "",
-        lot: "",
-        density: null,
-        densityUnit: "t/m³",
-        status: "Disponível",
-        order: 0,
-        updated_by: null,
-        updated_at: null,
-        virtual: true
-      });
-    }
-    return list
-      .map(item => {
-        const model = getSiloCapacityModel(item);
-        if (!model) return item;
-        const operational = siloCapacityForProduct(item, String(item.product || ""), "operational");
-        return {
-          ...item,
-          physicalCapacityM3: Number(item.physicalCapacityM3 || model.physicalCapacityM3 || 0),
-          capacity: Number(item.capacity || operational || 0),
-          unit: item.unit || "ton",
-          virtual: item.virtual === true
-        };
-      })
-      .sort((a,b) => Number(a.order || 0) - Number(b.order || 0) || String(a.name || "").localeCompare(String(b.name || ""), "pt-BR"));
+  function applySiloCapacityModels(tanks) {
+    return (Array.isArray(tanks) ? tanks : []).map(item => {
+      const model = getSiloCapacityModel(item);
+      if (!model) return item;
+      const operational = siloCapacityForProduct(item, String(item.product || ""), "operational");
+      return {
+        ...item,
+        physicalCapacityM3: Number(model.physicalCapacityM3 || item.physicalCapacityM3 || 0),
+        capacity: Number(operational || item.capacity || 0),
+        unit: item.unit || "ton"
+      };
+    });
   }
 
   function normalizeTankName(name = "") {
     return String(name || "")
       .normalize("NFD")
-      .replace(/[̀-ͯ]/g, "")
+      .replace(/[\u0300-\u036f]/g, "")
       .toLowerCase()
-      .replace(/\s+/g, " ")
+      .replace(/[^a-z0-9]+/g, "")
       .trim();
   }
 
@@ -3492,34 +3465,26 @@
     if (!isSiloAsset(tank)) return null;
     const key = normalizeTankName(tank?.name);
     const models = {
-      "silo de corte": { physicalCapacityM3: 14, capacities: { barita:{ operational:27, maximum:30 }, calcita:{ operational:16, maximum:18 }, bentonita:{ operational:12, maximum:14 } } },
-      "silo #1": { physicalCapacityM3: 42, capacities: { barita:{ operational:80, maximum:89 }, calcita:{ operational:49, maximum:55 }, bentonita:{ operational:37, maximum:41 } } },
-      "silo #2": { physicalCapacityM3: 42, capacities: { barita:{ operational:80, maximum:89 }, calcita:{ operational:49, maximum:55 }, bentonita:{ operational:37, maximum:41 } } },
-      "silo #3": { physicalCapacityM3: 28, capacities: { barita:{ operational:53, maximum:59 }, calcita:{ operational:33, maximum:36 }, bentonita:{ operational:25, maximum:27 } } },
-      "silo #4": { physicalCapacityM3: 28, capacities: { barita:{ operational:53, maximum:59 }, calcita:{ operational:33, maximum:36 }, bentonita:{ operational:25, maximum:27 } } },
-      "silo #5": { physicalCapacityM3: 34, capacities: { barita:{ operational:64, maximum:71 }, calcita:{ operational:39, maximum:44 }, bentonita:{ operational:29, maximum:33 } } },
-      "silo a": { physicalCapacityM3: 57, capacities: { barita:{ operational:106, maximum:118 }, calcita:{ operational:65, maximum:73 }, bentonita:{ operational:49, maximum:55 } } },
-      "silo b": { physicalCapacityM3: 57, capacities: { barita:{ operational:106, maximum:118 }, calcita:{ operational:65, maximum:73 }, bentonita:{ operational:49, maximum:55 } } },
-      "silo c": { physicalCapacityM3: 57, capacities: { barita:{ operational:106, maximum:118 }, calcita:{ operational:65, maximum:73 }, bentonita:{ operational:49, maximum:55 } } },
-      "silo d": { physicalCapacityM3: 57, capacities: { barita:{ operational:106, maximum:118 }, calcita:{ operational:65, maximum:73 }, bentonita:{ operational:49, maximum:55 } } }
+      silodecorte: { physicalCapacityM3: 14, capacities: { barita:{ operational:27, maximum:30 }, calcita:{ operational:16, maximum:18 }, bentonita:{ operational:12, maximum:14 } } },
+      silo1: { physicalCapacityM3: 42, capacities: { barita:{ operational:80, maximum:89 }, calcita:{ operational:49, maximum:55 }, bentonita:{ operational:37, maximum:41 } } },
+      silo2: { physicalCapacityM3: 42, capacities: { barita:{ operational:80, maximum:89 }, calcita:{ operational:49, maximum:55 }, bentonita:{ operational:37, maximum:41 } } },
+      silo3: { physicalCapacityM3: 28, capacities: { barita:{ operational:53, maximum:59 }, calcita:{ operational:33, maximum:36 }, bentonita:{ operational:25, maximum:27 } } },
+      silo4: { physicalCapacityM3: 28, capacities: { barita:{ operational:53, maximum:59 }, calcita:{ operational:33, maximum:36 }, bentonita:{ operational:25, maximum:27 } } },
+      silo5: { physicalCapacityM3: 34, capacities: { barita:{ operational:64, maximum:71 }, calcita:{ operational:39, maximum:44 }, bentonita:{ operational:29, maximum:33 } } },
+      siloa: { physicalCapacityM3: 57, capacities: { barita:{ operational:106, maximum:118 }, calcita:{ operational:65, maximum:73 }, bentonita:{ operational:49, maximum:55 } } },
+      silob: { physicalCapacityM3: 57, capacities: { barita:{ operational:106, maximum:118 }, calcita:{ operational:65, maximum:73 }, bentonita:{ operational:49, maximum:55 } } },
+      siloc: { physicalCapacityM3: 57, capacities: { barita:{ operational:106, maximum:118 }, calcita:{ operational:65, maximum:73 }, bentonita:{ operational:49, maximum:55 } } },
+      silod: { physicalCapacityM3: 57, capacities: { barita:{ operational:106, maximum:118 }, calcita:{ operational:65, maximum:73 }, bentonita:{ operational:49, maximum:55 } } }
     };
     return models[key] || null;
-  }
-
-  function siloCapacityProducts() {
-    return [
-      { key: "barita", label: "Barita" },
-      { key: "calcita", label: "Calcita" },
-      { key: "bentonita", label: "Bentonita" }
-    ];
   }
 
   function normalizeSiloProduct(product = "") {
     const normalized = normalizeTankName(product);
     if (!normalized) return "";
-    if (normalized.includes("barit")) return "barita";
-    if (normalized.includes("calcit")) return "calcita";
-    if (normalized.includes("benton")) return "bentonita";
+    if (normalized.includes("barita")) return "barita";
+    if (normalized.includes("calcita")) return "calcita";
+    if (normalized.includes("bentonita")) return "bentonita";
     return "";
   }
 
@@ -3528,31 +3493,6 @@
     const key = normalizeSiloProduct(product);
     if (!model || !key) return null;
     return Number(model.capacities?.[key]?.[level] || 0) || null;
-  }
-
-  function siloCapacityBadgeHtml(tank) {
-    const model = getSiloCapacityModel(tank);
-    if (!model) return "";
-    return `<div class="silo-capacity-badges">${siloCapacityProducts().map(item => {
-      const operational = model.capacities[item.key]?.operational;
-      const maximum = model.capacities[item.key]?.maximum;
-      return `<div class="silo-capacity-badge"><strong>${item.label}</strong><span>${fmt.format(operational)} ton operacional</span><small>${fmt.format(maximum)} ton máximo</small></div>`;
-    }).join("")}</div>`;
-  }
-
-  function renderSiloCapacityTable(phase, silos) {
-    const rows = silos.filter(item => getSiloCapacityModel(item));
-    if (!rows.length) return "";
-    const products = siloCapacityProducts();
-    const totals = products.reduce((acc, item) => {
-      acc[item.key] = rows.reduce((sum, silo) => sum + Number(getSiloCapacityModel(silo)?.capacities?.[item.key]?.operational || 0), 0);
-      acc[`${item.key}Max`] = rows.reduce((sum, silo) => sum + Number(getSiloCapacityModel(silo)?.capacities?.[item.key]?.maximum || 0), 0);
-      return acc;
-    }, {});
-    return `<div class="silo-capacity-table-wrap"><div class="silo-capacity-title"><div><h4>Matriz de capacidade dos silos</h4><p>Capacidade operacional e máxima por produto na ${esc(phase)}.</p></div></div><div class="silo-capacity-table-scroll"><table class="silo-capacity-table"><thead><tr><th>Silo</th>${products.map(item => `<th>${item.label}</th>`).join("")}</tr></thead><tbody>${rows.map(silo => {
-      const model = getSiloCapacityModel(silo);
-      return `<tr><th><strong>${esc(silo.name)}</strong><small>${fmt.format(model.physicalCapacityM3)} m³</small></th>${products.map(item => `<td><strong>${fmt.format(model.capacities[item.key].operational)} ton</strong><small>${fmt.format(model.capacities[item.key].maximum)} ton máx.</small></td>`).join("")}</tr>`;
-    }).join("")}<tr class="summary operational"><th>Capacidade operacional</th>${products.map(item => `<td><strong>${fmt.format(totals[item.key])} toneladas</strong></td>`).join("")}</tr><tr class="summary maximum"><th>Capacidade máxima</th>${products.map(item => `<td><strong>${fmt.format(totals[`${item.key}Max`])} toneladas</strong></td>`).join("")}</tr></tbody></table></div></div>`;
   }
 
   function renderTanks() {
@@ -3589,7 +3529,7 @@
         return `<section class="tancagem-phase-block" data-tank-phase-section="${esc(phase)}">
           <div class="phase-heading"><div><span>ÁREA OPERACIONAL</span><h2>${phase}</h2></div><small>${tanks.length} tanque(s) • ${silos.length} silo(s)</small></div>
           <div class="asset-group tank-asset-group" data-tank-kind-group="tank"><div class="asset-group-heading"><div class="asset-group-icon tank-group-icon">TK</div><div><h3>Tanques e Mix Tanks</h3><p>Fluidos, salmouras e produtos líquidos.</p></div></div><div class="grid tank-grid compact-tank-grid">${tanks.map(tankCard).join("") || `<div class="empty asset-empty">Nenhum tanque nesta fase.</div>`}</div></div>
-          <div class="asset-group silo-asset-group" data-tank-kind-group="silo"><div class="asset-group-heading"><div class="asset-group-icon silo-group-icon">SL</div><div><h3>Silos de Granéis</h3><p>Barita, bentonita, calcita e outros granéis.</p></div></div>${renderSiloCapacityTable(phase, silos)}<div class="grid tank-grid compact-tank-grid silo-grid">${silos.map(tankCard).join("") || `<div class="empty asset-empty">Nenhum silo nesta fase.</div>`}</div></div>
+          <div class="asset-group silo-asset-group" data-tank-kind-group="silo"><div class="asset-group-heading"><div class="asset-group-icon silo-group-icon">SL</div><div><h3>Silos de Granéis</h3><p>Barita, bentonita, calcita e outros granéis.</p></div></div><div class="grid tank-grid compact-tank-grid silo-grid">${silos.map(tankCard).join("") || `<div class="empty asset-empty">Nenhum silo nesta fase.</div>`}</div></div>
         </section>`;
       }).join("");
   }
@@ -3636,11 +3576,9 @@
         <span>Densidade: ${tank.density !== null && tank.density !== undefined ? `${fmt.format(tank.density)} ${esc(tank.densityUnit || (silo ? "t/m³" : "ppg"))}` : "não informada"}</span>
         ${silo ? `<span>Volume físico: ${fmt.format(physicalCapacity)} m³</span>` : ""}
       </div>
-      ${silo ? siloCapacityBadgeHtml(tank) : ""}
-
       <div class="tank-volume-line">
         <strong>${fmt.format(volume)} ${esc(tank.unit)}</strong>
-        <span>${silo ? "capacidade operacional" : "de"} ${fmt.format(capacity)} ${esc(tank.unit)}${silo && siloCapacityForProduct(tank, tank.product, "maximum") ? ` • máx. ${fmt.format(siloCapacityForProduct(tank, tank.product, "maximum"))} ton` : ""}</span>
+        <span>${silo ? "capacidade operacional" : "de"} ${fmt.format(capacity)} ${esc(tank.unit)}</span>
       </div>
 
       <div class="tank-progress ${productType} ${volumeState}" data-volume="${volume}" data-kind="${esc(tank.kind)}" role="progressbar"
@@ -3662,11 +3600,11 @@
       </div>
 
       <div class="row-actions">
-        ${!tank.virtual && hasRole(["supervisor", "lider", "operador", "logistica"]) ? `<button class="btn small primary" data-edit-tank="${tank.id}">Atualizar conteúdo</button>` : ""}
-        ${!tank.virtual && isAdmin() ? `<button class="btn small secondary admin-structure-btn" data-edit-tank-structure="${tank.id}">Editar estrutura</button>` : ""}
+        ${hasRole(["supervisor", "lider", "operador", "logistica"]) ? `<button class="btn small primary" data-edit-tank="${tank.id}">Atualizar conteúdo</button>` : ""}
+        ${isAdmin() ? `<button class="btn small secondary admin-structure-btn" data-edit-tank-structure="${tank.id}">Editar estrutura</button>` : ""}
         <button class="btn small secondary" data-tank-history="${tank.id}">Histórico</button>
-        ${!tank.virtual ? `<button class="btn small secondary" data-tank-movements="${tank.id}">Movimentações</button>` : ""}
-        ${!tank.virtual ? `<button class="btn small secondary" data-asset-qr="tank:${tank.id}">QR Code</button>` : `<span class="virtual-silo-note">Capacidade modelo aplicada para consulta operacional.</span>`}
+        <button class="btn small secondary" data-tank-movements="${tank.id}">Movimentações</button>
+        <button class="btn small secondary" data-asset-qr="tank:${tank.id}">QR Code</button>
       </div>
     </div>`;
   }
@@ -3823,9 +3761,17 @@
       return;
     }
 
+    const tank = state.data.tanks.find(item => item.id === form.dataset.tankId) || {
+      name: form.dataset.tankName || "",
+      kind: "Silo"
+    };
+    const option = form.elements.fluid_type_id?.selectedOptions?.[0];
+    const productName = option?.dataset?.product || "";
     const physical = parseOptionalDecimal(form.elements.physical_capacity_m3?.value);
     const density = parseOptionalDecimal(form.elements.density?.value);
-    const capacity = siloOperationalCapacity(physical, density);
+    const fixedCapacity = siloCapacityForProduct(tank, productName, "operational");
+    const maximumCapacity = siloCapacityForProduct(tank, productName, "maximum");
+    const capacity = fixedCapacity ?? siloOperationalCapacity(physical, density);
     const currentVolume = parseOptionalDecimal(form.elements.volume?.value) ?? 0;
     const operationalField = form.elements.operational_capacity;
 
@@ -3835,18 +3781,24 @@
     if (!preview) return;
     preview.classList.remove("hidden");
 
+    if (!form.elements.fluid_type_id?.value) {
+      preview.classList.remove("silo-capacity-danger");
+      preview.innerHTML = `<strong>Capacidade operacional automática</strong><span>Selecione o produto armazenado no silo.</span>`;
+      return;
+    }
+
     if (capacity === null) {
-      preview.innerHTML = `<strong>Capacidade operacional do silo</strong><span>Selecione um granel com densidade em t/m³.</span>`;
+      preview.classList.remove("silo-capacity-danger");
+      preview.innerHTML = `<strong>Capacidade operacional do silo</strong><span>Não foi possível calcular a capacidade para este produto.</span>`;
       return;
     }
 
     const free = Math.max(0, capacity - currentVolume);
     const exceeded = currentVolume > capacity;
     preview.classList.toggle("silo-capacity-danger", exceeded);
-    preview.innerHTML = `
-      <strong>${fmt.format(capacity)} ton de capacidade operacional</strong>
-      <span>${fmt.format(physical)} m³ × ${fmt.format(density)} t/m³</span>
-      <span>${exceeded ? `Saldo atual excede a nova capacidade em ${fmt.format(currentVolume-capacity)} ton.` : `${fmt.format(free)} ton disponíveis.`}</span>`;
+    preview.innerHTML = fixedCapacity !== null
+      ? `<strong>${fmt.format(capacity)} ton de capacidade operacional</strong><span>Calculada automaticamente para ${esc(productName)}.${maximumCapacity ? ` Capacidade máxima: ${fmt.format(maximumCapacity)} ton.` : ""}</span><span>${exceeded ? `Saldo atual excede a capacidade operacional em ${fmt.format(currentVolume-capacity)} ton.` : `${fmt.format(free)} ton disponíveis.`}</span>`
+      : `<strong>${fmt.format(capacity)} ton de capacidade operacional</strong><span>${fmt.format(physical)} m³ × ${fmt.format(density)} t/m³</span><span>${exceeded ? `Saldo atual excede a capacidade em ${fmt.format(currentVolume-capacity)} ton.` : `${fmt.format(free)} ton disponíveis.`}</span>`;
   }
 
   function syncTankCatalogFields(form) {
@@ -3887,7 +3839,9 @@
     const currentDensity = tank.density ?? linkedFluid?.density ?? "";
     const currentDensityUnit = silo ? "t/m³" : (tank.densityUnit || linkedFluid?.densityUnit || defaultDensityUnit(linkedFluid?.type, tank.kind));
     const physicalCapacity = defaultSiloPhysicalCapacity(tank);
-    const calculatedCapacity = siloOperationalCapacity(physicalCapacity, currentDensity) ?? tank.capacity;
+    const fixedOperationalCapacity = silo ? siloCapacityForProduct(tank, linkedFluid?.name || tank.product, "operational") : null;
+    const fixedMaximumCapacity = silo ? siloCapacityForProduct(tank, linkedFluid?.name || tank.product, "maximum") : null;
+    const calculatedCapacity = fixedOperationalCapacity ?? siloOperationalCapacity(physicalCapacity, currentDensity) ?? tank.capacity;
 
     return `<form id="tankForm"
       data-id="${tank.id}"
@@ -3983,7 +3937,7 @@
 
         <div class="wide silo-capacity-preview ${silo ? "" : "hidden"}" data-silo-capacity-preview>
           <strong>${fmt.format(calculatedCapacity)} ton de capacidade operacional</strong>
-          <span>${fmt.format(physicalCapacity)} m³ × ${currentDensity === "" ? "densidade não informada" : `${fmt.format(currentDensity)} t/m³`}</span>
+          <span>${fixedOperationalCapacity !== null ? `Calculada automaticamente para ${esc(linkedFluid?.name || tank.product || "o produto selecionado")}.${fixedMaximumCapacity ? ` Capacidade máxima: ${fmt.format(fixedMaximumCapacity)} ton.` : ""}` : `${fmt.format(physicalCapacity)} m³ × ${currentDensity === "" ? "densidade não informada" : `${fmt.format(currentDensity)} t/m³`}`}</span>
           <span>${fmt.format(Math.max(0, calculatedCapacity-tank.volume))} ton disponíveis.</span>
         </div>
 
@@ -5415,8 +5369,9 @@
     const fixedCapacity = !silo
       ? (adminFull ? parseTankVolume(payload.capacity) : Number(tank.capacity || 0))
       : null;
+    const fixedSiloCapacity = silo ? siloCapacityForProduct(tank, selectedFluid?.name || "", "operational") : null;
     const calculatedSiloCapacity = silo ? siloOperationalCapacity(physicalCapacityM3, newDensity) : null;
-    const newCapacity = silo ? (calculatedSiloCapacity ?? Number(tank.capacity || 0)) : fixedCapacity;
+    const newCapacity = silo ? (fixedSiloCapacity ?? calculatedSiloCapacity ?? Number(tank.capacity || 0)) : fixedCapacity;
 
     if (adminFull) {
       const requestedName = String(payload.name || "").trim();
@@ -5465,13 +5420,13 @@
       // O modo operacional usa uma função que não recebe nome, fase, tipo,
       // capacidade ou densidade. Isso elimina conflitos de nome e garante
       // que o produto seja derivado exclusivamente pelo ID do catálogo.
-      const rpcName = adminFull ? "admin_update_tank_product_capacity_v2" : "update_tank_content_v4";
+      const rpcName = adminFull ? "admin_update_tank_product_capacity_v2" : "update_tank_content_v9";
       const rpcPayload = adminFull ? {
         p_tank_id: targetTankId,
         p_name: payload.name?.trim(),
         p_phase: payload.phase,
         p_kind: payload.kind,
-        p_capacity: silo ? Number(tank.capacity || 0) : newCapacity,
+        p_capacity: newCapacity,
         p_physical_capacity_m3: physicalCapacityM3,
         p_unit: silo ? "ton" : payload.unit,
         p_display_order: Number(payload.display_order || 0),

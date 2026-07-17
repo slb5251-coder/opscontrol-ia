@@ -1,11 +1,11 @@
-const CACHE="opscontrol-20260717-v33-12-8-mobile-layout-fix";
+const CACHE="opscontrol-20260717-v33-12-9-silos-capacity-model";
 const FILES=[
   "./",
   "./index.html",
-  "./app.css?v=20260717-v33-12-8-mobile-layout-fix",
-  "./v33.css?v=20260717-v33-12-8-mobile-layout-fix",
-  "./js/config.js?v=20260717-v33-12-8-mobile-layout-fix",
-  "./js/app.js?v=20260717-v33-12-8-mobile-layout-fix",
+  "./app.css?v=20260717-v33-12-9-silos-capacity-model",
+  "./v33.css?v=20260717-v33-12-9-silos-capacity-model",
+  "./js/config.js?v=20260717-v33-12-9-silos-capacity-model",
+  "./js/app.js?v=20260717-v33-12-9-silos-capacity-model",
   "./manifest.json",
   "./assets/icon.svg","./vendor/qrcode.js"
 ];

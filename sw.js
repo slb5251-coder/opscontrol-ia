@@ -1,11 +1,11 @@
-const CACHE="opscontrol-20260717-v33-12-10-silo-auto-capacity";
+const CACHE="opscontrol-20260717-v33-12-11-tank-client";
 const FILES=[
   "./",
   "./index.html",
-  "./app.css?v=20260717-v33-12-10-silo-auto-capacity",
-  "./v33.css?v=20260717-v33-12-10-silo-auto-capacity",
-  "./js/config.js?v=20260717-v33-12-10-silo-auto-capacity",
-  "./js/app.js?v=20260717-v33-12-10-silo-auto-capacity",
+  "./app.css?v=20260717-v33-12-11-tank-client",
+  "./v33.css?v=20260717-v33-12-11-tank-client",
+  "./js/config.js?v=20260717-v33-12-11-tank-client",
+  "./js/app.js?v=20260717-v33-12-11-tank-client",
   "./manifest.json",
   "./assets/icon.svg","./vendor/qrcode.js"
 ];

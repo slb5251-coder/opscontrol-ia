@@ -12,7 +12,7 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const APP_VERSION = "20260717-v33-12-8-mobile-layout-fix";
+  const APP_VERSION = "20260717-v33-12-12-truck-filters";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -30,6 +30,8 @@
     lastRefreshError: null,
     lastSync: null,
     filters: { start: "", end: "", client: "", product: "" },
+    truckFilters: { query: "", start: "", end: "", movement: "", type: "", status: "", client: "", product: "", stock: "" },
+    truckFilterTimer: null,
     vesselFilters: { query: "", client: "", status: "", window: "30" },
     vesselMap: { instance: null, markers: new Map(), selected: "", timer: null, filterTimer: null },
     handover: { date: "", shift: "" },
@@ -1084,7 +1086,8 @@
       return downloadCsv(`inventario-quimico-${date}.csv`, ["Produto", "Categoria", "Total do produto", "Lote", "Quantidade do lote", "Unidade", "Mínimo do lote", "Validade", "Localização", "Fornecedor", "Status"], rows);
     }
     if (kind === "trucks") {
-      const rows = filteredTrucks().flatMap(t => t.truckType === "Plataforma" && t.items.length
+      const truckRows = state.page === "trucks" ? trucksForPage() : filteredTrucks();
+      const rows = truckRows.flatMap(t => t.truckType === "Plataforma" && t.items.length
         ? t.items.map((item,index) => [t.date,t.movement,t.truckType,t.supplier,t.client,item.productName,"",item.quantity,item.unit,index+1,t.items.length,t.plate,t.driver,t.invoice,t.status])
         : [[t.date,t.movement,t.truckType,t.supplier,t.client,t.product,t.lot,t.quantity,t.unit,1,1,t.plate,t.driver,t.invoice,t.status]]);
       return downloadCsv(`carretas-${date}.csv`, ["Data","Movimento","Tipo da carreta","Origem/Destino","Cliente","Produto","Lote","Quantidade","Unidade","Item","Total de itens","Placa","Motorista","NF","Status"], rows);
@@ -4248,8 +4251,89 @@
     const result=page.querySelector("[data-chemical-filter-result]"); if(result) result.textContent=`${visible} produto(s) exibido(s)`;
   }
 
+  function normalizeTruckFilterValue(value = "") {
+    return String(value || "")
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .trim();
+  }
+
+  function truckProductNames(item) {
+    if (item.truckType === "Plataforma") {
+      return (item.items || []).map(row => row.productName).filter(Boolean);
+    }
+    return [item.product].filter(Boolean);
+  }
+
+  function truckSearchText(item) {
+    return normalizeTruckFilterValue([
+      item.date,
+      item.movement,
+      item.truckType,
+      item.supplier,
+      item.client,
+      item.product,
+      item.lot,
+      item.plate,
+      item.driver,
+      item.invoice,
+      item.status,
+      item.notes,
+      ...truckProductNames(item)
+    ].filter(Boolean).join(" "));
+  }
+
+  function trucksForPage() {
+    const f = state.truckFilters || {};
+    const query = normalizeTruckFilterValue(f.query);
+    return (state.data?.trucks || []).filter(item => {
+      const date = recordDateKey(item.date || item.created_at);
+      if (query && !truckSearchText(item).includes(query)) return false;
+      if (f.start && date && date < f.start) return false;
+      if (f.end && date && date > f.end) return false;
+      if (f.movement && item.movement !== f.movement) return false;
+      if (f.type && item.truckType !== f.type) return false;
+      if (f.status && item.status !== f.status) return false;
+      if (f.client && (item.client || "Sem cliente") !== f.client) return false;
+      if (f.product && !truckProductNames(item).includes(f.product)) return false;
+      if (f.stock === "pending" && !(item.truckType !== "Plataforma" && !item.stockApplied && ["Recebida", "Concluída"].includes(item.status))) return false;
+      if (f.stock === "applied" && !(item.truckType !== "Plataforma" && item.stockApplied)) return false;
+      if (f.stock === "not-applicable" && item.truckType !== "Plataforma") return false;
+      return true;
+    });
+  }
+
+  function truckFilterActiveCount() {
+    return Object.values(state.truckFilters || {}).filter(Boolean).length;
+  }
+
+  function scheduleTruckFilterRender(field) {
+    clearTimeout(state.truckFilterTimer);
+    const key = field.dataset.truckFilter;
+    const cursor = typeof field.selectionStart === "number" ? field.selectionStart : null;
+    state.truckFilterTimer = setTimeout(() => {
+      renderTrucks();
+      const replacement = document.querySelector(`#page-trucks [data-truck-filter="${key}"]`);
+      if (replacement) {
+        replacement.focus();
+        if (cursor !== null && typeof replacement.setSelectionRange === "function") {
+          replacement.setSelectionRange(cursor, cursor);
+        }
+      }
+    }, 180);
+  }
+
   function renderTrucks() {
-    const trucks = filteredTrucks();
+    const allTrucks = state.data?.trucks || [];
+    const trucks = trucksForPage();
+    const filters = state.truckFilters || {};
+    const movements = [...new Set(allTrucks.map(item => item.movement).filter(Boolean))].sort();
+    const types = [...new Set(allTrucks.map(item => item.truckType).filter(Boolean))].sort();
+    const statuses = [...new Set(allTrucks.map(item => item.status).filter(Boolean))].sort();
+    const clients = [...new Set(allTrucks.map(item => item.client || "Sem cliente"))].sort();
+    const products = [...new Set(allTrucks.flatMap(truckProductNames).filter(Boolean))].sort();
+    const activeFilterCount = truckFilterActiveCount();
     const today = localDateKey();
     const typeCount = type => trucks.filter(item => item.truckType === type).length;
     const movementCount = movement => trucks.filter(item => String(item.movement || "").toLowerCase() === movement.toLowerCase()).length;
@@ -4304,7 +4388,23 @@
     $("#page-trucks").innerHTML =
       header("Central de carretas", "Entradas, saídas, documentação, produtos e integração com estoque.",
         `<button class="btn secondary" data-export="trucks">Exportar CSV</button>${canManageTrucks() ? `<button class="btn primary" data-action="new-truck">+ Nova movimentação</button>` : ""}`) +
-      `<section class="truck-overview-grid">
+      `<section class="truck-filter-panel">
+        <div class="truck-filter-heading"><div><small>FILTROS</small><h3>Localizar movimentações</h3><p>Filtre toda a central por período, documentação, carga ou situação.</p></div>${activeFilterCount ? `<span>${activeFilterCount} filtro(s) ativo(s)</span>` : ""}</div>
+        <div class="truck-filter-grid">
+          <div class="truck-filter-search"><label>Busca geral</label><input data-truck-filter="query" value="${esc(filters.query || "")}" placeholder="Placa, NF, motorista, lote, origem ou produto"></div>
+          <div><label>Data inicial</label><input data-truck-filter="start" type="date" value="${esc(filters.start || "")}"></div>
+          <div><label>Data final</label><input data-truck-filter="end" type="date" value="${esc(filters.end || "")}"></div>
+          <div><label>Movimentação</label><select data-truck-filter="movement"><option value="">Todas</option>${movements.map(value => `<option value="${esc(value)}" ${filters.movement === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></div>
+          <div><label>Tipo de carreta</label><select data-truck-filter="type"><option value="">Todos</option>${types.map(value => `<option value="${esc(value)}" ${filters.type === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></div>
+          <div><label>Status</label><select data-truck-filter="status"><option value="">Todos</option>${statuses.map(value => `<option value="${esc(value)}" ${filters.status === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></div>
+          <div><label>Cliente</label><select data-truck-filter="client"><option value="">Todos</option>${clients.map(value => `<option value="${esc(value)}" ${filters.client === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></div>
+          <div><label>Produto</label><select data-truck-filter="product"><option value="">Todos</option>${products.map(value => `<option value="${esc(value)}" ${filters.product === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></div>
+          <div><label>Integração com estoque</label><select data-truck-filter="stock"><option value="">Todas</option><option value="pending" ${filters.stock === "pending" ? "selected" : ""}>Pendente</option><option value="applied" ${filters.stock === "applied" ? "selected" : ""}>Aplicada</option><option value="not-applicable" ${filters.stock === "not-applicable" ? "selected" : ""}>Não se aplica</option></select></div>
+          <button class="btn secondary truck-filter-clear" type="button" data-action="clear-truck-filters">Limpar filtros</button>
+        </div>
+        <div class="truck-filter-result"><strong>${trucks.length}</strong> de ${allTrucks.length} movimentação(ões) exibida(s)</div>
+      </section>
+      <section class="truck-overview-grid">
         ${statCard("Carretas hoje", fmt.format(todayCount), "movimentações registradas", uiIcon("truck"), "Entradas e saídas do dia", "blue")}
         ${statCard("Em andamento", fmt.format(activeQueue.length), "fila operacional", uiIcon("activity"), "Aguardando conclusão", "orange")}
         ${statCard("Estoque pendente", fmt.format(pendingStock), "movimentações", uiIcon("alert"), "Necessitam aplicação", "red")}
@@ -6899,6 +6999,12 @@
 
     if (button.dataset.newOrderEquipment) return openModal("Nova ordem de serviço", maintenanceOrderForm({}, button.dataset.newOrderEquipment), "MANUTENÇÃO");
 
+    if (button.dataset.action === "clear-truck-filters") {
+      state.truckFilters = { query: "", start: "", end: "", movement: "", type: "", status: "", client: "", product: "", stock: "" };
+      renderTrucks();
+      return;
+    }
+
     if (button.dataset.action === "clear-chemical-filters") {
       document.querySelectorAll("#page-chemicals [data-chemical-filter]").forEach(field => field.value = "");
       applyChemicalFilters();
@@ -6944,6 +7050,11 @@
   });
 
   document.addEventListener("change", async event => {
+    if (event.target.matches("[data-truck-filter]:not([data-truck-filter='query'])")) {
+      state.truckFilters[event.target.dataset.truckFilter] = event.target.value;
+      renderTrucks();
+      return;
+    }
     if (event.target.matches("[data-tank-filter]")) applyTankFilters();
     if (event.target.matches("[data-chemical-filter]")) applyChemicalFilters();
     if (event.target.matches("[data-vessel-filter]:not([data-vessel-filter='query'])")) {
@@ -6987,6 +7098,11 @@
   });
 
   document.addEventListener("input", event => {
+    if (event.target.matches("[data-truck-filter='query']")) {
+      state.truckFilters.query = event.target.value;
+      scheduleTruckFilterRender(event.target);
+      return;
+    }
     if (event.target.matches("[data-tank-filter]")) applyTankFilters();
     if (event.target.matches("[data-chemical-filter]")) applyChemicalFilters();
     if (event.target.matches("[data-vessel-filter='query']")) {

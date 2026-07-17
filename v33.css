@@ -671,3 +671,12 @@ body.kiosk-mode .tv-light-screen{height:100vh;min-height:0;border-radius:0}
   .mobile-nav-item svg{width:20px;height:20px}
   .mobile-nav-main .mobile-plus{width:48px;height:48px}
 }
+
+
+/* V33.12.12 — Filtros profissionais da Central de Carretas */
+.truck-filter-panel{margin-bottom:14px;padding:16px;border:1px solid var(--border);border-radius:18px;background:var(--surface);box-shadow:0 8px 24px rgba(15,23,42,.045)}
+.truck-filter-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:14px;margin-bottom:14px}.truck-filter-heading small{display:block;margin-bottom:3px;color:var(--primary);font-size:10px;font-weight:900;letter-spacing:.13em}.truck-filter-heading h3{margin:0;font-size:18px;color:var(--text)}.truck-filter-heading p{margin:4px 0 0;color:var(--muted);font-size:12px}.truck-filter-heading>span{flex-shrink:0;padding:6px 10px;border-radius:999px;background:rgba(20,99,255,.09);border:1px solid rgba(20,99,255,.18);color:var(--primary);font-size:11px;font-weight:800}
+.truck-filter-grid{display:grid;grid-template-columns:minmax(260px,2fr) repeat(4,minmax(145px,1fr));gap:10px;align-items:end}.truck-filter-grid label{display:block;margin-bottom:5px;color:var(--muted);font-size:11px;font-weight:800}.truck-filter-grid input,.truck-filter-grid select{width:100%;min-width:0}.truck-filter-search{grid-column:span 2}.truck-filter-clear{min-height:42px}.truck-filter-result{margin-top:11px;text-align:right;color:var(--muted);font-size:12px}.truck-filter-result strong{color:var(--text);font-size:14px}
+@media(max-width:1180px){.truck-filter-grid{grid-template-columns:repeat(3,minmax(0,1fr))}.truck-filter-search{grid-column:span 2}}
+@media(max-width:760px){.truck-filter-panel{padding:13px}.truck-filter-heading{flex-direction:column}.truck-filter-grid{grid-template-columns:1fr 1fr}.truck-filter-search{grid-column:1/-1}.truck-filter-clear{grid-column:1/-1;width:100%}.truck-filter-result{text-align:left}}
+@media(max-width:480px){.truck-filter-grid{grid-template-columns:1fr}.truck-filter-search,.truck-filter-clear{grid-column:auto}.truck-filter-grid input,.truck-filter-grid select,.truck-filter-grid .btn{min-height:44px}}

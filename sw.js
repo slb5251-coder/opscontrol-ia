@@ -1,11 +1,11 @@
-const CACHE="opscontrol-20260717-v33-12-11-tank-client";
+const CACHE="opscontrol-20260717-v33-12-12-truck-filters";
 const FILES=[
   "./",
   "./index.html",
-  "./app.css?v=20260717-v33-12-11-tank-client",
-  "./v33.css?v=20260717-v33-12-11-tank-client",
-  "./js/config.js?v=20260717-v33-12-11-tank-client",
-  "./js/app.js?v=20260717-v33-12-11-tank-client",
+  "./app.css?v=20260717-v33-12-12-truck-filters",
+  "./v33.css?v=20260717-v33-12-12-truck-filters",
+  "./js/config.js?v=20260717-v33-12-12-truck-filters",
+  "./js/app.js?v=20260717-v33-12-12-truck-filters",
   "./manifest.json",
   "./assets/icon.svg","./vendor/qrcode.js"
 ];

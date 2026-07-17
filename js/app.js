@@ -12,7 +12,7 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const APP_VERSION = "20260717-v33-12-12-truck-filters";
+  const APP_VERSION = "20260717-v33-12-13-truck-intelligence";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -30,7 +30,7 @@
     lastRefreshError: null,
     lastSync: null,
     filters: { start: "", end: "", client: "", product: "" },
-    truckFilters: { query: "", start: "", end: "", movement: "", type: "", status: "", client: "", product: "", stock: "" },
+    truckFilters: { query: "", start: "", end: "", movement: "", type: "", status: "", client: "", product: "", stock: "", attention: "" },
     truckFilterTimer: null,
     vesselFilters: { query: "", client: "", status: "", window: "30" },
     vesselMap: { instance: null, markers: new Map(), selected: "", timer: null, filterTimer: null },
@@ -4284,10 +4284,71 @@
     ].filter(Boolean).join(" "));
   }
 
+  function normalizedTruckInvoice(value = "") {
+    return String(value || "").toUpperCase().replace(/[^A-Z0-9]/g, "").trim();
+  }
+
+  function duplicateTruckInvoiceIds(items = state.data?.trucks || []) {
+    const groups = new Map();
+    items.forEach(item => {
+      const invoice = normalizedTruckInvoice(item.invoice);
+      if (!invoice) return;
+      if (!groups.has(invoice)) groups.set(invoice, []);
+      groups.get(invoice).push(item.id);
+    });
+    return new Set([...groups.values()].filter(ids => ids.length > 1).flat());
+  }
+
+  function truckOpenAgeDays(item) {
+    if (["Concluída", "Cancelada"].includes(item.status)) return 0;
+    const date = recordDateKey(item.date || item.created_at);
+    if (!date) return 0;
+    const start = new Date(`${date}T12:00:00`);
+    const now = new Date(`${localDateKey()}T12:00:00`);
+    return Math.max(0, Math.floor((now - start) / 86400000));
+  }
+
+  function truckAttentionFlags(item, duplicateIds = duplicateTruckInvoiceIds()) {
+    const flags = [];
+    if (duplicateIds.has(item.id)) flags.push({ key: "duplicate", label: "NF duplicada", tone: "red" });
+    if (!item.invoice || !item.plate || (item.truckType !== "Plataforma" && !item.lot)) flags.push({ key: "docs", label: "Documentação", tone: "orange" });
+    if (item.truckType !== "Plataforma" && !item.stockApplied && ["Recebida", "Concluída"].includes(item.status)) flags.push({ key: "stock", label: "Estoque pendente", tone: "purple" });
+    const age = truckOpenAgeDays(item);
+    if (age >= 1) flags.push({ key: "overdue", label: `${age} dia(s) aberta`, tone: "red" });
+    return flags;
+  }
+
+  function truckAttentionHtml(item, duplicateIds) {
+    const flags = truckAttentionFlags(item, duplicateIds);
+    return flags.length ? `<div class="truck-attention-flags">${flags.map(flag => `<span class="${flag.tone}">${esc(flag.label)}</span>`).join("")}</div>` : `<div class="truck-attention-ok">Sem pendências</div>`;
+  }
+
+  function truckAttentionMatches(item, value, duplicateIds) {
+    if (!value) return true;
+    return truckAttentionFlags(item, duplicateIds).some(flag => flag.key === value);
+  }
+
+  function truckRanking(items, type = "client") {
+    const counts = new Map();
+    items.forEach(item => {
+      const names = type === "product" ? truckProductNames(item) : [item.client || "Sem cliente"];
+      names.filter(Boolean).forEach(name => counts.set(name, (counts.get(name) || 0) + 1));
+    });
+    return [...counts.entries()].sort((a,b) => b[1] - a[1] || a[0].localeCompare(b[0], "pt-BR")).slice(0, 5);
+  }
+
+  function truckRankingHtml(items, type, title) {
+    const ranking = truckRanking(items, type);
+    const max = Math.max(...ranking.map(([,count]) => count), 1);
+    return `<div class="truck-ranking-block"><small>${esc(title)}</small>${ranking.map(([name,count]) => `<div class="truck-ranking-row"><span>${esc(name)}</span><div><i style="width:${Math.max(8, Math.round(count / max * 100))}%"></i></div><strong>${count}</strong></div>`).join("") || `<div class="empty">Sem dados no filtro.</div>`}</div>`;
+  }
+
   function trucksForPage() {
     const f = state.truckFilters || {};
     const query = normalizeTruckFilterValue(f.query);
-    return (state.data?.trucks || []).filter(item => {
+    const all = state.data?.trucks || [];
+    const duplicateIds = duplicateTruckInvoiceIds(all);
+    return all.filter(item => {
       const date = recordDateKey(item.date || item.created_at);
       if (query && !truckSearchText(item).includes(query)) return false;
       if (f.start && date && date < f.start) return false;
@@ -4300,6 +4361,7 @@
       if (f.stock === "pending" && !(item.truckType !== "Plataforma" && !item.stockApplied && ["Recebida", "Concluída"].includes(item.status))) return false;
       if (f.stock === "applied" && !(item.truckType !== "Plataforma" && item.stockApplied)) return false;
       if (f.stock === "not-applicable" && item.truckType !== "Plataforma") return false;
+      if (!truckAttentionMatches(item, f.attention, duplicateIds)) return false;
       return true;
     });
   }
@@ -4326,6 +4388,7 @@
 
   function renderTrucks() {
     const allTrucks = state.data?.trucks || [];
+    const duplicateIds = duplicateTruckInvoiceIds(allTrucks);
     const trucks = trucksForPage();
     const filters = state.truckFilters || {};
     const movements = [...new Set(allTrucks.map(item => item.movement).filter(Boolean))].sort();
@@ -4342,6 +4405,12 @@
     const pendingDocs = trucks.filter(item => !item.invoice || !item.plate || (item.truckType !== "Plataforma" && !item.lot)).length;
     const activeQueue = trucks.filter(item => !["Concluída", "Cancelada"].includes(item.status));
     const completed = trucks.filter(item => item.status === "Concluída").length;
+    const duplicateCount = trucks.filter(item => duplicateIds.has(item.id)).length;
+    const overdueCount = trucks.filter(item => truckOpenAgeDays(item) >= 1).length;
+    const attentionItems = trucks
+      .map(item => ({ item, flags: truckAttentionFlags(item, duplicateIds) }))
+      .filter(entry => entry.flags.length)
+      .sort((a,b) => b.flags.length - a.flags.length || truckOpenAgeDays(b.item) - truckOpenAgeDays(a.item));
 
     const quantityByUnit = trucks.reduce((acc, item) => {
       if (item.truckType === "Plataforma") {
@@ -4364,7 +4433,7 @@
       <td>${truckItemsSummary(item)}</td>
       <td><strong>${esc(item.plate || "-")}</strong><br><small>${esc(item.driver || "Motorista não informado")}</small></td>
       <td><strong>${esc(item.invoice || "-")}</strong><br><small>${esc(item.lot || "Sem lote")}</small></td>
-      <td>${badge(item.status)}<br><small>${esc(truckInventoryLabel(item))}</small></td>
+      <td>${badge(item.status)}<br><small>${esc(truckInventoryLabel(item))}</small>${truckAttentionHtml(item, duplicateIds)}</td>
       <td><div class="row-actions">
         ${item.truckType === "Plataforma" ? `<button class="btn small secondary" data-truck-items="${item.id}">Ver ${item.items.length} itens</button>` : ""}
         <button class="btn small secondary" data-attachments="truck:${item.id}" data-attachment-title="${esc(item.plate || item.product)}">Anexos (${attachmentCount("truck", item.id)})</button>
@@ -4376,12 +4445,13 @@
       <div class="mobile-record-head"><div><strong>${esc(item.plate || item.product || "Movimentação")}</strong><small>${dateOnly(item.date)} • ${esc(item.movement)}</small></div>${badge(item.truckType)}</div>
       <div class="truck-mobile-products">${truckItemsSummary(item)}</div>
       <div class="mobile-record-grid"><span>Origem/Destino<strong>${esc(item.supplier || "-")}</strong></span><span>Cliente<strong>${esc(item.client || "-")}</strong></span><span>NF<strong>${esc(item.invoice || "-")}</strong></span><span>Lote<strong>${esc(item.lot || "-")}</strong></span><span>Motorista<strong>${esc(item.driver || "-")}</strong></span><span>Status<strong>${esc(item.status)}</strong></span><span>Integração<strong>${item.truckType === "Plataforma" ? "Sem inventário" : (item.stockApplied ? "Aplicado" : "Pendente")}</strong></span></div>
+      ${truckAttentionHtml(item, duplicateIds)}
       <div class="row-actions">${item.truckType === "Plataforma" ? `<button class="btn small secondary" data-truck-items="${item.id}">Ver itens</button>` : ""}<button class="btn small secondary" data-attachments="truck:${item.id}" data-attachment-title="${esc(item.plate || item.product)}">Anexos</button>${canManageTrucks() ? `<button class="btn small primary" data-edit-truck="${item.id}">Editar</button>` : ""}</div>
     </article>`).join("");
 
-    const queueCards = activeQueue.slice(0, 6).map(item => `<article class="truck-queue-card">
+    const queueCards = [...activeQueue].sort((a,b) => truckAttentionFlags(b, duplicateIds).length - truckAttentionFlags(a, duplicateIds).length || truckOpenAgeDays(b) - truckOpenAgeDays(a)).slice(0, 6).map(item => `<article class="truck-queue-card">
       <div class="truck-queue-icon">${uiIcon("truck")}</div>
-      <div class="truck-queue-main"><div><strong>${esc(item.plate || item.invoice || "Carreta")}</strong>${badge(item.status)}</div><p>${esc(item.movement || "Movimentação")} • ${esc(item.truckType || "Tipo não definido")} • ${esc(item.product || (item.items || [])[0]?.productName || "Carga não informada")}</p><small>${esc(item.supplier || "Origem/Destino não informado")} ${item.client ? `→ ${esc(item.client)}` : ""}</small></div>
+      <div class="truck-queue-main"><div><strong>${esc(item.plate || item.invoice || "Carreta")}</strong>${badge(item.status)}</div><p>${esc(item.movement || "Movimentação")} • ${esc(item.truckType || "Tipo não definido")} • ${esc(item.product || (item.items || [])[0]?.productName || "Carga não informada")}</p><small>${esc(item.supplier || "Origem/Destino não informado")} ${item.client ? `→ ${esc(item.client)}` : ""}</small>${truckAttentionHtml(item, duplicateIds)}</div>
       ${canManageTrucks() ? `<button class="btn small secondary" data-edit-truck="${item.id}">Abrir</button>` : ""}
     </article>`).join("");
 
@@ -4400,6 +4470,7 @@
           <div><label>Cliente</label><select data-truck-filter="client"><option value="">Todos</option>${clients.map(value => `<option value="${esc(value)}" ${filters.client === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></div>
           <div><label>Produto</label><select data-truck-filter="product"><option value="">Todos</option>${products.map(value => `<option value="${esc(value)}" ${filters.product === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></div>
           <div><label>Integração com estoque</label><select data-truck-filter="stock"><option value="">Todas</option><option value="pending" ${filters.stock === "pending" ? "selected" : ""}>Pendente</option><option value="applied" ${filters.stock === "applied" ? "selected" : ""}>Aplicada</option><option value="not-applicable" ${filters.stock === "not-applicable" ? "selected" : ""}>Não se aplica</option></select></div>
+          <div><label>Atenção operacional</label><select data-truck-filter="attention"><option value="">Todas</option><option value="duplicate" ${filters.attention === "duplicate" ? "selected" : ""}>NF duplicada</option><option value="overdue" ${filters.attention === "overdue" ? "selected" : ""}>Aberta há mais de 1 dia</option><option value="docs" ${filters.attention === "docs" ? "selected" : ""}>Documentação incompleta</option><option value="stock" ${filters.attention === "stock" ? "selected" : ""}>Estoque pendente</option></select></div>
           <button class="btn secondary truck-filter-clear" type="button" data-action="clear-truck-filters">Limpar filtros</button>
         </div>
         <div class="truck-filter-result"><strong>${trucks.length}</strong> de ${allTrucks.length} movimentação(ões) exibida(s)</div>
@@ -4409,6 +4480,13 @@
         ${statCard("Em andamento", fmt.format(activeQueue.length), "fila operacional", uiIcon("activity"), "Aguardando conclusão", "orange")}
         ${statCard("Estoque pendente", fmt.format(pendingStock), "movimentações", uiIcon("alert"), "Necessitam aplicação", "red")}
         ${statCard("Documentação pendente", fmt.format(pendingDocs), "placa, NF ou lote", uiIcon("file"), "Conferência necessária", "purple")}
+      </section>
+      <section class="truck-intelligence-grid">
+        <div class="card truck-attention-panel"><div class="truck-section-heading"><div><small>CONFERÊNCIA INTELIGENTE</small><h3>Pendências que precisam de atenção</h3></div><span>${attentionItems.length} registros</span></div>
+          <div class="truck-attention-summary"><button type="button" data-truck-quick-attention="duplicate"><span>NF duplicada</span><strong>${duplicateCount}</strong></button><button type="button" data-truck-quick-attention="overdue"><span>Abertas +1 dia</span><strong>${overdueCount}</strong></button><button type="button" data-truck-quick-attention="docs"><span>Documentação</span><strong>${pendingDocs}</strong></button><button type="button" data-truck-quick-attention="stock"><span>Estoque</span><strong>${pendingStock}</strong></button></div>
+          <div class="truck-attention-list">${attentionItems.slice(0,5).map(({item,flags}) => `<article><div><strong>${esc(item.plate || item.invoice || item.product || "Carreta")}</strong><small>${dateOnly(item.date)} • ${esc(item.client || item.supplier || "Sem cliente")}</small></div><div>${flags.map(flag => `<span class="${flag.tone}">${esc(flag.label)}</span>`).join("")}</div>${canManageTrucks() ? `<button class="btn small secondary" data-edit-truck="${item.id}">Revisar</button>` : ""}</article>`).join("") || `<div class="empty">Nenhuma pendência encontrada.</div>`}</div>
+        </div>
+        <div class="card truck-ranking-panel"><div class="truck-section-heading"><div><small>ANÁLISE DO FILTRO</small><h3>Movimentações por cliente e produto</h3></div></div>${truckRankingHtml(trucks, "client", "PRINCIPAIS CLIENTES")}${truckRankingHtml(trucks, "product", "PRINCIPAIS PRODUTOS")}</div>
       </section>
       <section class="truck-control-grid">
         <div class="card truck-flow-card"><div class="truck-section-heading"><div><small>FLUXO LOGÍSTICO</small><h3>Resumo do período</h3></div><span>${trucks.length} registros</span></div>
@@ -6999,8 +7077,14 @@
 
     if (button.dataset.newOrderEquipment) return openModal("Nova ordem de serviço", maintenanceOrderForm({}, button.dataset.newOrderEquipment), "MANUTENÇÃO");
 
+    if (button.dataset.truckQuickAttention) {
+      state.truckFilters.attention = button.dataset.truckQuickAttention;
+      renderTrucks();
+      return;
+    }
+
     if (button.dataset.action === "clear-truck-filters") {
-      state.truckFilters = { query: "", start: "", end: "", movement: "", type: "", status: "", client: "", product: "", stock: "" };
+      state.truckFilters = { query: "", start: "", end: "", movement: "", type: "", status: "", client: "", product: "", stock: "", attention: "" };
       renderTrucks();
       return;
     }

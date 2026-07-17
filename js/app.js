@@ -12,7 +12,7 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const APP_VERSION = "20260717-v33-12-13-truck-intelligence";
+  const APP_VERSION = "20260717-v33-12-14-profile-security-alert-admin";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -70,6 +70,17 @@
     }[char]));
   }
 
+
+  function userInitials(name = "Usuário") {
+    return String(name || "Usuário").trim().split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join("").toUpperCase() || "US";
+  }
+
+  function profileAvatarHtml(url, name, className = "") {
+    const safeUrl = String(url || "").trim();
+    const classes = ["profile-avatar-render", className].filter(Boolean).join(" ");
+    if (safeUrl) return `<img class="${esc(classes)}" src="${esc(safeUrl)}" alt="Foto de ${esc(name || "usuário")}" loading="lazy">`;
+    return `<span class="${esc(classes)} profile-avatar-fallback">${esc(userInitials(name))}</span>`;
+  }
 
 
   const UI_ICONS = {
@@ -1488,7 +1499,8 @@
       c.from("vessel_geofences").select("*").eq("active", true).order("created_at", { ascending: true }),
       c.from("vessel_ais_alerts").select("*").order("event_at", { ascending: false }).limit(1000),
       c.from("vessel_ais_sync_runs").select("*").order("started_at", { ascending: false }).limit(100),
-      c.from("vessel_registry").select("*").order("name", { ascending: true }).limit(2000)
+      c.from("vessel_registry").select("*").order("name", { ascending: true }).limit(2000),
+      c.from("dismissed_system_alerts").select("*").order("dismissed_at", { ascending: false }).limit(2000)
     ]);
 
     if (results[0]?.error) throw results[0].error;
@@ -1525,12 +1537,13 @@
         email: profile.email || u.email,
         role: profile.role || "user",
         department: profile.department || "",
+        avatarUrl: profile.avatar_url || "",
         active: profile.active !== false,
         permissions: profile.permissions || {}
       },
       users: (results[1].data || []).map(x => ({
         id: x.id, email: x.email || "", name: x.full_name || x.email || "Usuário",
-        role: x.role || "user", department: x.department || "", active: x.active !== false,
+        role: x.role || "user", department: x.department || "", avatarUrl: x.avatar_url || "", active: x.active !== false,
         permissions: x.permissions || {}, created_at: x.created_at
       })),
       fluids: (results[2].data || []).map(x => ({
@@ -1803,14 +1816,35 @@
         active:item.active !== false, createdBy:item.created_by, updatedBy:item.updated_by,
         createdAt:item.created_at, updatedAt:item.updated_at
       })),
+      dismissedSystemAlerts: (results[43].data || []).map(item => ({
+        id:item.id, alertKey:item.alert_key, title:item.title || "", category:item.category || "",
+        dismissedBy:item.dismissed_by, dismissedAt:item.dismissed_at
+      })),
       vesselRegistryAvailable: optionalAvailability.vesselRegistry,
       vesselModuleAvailable: optionalAvailability.vessels,
       vesselPositionsAvailable: optionalAvailability.vesselPositions,
       vesselMonitoringAvailable: optionalAvailability.vesselPositionHistory && optionalAvailability.vesselGeofences && optionalAvailability.vesselAlerts
     };
+    const dismissedAlertKeys = new Set((state.data.dismissedSystemAlerts || []).map(item => String(item.alertKey || "")));
     state.data.systemAlerts = [...state.data.systemAlerts, ...state.data.alertCenter]
-      .filter((item,index,all) => all.findIndex(other => String(other.id || other.alert_key || other.title) === String(item.id || item.alert_key || item.title)) === index);
+      .filter((item,index,all) => all.findIndex(other => String(other.id || other.alert_key || other.title) === String(item.id || item.alert_key || item.title)) === index)
+      .filter(item => !dismissedAlertKeys.has(String(item.id || item.alert_key || item.title || "")));
     state.lastSync = new Date();
+  }
+
+  function openAppProfileHeader() {
+    const profile = state.data?.profile;
+    if (!profile) return;
+    if ($("#userName")) $("#userName").textContent = profile.name;
+    if ($("#userRole")) $("#userRole").textContent = profile.role;
+    const initialsBox = $("#userInitials");
+    const avatarImage = $("#userAvatar");
+    if (initialsBox?.childNodes?.[0]) initialsBox.childNodes[0].nodeValue = userInitials(profile.name);
+    if (avatarImage) {
+      avatarImage.classList.toggle("hidden", !profile.avatarUrl);
+      avatarImage.src = profile.avatarUrl || "";
+      avatarImage.alt = `Foto de ${profile.name}`;
+    }
   }
 
   function openApp() {
@@ -1818,9 +1852,7 @@
     $("#appView").classList.remove("hidden");
 
     const profile = state.data.profile;
-    $("#userName").textContent = profile.name;
-    $("#userRole").textContent = profile.role;
-    $("#userInitials").textContent = profile.name.split(/\s+/).slice(0, 2).map(x => x[0]).join("").toUpperCase();
+    openAppProfileHeader();
 
     $$(".nav-item").forEach(button => {
       button.classList.toggle("hidden", !moduleAllowed(button.dataset.page));
@@ -4594,17 +4626,23 @@
     const manual = state.data.alerts || [];
     const automatic = state.data.systemAlerts || [];
     const messages = state.data.messages || [];
-    const all = [...automatic.map(item=>({ ...item, automatic:true })), ...manual.map(item => ({ ...item, category:item.target||"Comunicado", automatic:false }))]
-      .sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0));
+    const all = [
+      ...automatic.map(item=>({ ...item, automatic:true, category:item.category||"Sistema", deleteKey:String(item.id || item.alert_key || item.title || "") })),
+      ...manual.map(item => ({ ...item, category:item.target||"Comunicado", automatic:false, deleteKey:String(item.id || "") }))
+    ].sort((a,b)=>new Date(b.created_at||0)-new Date(a.created_at||0));
     const critical = all.filter(item=>isCriticalAlert(item.level));
     const grouped = [...new Set(all.map(x=>x.category||"Sistema"))];
     const recent = all.filter(item => { const age=Date.now()-new Date(item.created_at||0).getTime(); return Number.isFinite(age) && age <= 24*60*60*1000; });
     const automaticCount = all.filter(item=>item.automatic).length;
-    const priorityCards = critical.slice(0,6).map(item=>`<article class="alert-priority-card ${statusClass(item.level)}"><span>${uiIcon("alert")}</span><div><strong>${esc(item.title)}</strong><small>${esc(item.category||"Sistema")} • ${dateTime(item.created_at)}</small><p>${esc(item.message||"")}</p></div>${item.action_page&&moduleAllowed(item.action_page)?`<button class="btn small secondary" data-alert-page="${esc(item.action_page)}">Abrir</button>`:""}</article>`).join("");
-    const cards=all.slice(0,80).map(item=>`<article class="alert-center-card ${statusClass(item.level)}"><div class="alert-center-top"><span>${esc(item.category||"Sistema")}</span>${badge(item.level)}</div><h3>${esc(item.title)}</h3><p>${esc(item.message||"")}</p><footer><span>${item.automatic ? "Automático" : "Comunicado"} • ${dateTime(item.created_at)}</span>${item.action_page&&moduleAllowed(item.action_page)?`<button class="btn small secondary" data-alert-page="${esc(item.action_page)}">Abrir módulo</button>`:""}</footer></article>`).join("");
+    const adminAlertActions = item => isAdmin() && item.deleteKey
+      ? `<button class="btn small danger outline" data-delete-alert="${esc(item.deleteKey)}" data-alert-automatic="${item.automatic ? "true" : "false"}" data-alert-title="${esc(item.title || "Alerta")}" data-alert-category="${esc(item.category || "Sistema")}">Excluir</button>`
+      : "";
+    const priorityCards = critical.slice(0,6).map(item=>`<article class="alert-priority-card ${statusClass(item.level)}"><span>${uiIcon("alert")}</span><div><strong>${esc(item.title)}</strong><small>${esc(item.category||"Sistema")} • ${dateTime(item.created_at)}</small><p>${esc(item.message||"")}</p></div><div class="alert-admin-actions">${item.action_page&&moduleAllowed(item.action_page)?`<button class="btn small secondary" data-alert-page="${esc(item.action_page)}">Abrir</button>`:""}${adminAlertActions(item)}</div></article>`).join("");
+    const cards=all.slice(0,80).map(item=>`<article class="alert-center-card ${statusClass(item.level)}"><div class="alert-center-top"><span>${esc(item.category||"Sistema")}</span>${badge(item.level)}</div><h3>${esc(item.title)}</h3><p>${esc(item.message||"")}</p><footer><span>${item.automatic ? "Automático" : "Comunicado"} • ${dateTime(item.created_at)}</span><div class="alert-admin-actions">${item.action_page&&moduleAllowed(item.action_page)?`<button class="btn small secondary" data-alert-page="${esc(item.action_page)}">Abrir módulo</button>`:""}${adminAlertActions(item)}</div></footer></article>`).join("");
     const chatMessages=messages.slice(-100).map(item=>`<div class="chat-message"><div class="chat-avatar">${esc(String(item.sender_name||"U").trim().slice(0,1).toUpperCase())}</div><div><strong>${esc(item.sender_name)}</strong><p>${esc(item.message)}</p><small>${dateTime(item.created_at)}</small></div></div>`).join("");
     $("#page-alerts").innerHTML=header("Alertas e comunicação", "Prioridades operacionais, avisos automáticos e comunicação da equipe.", hasRole(["supervisor","lider","qhse","logistica"])?`<button class="btn primary" data-action="new-alert">+ Criar comunicado</button>`:"")+
       `<section class="alert-professional-kpis">${statCard("Alertas ativos", fmt.format(all.length), "avisos disponíveis", uiIcon("bell"), `${recent.length} nas últimas 24h`, "blue")}${statCard("Críticos e altos", fmt.format(critical.length), "exigem acompanhamento", uiIcon("alert"), critical.length ? "Prioridade operacional" : "Sem criticidade", "red")}${statCard("Automáticos", fmt.format(automaticCount), "gerados pelo sistema", uiIcon("settings"), `${grouped.length} categoria(s)`, "purple")}${statCard("Mensagens", fmt.format(messages.length), "no chat da equipe", uiIcon("users"), `${offlineQueue().length} pendente(s) offline`, "green")}</section>
+      ${isAdmin() ? `<div class="admin-edit-notice alert-admin-notice"><strong>Exclusão administrativa ativa</strong><span>Comunicados são apagados definitivamente. Alertas automáticos são removidos da central sem apagar o dado operacional de origem.</span></div>` : ""}
       <section class="alert-priority-layout"><div class="card alert-priority-panel"><div class="professional-section-heading"><div><small>PRIORIDADE</small><h3>Pontos que exigem atenção</h3></div><span>${critical.length} crítico(s)</span></div><div class="alert-priority-list">${priorityCards || `<div class="empty">Nenhum alerta crítico ou alto.</div>`}</div></div><div class="card alert-category-panel"><div class="professional-section-heading"><div><small>DISTRIBUIÇÃO</small><h3>Alertas por categoria</h3></div></div><div class="alert-category-list">${grouped.map(category=>{ const count=all.filter(x=>(x.category||"Sistema")===category).length; const pct=all.length?Math.round(count/all.length*100):0; return `<div><span><strong>${esc(category)}</strong><small>${count} alerta(s)</small></span><div class="mini-progress"><i style="width:${pct}%"></i></div><b>${pct}%</b></div>`; }).join("") || `<div class="empty">Nenhuma categoria disponível.</div>`}</div></div></section>
       <section class="alert-center-layout professional-alert-layout"><div><div class="professional-section-heading alert-section-heading"><div><small>CENTRAL</small><h3>Todos os alertas</h3></div><span>${all.length} registro(s)</span></div><div class="alert-filter-row">${grouped.map(category=>`<span>${esc(category)} <strong>${all.filter(x=>(x.category||"Sistema")===category).length}</strong></span>`).join("")}</div><div class="alert-center-grid">${cards||`<div class="empty">Nenhum alerta ativo.</div>`}</div></div>
       <aside class="card chat-panel professional-chat-panel"><div class="chat-panel-head"><div><small>COMUNICAÇÃO</small><h3>Chat interno</h3></div><span>${messages.length}</span></div><div class="chat-list">${chatMessages||`<div class="empty">Sem mensagens.</div>`}</div>${role()!=="tv"?`<form id="chatForm" class="chat-form"><input name="message" required placeholder="Mensagem para a equipe"><button class="btn primary">Enviar</button></form>`:""}</aside></section>`;
@@ -5012,7 +5050,7 @@
     ].map(([label,value,status])=>`<div class="settings-health-item ${status}"><span>${label}</span><strong>${esc(value)}</strong></div>`).join("");
     $("#page-settings").innerHTML = header("Administração do sistema","Usuários, permissões, ambientes, segurança, diagnóstico e preferências.", `<button class="btn secondary" data-action="toggle-theme">Alternar tema</button>${isAdmin() ? `<button class="btn primary" data-action="new-user">+ Novo usuário</button>` : ""}`) +
       `<section class="settings-kpi-grid">${statCard("Usuários cadastrados",fmt.format(users.length),"contas no sistema",uiIcon("settings"),"Gestão centralizada","blue")}${statCard("Usuários ativos",fmt.format(activeUsers),"acesso liberado",uiIcon("check"),`${inactiveUsers} inativo(s)`,"green")}${statCard("Administradores",fmt.format(adminUsers),"acesso elevado",uiIcon("shield"),"Permissões críticas","purple")}${statCard("Liderança",fmt.format(leadershipUsers),"líderes e supervisores",uiIcon("gauge"),"Gestão operacional","orange")}</section>
-       <section class="settings-command-grid"><div class="card settings-profile-panel"><div class="professional-section-heading"><div><small>MEU PERFIL</small><h3>Identidade e acesso atual</h3></div>${badge(state.data.profile.role)}</div><div class="settings-profile-card"><div class="settings-profile-avatar">${esc((state.data.profile.name||"U").slice(0,2).toUpperCase())}</div><div><strong>${esc(state.data.profile.name)}</strong><small>${esc(state.data.profile.email)}</small><span>${esc(state.data.profile.department || "Departamento não informado")}</span></div></div><div class="settings-profile-meta"><span>Função<strong>${esc(state.data.profile.role)}</strong></span><span>Ambiente<strong>${environment}</strong></span></div></div><div class="card settings-health-panel"><div class="professional-section-heading"><div><small>DIAGNÓSTICO</small><h3>Saúde do sistema</h3></div><span>${errors.length || queueCount ? "Atenção" : "Normal"}</span></div><div class="settings-health-grid">${healthItems}</div><div class="row-actions settings-health-actions"><button class="btn primary" data-action="backup-json">Backup JSON</button><button class="btn secondary" data-action="sync-offline">Sincronizar offline</button></div></div></section>
+       <section class="settings-command-grid"><div class="card settings-profile-panel"><div class="professional-section-heading"><div><small>MEU PERFIL</small><h3>Identidade e acesso atual</h3></div>${badge(state.data.profile.role)}</div><div class="settings-profile-card"><div class="settings-profile-avatar">${profileAvatarHtml(state.data.profile.avatarUrl, state.data.profile.name)}</div><div><strong>${esc(state.data.profile.name)}</strong><small>${esc(state.data.profile.email)}</small><span>${esc(state.data.profile.department || "Departamento não informado")}</span></div></div><div class="settings-profile-meta"><span>Função<strong>${esc(state.data.profile.role)}</strong></span><span>Ambiente<strong>${environment}</strong></span></div><div class="row-actions profile-security-actions"><button class="btn primary" data-action="change-avatar">${state.data.profile.avatarUrl ? "Trocar foto" : "Adicionar foto"}</button><button class="btn secondary" data-action="change-password">Alterar senha</button></div></div><div class="card settings-health-panel"><div class="professional-section-heading"><div><small>DIAGNÓSTICO</small><h3>Saúde do sistema</h3></div><span>${errors.length || queueCount ? "Atenção" : "Normal"}</span></div><div class="settings-health-grid">${healthItems}</div><div class="row-actions settings-health-actions"><button class="btn primary" data-action="backup-json">Backup JSON</button><button class="btn secondary" data-action="sync-offline">Sincronizar offline</button></div></div></section>
        <section class="settings-control-grid"><div><div class="section-title">Ambiente</div>${environmentPanel()}<div class="section-title">Teste seguro</div>${homologationPanel()}</div><div><div class="section-title">Distribuição da equipe</div><div class="card settings-department-panel"><div class="professional-section-heading"><div><small>DEPARTAMENTOS</small><h3>Usuários por setor</h3></div><span>${users.length} usuários</span></div><div class="settings-department-list">${departmentRows || `<div class="empty">Sem usuários cadastrados.</div>`}</div></div>${isAdmin() ? `<div class="admin-edit-notice settings-admin-notice"><strong>Edição total ativa</strong><span>Administradores podem gerenciar usuários e registros operacionais. Auditoria e históricos permanecem protegidos.</span></div>` : ""}</div></section>
        <div class="section-title professional-record-title"><span>Usuários e permissões</span><small>${users.length} usuário(s)</small></div><div class="card table-wrap desktop-record-table professional-table">${isAdmin() ? "" : `<div class="info-box" style="margin-bottom:12px">Somente o administrador pode alterar cargo, setor, status e permissões.</div>`}<table class="data-table"><thead><tr><th>Usuário</th><th>Cargo</th><th>Departamento</th><th>Status</th><th>Cadastro</th><th>Ação</th></tr></thead><tbody>${userRows || `<tr><td colspan="6" class="empty">Nenhum usuário disponível.</td></tr>`}</tbody></table></div><div class="mobile-record-list">${mobileUsers || `<div class="card empty">Nenhum usuário disponível.</div>`}</div>${hasRole(["supervisor"]) ? `<div class="section-title">Feedback da versão beta</div>${feedbackManagementPanel()}` : ""}${isAdmin() && errors.length ? `<div class="section-title">Erros recentes</div><div class="card table-wrap"><table class="data-table"><thead><tr><th>Data</th><th>Contexto</th><th>Mensagem</th></tr></thead><tbody>${errors.slice(0,20).map(e => `<tr><td>${dateTime(e.created_at)}</td><td>${esc(e.context || "-")}</td><td>${esc(e.message)}</td></tr>`).join("")}</tbody></table></div>` : ""}`;
   }
@@ -5277,6 +5315,23 @@
     const row=Array.isArray(data)?data[0]:data;
     if(!row?.id) throw new Error("O Supabase não confirmou a movimentação da carreta.");
     return row.id;
+  }
+
+  function profilePasswordForm() {
+    return `<form id="profilePasswordForm" novalidate><div class="form-grid">
+      <div class="wide"><label>Senha atual *</label><input name="current_password" type="password" autocomplete="current-password" required></div>
+      <div><label>Nova senha *</label><input name="new_password" type="password" autocomplete="new-password" minlength="8" required></div>
+      <div><label>Confirmar nova senha *</label><input name="confirm_password" type="password" autocomplete="new-password" minlength="8" required></div>
+      <div class="wide info-box"><strong>Segurança da conta</strong><br>A nova senha precisa ter pelo menos 8 caracteres. A senha atual será confirmada antes da alteração.</div>
+    </div>${formActions("Alterar senha")}</form>`;
+  }
+
+  function profileAvatarForm() {
+    const profile = state.data.profile;
+    return `<form id="profileAvatarForm" novalidate><div class="profile-avatar-editor">
+      <div class="profile-avatar-preview" data-avatar-preview>${profileAvatarHtml(profile.avatarUrl, profile.name)}</div>
+      <div><strong>${esc(profile.name)}</strong><p>Envie uma foto JPG, PNG ou WebP de até 5 MB.</p></div>
+    </div><div class="form-grid"><div class="wide"><label>Foto de perfil *</label><input name="avatar" type="file" accept="image/jpeg,image/png,image/webp" required></div></div>${formActions(profile.avatarUrl ? "Trocar foto" : "Salvar foto")}</form>`;
   }
 
   function genericForm(kind, item = {}) {
@@ -6065,6 +6120,54 @@
     try {
       if (!navigator.onLine) throw new Error("Sem internet. Reconecte para salvar alterações.");
 
+      if (form.id === "profilePasswordForm") {
+        const payload = Object.fromEntries(new FormData(form));
+        const currentPassword = String(payload.current_password || "");
+        const newPassword = String(payload.new_password || "");
+        const confirmation = String(payload.confirm_password || "");
+        if (!currentPassword) throw new Error("Informe a senha atual.");
+        if (newPassword.length < 8) throw new Error("A nova senha precisa ter pelo menos 8 caracteres.");
+        if (newPassword !== confirmation) throw new Error("A confirmação da nova senha não confere.");
+        if (newPassword === currentPassword) throw new Error("A nova senha precisa ser diferente da senha atual.");
+        const { data: authData, error: authError } = await state.client.auth.signInWithPassword({
+          email: state.user?.email || state.data.profile.email,
+          password: currentPassword
+        });
+        if (authError) throw new Error("A senha atual está incorreta.");
+        if (authData?.user) state.user = authData.user;
+        const { error: passwordError } = await state.client.auth.updateUser({ password: newPassword });
+        if (passwordError) throw passwordError;
+        clearFormDraft(form);
+        closeModal();
+        toast("Senha alterada com sucesso.", "success");
+        return;
+      }
+
+      if (form.id === "profileAvatarForm") {
+        const file = form.elements.avatar?.files?.[0];
+        if (!file) throw new Error("Selecione uma foto.");
+        if (!["image/jpeg","image/png","image/webp"].includes(file.type)) throw new Error("Use uma imagem JPG, PNG ou WebP.");
+        if (file.size > 5 * 1024 * 1024) throw new Error("A foto deve ter no máximo 5 MB.");
+        const path = `${state.user.id}/avatar`;
+        const { error: uploadError } = await state.client.storage.from("avatars").upload(path, file, {
+          upsert: true,
+          contentType: file.type,
+          cacheControl: "3600"
+        });
+        if (uploadError) throw uploadError;
+        const { data: publicData } = state.client.storage.from("avatars").getPublicUrl(path);
+        const publicUrl = `${publicData.publicUrl}?v=${Date.now()}`;
+        const { error: profileError } = await state.client.from("profiles").update({ avatar_url: publicUrl }).eq("id", state.user.id);
+        if (profileError) throw profileError;
+        await state.client.auth.updateUser({ data: { avatar_url: publicUrl } });
+        clearFormDraft(form);
+        await loadData();
+        renderAll();
+        openAppProfileHeader();
+        closeModal();
+        toast("Foto de perfil atualizada.", "success");
+        return;
+      }
 
       if (form.id === "feedbackForm") {
         const payload = Object.fromEntries(new FormData(form));
@@ -6416,6 +6519,28 @@
 
     if (button.dataset.pageLink) { showPage(button.dataset.pageLink); return; }
     if (button.dataset.alertPage) { showPage(button.dataset.alertPage); return; }
+    if (button.dataset.deleteAlert) {
+      if (!isAdmin()) return toast("Somente o administrador pode excluir alertas.", "error");
+      const title = button.dataset.alertTitle || "este alerta";
+      if (!confirm(`Excluir ${title}?`)) return;
+      const automatic = button.dataset.alertAutomatic === "true";
+      if (automatic) {
+        const { error } = await state.client.from("dismissed_system_alerts").upsert({
+          alert_key: button.dataset.deleteAlert,
+          title,
+          category: button.dataset.alertCategory || "Sistema",
+          dismissed_by: state.user.id
+        }, { onConflict: "alert_key" });
+        if (error) return toast(error.message, "error");
+      } else {
+        const { error } = await state.client.from("alerts").delete().eq("id", button.dataset.deleteAlert);
+        if (error) return toast(error.message, "error");
+      }
+      await loadData();
+      renderAlerts();
+      renderAll();
+      return toast("Alerta excluído da central.", "success");
+    }
 
     if (button.hasAttribute("data-tv-slide")) {
       state.tv.slide = Number(button.dataset.tvSlide || 0);
@@ -6499,6 +6624,12 @@
       return toast("Campos preenchidos com os saldos teóricos.");
     }
 
+    if (action === "change-avatar") {
+      return openModal("Foto de perfil", profileAvatarForm(), "MINHA CONTA");
+    }
+    if (action === "change-password") {
+      return openModal("Alterar senha", profilePasswordForm(), "SEGURANÇA");
+    }
     if (action === "open-feedback") {
       return openModal("Feedback da versão beta", feedbackForm(), "MELHORIA CONTÍNUA");
     }
@@ -7134,6 +7265,22 @@
   });
 
   document.addEventListener("change", async event => {
+    if (event.target.closest("#profileAvatarForm") && event.target.name === "avatar") {
+      const file = event.target.files?.[0];
+      const preview = event.target.closest("#profileAvatarForm")?.querySelector("[data-avatar-preview]");
+      if (!file || !preview) return;
+      if (!["image/jpeg","image/png","image/webp"].includes(file.type)) {
+        event.target.value = "";
+        return toast("Use uma imagem JPG, PNG ou WebP.", "error");
+      }
+      if (file.size > 5 * 1024 * 1024) {
+        event.target.value = "";
+        return toast("A foto deve ter no máximo 5 MB.", "error");
+      }
+      const localUrl = URL.createObjectURL(file);
+      preview.innerHTML = `<img class="profile-avatar-render" src="${esc(localUrl)}" alt="Prévia da foto">`;
+      return;
+    }
     if (event.target.matches("[data-truck-filter]:not([data-truck-filter='query'])")) {
       state.truckFilters[event.target.dataset.truckFilter] = event.target.value;
       renderTrucks();

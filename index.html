@@ -7,8 +7,8 @@
   <title>OpsControl IA Pro</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="app.css?v=20260717-v33-12-13-truck-intelligence">
-  <link rel="stylesheet" href="v33.css?v=20260717-v33-12-13-truck-intelligence">
+  <link rel="stylesheet" href="app.css?v=20260717-v33-12-14-profile-security-alert-admin">
+  <link rel="stylesheet" href="v33.css?v=20260717-v33-12-14-profile-security-alert-admin">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
@@ -45,7 +45,7 @@
         <button id="globalSearchBtn" class="icon-btn" aria-label="Busca geral" title="Busca geral"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg></button>
         <span id="syncBadge" class="status-badge neutral">Modo local</span>
         <button id="notificationsBtn" class="icon-btn" aria-label="Notificações"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 7h18s-3 0-3-7"></path><path d="M10.5 20a1.5 1.5 0 0 0 3 0"></path></svg><span id="alertCount" class="count-badge">0</span></button>
-        <button class="user-chip"><span id="userInitials">US</span><div><strong id="userName">Usuário</strong><small id="userRole">Perfil</small></div></button>
+        <button class="user-chip"><span id="userInitials" class="user-avatar-shell">US<img id="userAvatar" class="hidden" alt=""></span><div><strong id="userName">Usuário</strong><small id="userRole">Perfil</small></div></button>
       </div>
     </header>
 
@@ -154,8 +154,8 @@
   </div>
 
   <div id="toastContainer" class="toast-container"></div>
-  <script src="js/config.js?v=20260717-v33-12-13-truck-intelligence"></script>
-  <script src="vendor/qrcode.js?v=20260717-v33-12-13-truck-intelligence"></script>
-  <script src="js/app.js?v=20260717-v33-12-13-truck-intelligence"></script>
+  <script src="js/config.js?v=20260717-v33-12-14-profile-security-alert-admin"></script>
+  <script src="vendor/qrcode.js?v=20260717-v33-12-14-profile-security-alert-admin"></script>
+  <script src="js/app.js?v=20260717-v33-12-14-profile-security-alert-admin"></script>
 </body>
 </html>

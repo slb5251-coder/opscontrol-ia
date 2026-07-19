@@ -1,11 +1,11 @@
-const CACHE="opscontrol-20260719-v33-12-15-truck-operational-flow";
+const CACHE="opscontrol-20260717-v33-12-14-profile-security-alert-admin";
 const FILES=[
   "./",
   "./index.html",
-  "./app.css?v=20260719-v33-12-15-truck-operational-flow",
-  "./v33.css?v=20260719-v33-12-15-truck-operational-flow",
-  "./js/config.js?v=20260719-v33-12-15-truck-operational-flow",
-  "./js/app.js?v=20260719-v33-12-15-truck-operational-flow",
+  "./app.css?v=20260717-v33-12-14-profile-security-alert-admin",
+  "./v33.css?v=20260717-v33-12-14-profile-security-alert-admin",
+  "./js/config.js?v=20260717-v33-12-14-profile-security-alert-admin",
+  "./js/app.js?v=20260717-v33-12-14-profile-security-alert-admin",
   "./manifest.json",
   "./assets/icon.svg","./vendor/qrcode.js"
 ];

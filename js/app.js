@@ -12,7 +12,7 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const APP_VERSION = "20260719-v33-12-15-truck-operational-flow";
+  const APP_VERSION = "20260717-v33-12-14-profile-security-alert-admin";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -813,8 +813,8 @@
 
   function statusClass(status = "") {
     const s = String(status).toLowerCase();
-    if (["conclu", "finalizada", "liberada", "liberado", "válido", "ativo", "recebida", "operando", "em operação", "disponível", "fechada"].some(x => s.includes(x))) return "green";
-    if (["andamento", "programada", "chegou", "aguardando", "atenção", "a vencer", "próximo vencimento", "manutenção", "média", "aberta"].some(x => s.includes(x))) return "amber";
+    if (["conclu", "liberado", "válido", "ativo", "recebida", "operando", "disponível", "fechada"].some(x => s.includes(x))) return "green";
+    if (["andamento", "programada", "atenção", "a vencer", "próximo vencimento", "manutenção", "média", "aberta"].some(x => s.includes(x))) return "amber";
     if (["bloqueado", "parado", "crítico", "vencido", "baixo estoque", "alta", "cancelada", "inativo"].some(x => s.includes(x))) return "red";
     if (s.includes("wbm")) return "blue";
     return "neutral";
@@ -1098,14 +1098,10 @@
     }
     if (kind === "trucks") {
       const truckRows = state.page === "trucks" ? trucksForPage() : filteredTrucks();
-      const rows = truckRows.flatMap(t => {
-        const metrics = truckFlowMetrics(t);
-        const common = [t.date,t.movement,t.truckType,t.supplier,t.client,t.plate,t.driver,t.invoice,truckFlowStatus(t),t.scheduledAt||"",t.checkInAt||"",t.operationStartedAt||"",t.operationFinishedAt||"",t.checkOutAt||"",metrics.waitMinutes??"",metrics.operationMinutes??"",metrics.totalMinutes??""];
-        return t.truckType === "Plataforma" && t.items.length
-          ? t.items.map((item,index) => [common[0],common[1],common[2],common[3],common[4],item.productName,"",item.quantity,item.unit,index+1,t.items.length,...common.slice(5)])
-          : [[common[0],common[1],common[2],common[3],common[4],t.product,t.lot,t.quantity,t.unit,1,1,...common.slice(5)]];
-      });
-      return downloadCsv(`carretas-${date}.csv`, ["Data","Movimento","Tipo da carreta","Origem/Destino","Cliente","Produto","Lote","Quantidade","Unidade","Item","Total de itens","Placa","Motorista","NF","Etapa operacional","Programação","Check-in","Início da operação","Fim da operação","Check-out","Espera (min)","Operação (min)","Permanência (min)"], rows);
+      const rows = truckRows.flatMap(t => t.truckType === "Plataforma" && t.items.length
+        ? t.items.map((item,index) => [t.date,t.movement,t.truckType,t.supplier,t.client,item.productName,"",item.quantity,item.unit,index+1,t.items.length,t.plate,t.driver,t.invoice,t.status])
+        : [[t.date,t.movement,t.truckType,t.supplier,t.client,t.product,t.lot,t.quantity,t.unit,1,1,t.plate,t.driver,t.invoice,t.status]]);
+      return downloadCsv(`carretas-${date}.csv`, ["Data","Movimento","Tipo da carreta","Origem/Destino","Cliente","Produto","Lote","Quantidade","Unidade","Item","Total de itens","Placa","Motorista","NF","Status"], rows);
     }
     if (kind === "maintenance") {
       const rows = state.data.equipment.map(e => [e.name, e.category, e.status, e.hourmeter, e.next_maintenance_date, e.maintenance_due_hourmeter, e.location]);
@@ -1504,8 +1500,7 @@
       c.from("vessel_ais_alerts").select("*").order("event_at", { ascending: false }).limit(1000),
       c.from("vessel_ais_sync_runs").select("*").order("started_at", { ascending: false }).limit(100),
       c.from("vessel_registry").select("*").order("name", { ascending: true }).limit(2000),
-      c.from("dismissed_system_alerts").select("*").order("dismissed_at", { ascending: false }).limit(2000),
-      c.from("truck_flow_events").select("*").order("event_at", { ascending: false }).limit(5000)
+      c.from("dismissed_system_alerts").select("*").order("dismissed_at", { ascending: false }).limit(2000)
     ]);
 
     if (results[0]?.error) throw results[0].error;
@@ -1517,8 +1512,7 @@
       vesselGeofences: !results[39]?.error,
       vesselAlerts: !results[40]?.error,
       vesselSyncRuns: !results[41]?.error,
-      vesselRegistry: !results[42]?.error,
-      truckFlowEvents: !results[44]?.error
+      vesselRegistry: !results[42]?.error
     };
 
     results.forEach((result, index) => {
@@ -1618,12 +1612,6 @@
           product: linkedProduct?.name || x.product, lot: x.lot || "",
           quantity: Number(x.quantity || 0), unit: x.unit, plate: x.plate || "",
           driver: x.driver_name || "", invoice: x.invoice_number || "", status: x.status,
-          flowStatus: x.flow_status || (x.status === "Concluída" ? "Finalizada" : x.status === "Recebida" ? "Chegou" : x.status === "Cancelada" ? "Cancelada" : "Programada"),
-          scheduledAt: x.scheduled_at || null,
-          checkInAt: x.check_in_at || null,
-          operationStartedAt: x.operation_started_at || null,
-          operationFinishedAt: x.operation_finished_at || null,
-          checkOutAt: x.check_out_at || null,
           notes: x.notes || "", items, created_by: x.created_by,
           created_at: x.created_at, updated_at: x.updated_at
         };
@@ -1831,10 +1819,6 @@
       dismissedSystemAlerts: (results[43].data || []).map(item => ({
         id:item.id, alertKey:item.alert_key, title:item.title || "", category:item.category || "",
         dismissedBy:item.dismissed_by, dismissedAt:item.dismissed_at
-      })),
-      truckFlowEvents: (results[44].data || []).map(item => ({
-        id:item.id, truckId:item.truck_id, fromStatus:item.from_status || "", toStatus:item.to_status,
-        notes:item.notes || "", eventAt:item.event_at, changedBy:item.changed_by, createdAt:item.created_at
       })),
       vesselRegistryAvailable: optionalAvailability.vesselRegistry,
       vesselModuleAvailable: optionalAvailability.vessels,
@@ -4299,106 +4283,6 @@
     const result=page.querySelector("[data-chemical-filter-result]"); if(result) result.textContent=`${visible} produto(s) exibido(s)`;
   }
 
-  const TRUCK_FLOW_STAGES = ["Programada","Chegou","Aguardando","Em operação","Finalizada","Liberada"];
-
-  function truckFlowStatus(item = {}) {
-    return item.flowStatus || (item.status === "Concluída" ? "Finalizada" : item.status === "Recebida" ? "Chegou" : item.status === "Cancelada" ? "Cancelada" : "Programada");
-  }
-
-  function truckHasOperationalTracking(item = {}) {
-    return Boolean(item.scheduledAt || item.checkInAt || item.operationStartedAt || item.operationFinishedAt || item.checkOutAt || (state.data?.truckFlowEvents || []).some(event => event.truckId === item.id));
-  }
-
-  function minutesBetween(start, end) {
-    if (!start || !end) return null;
-    const a = new Date(start).getTime();
-    const b = new Date(end).getTime();
-    if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) return null;
-    return Math.round((b - a) / 60000);
-  }
-
-  function formatTruckDuration(minutes) {
-    if (minutes === null || minutes === undefined || !Number.isFinite(Number(minutes))) return "-";
-    const total = Math.max(0, Math.round(Number(minutes)));
-    const days = Math.floor(total / 1440);
-    const hours = Math.floor((total % 1440) / 60);
-    const mins = total % 60;
-    if (days) return `${days}d ${hours}h`;
-    if (hours) return `${hours}h ${mins}min`;
-    return `${mins}min`;
-  }
-
-  function averageTruckMinutes(values) {
-    const valid = values.filter(value => value !== null && value !== undefined && Number.isFinite(Number(value)));
-    return valid.length ? Math.round(valid.reduce((sum,value) => sum + Number(value), 0) / valid.length) : null;
-  }
-
-  function truckFlowMetrics(item, now = new Date().toISOString()) {
-    const status = truckFlowStatus(item);
-    const waitEnd = item.operationStartedAt || ((["Chegou","Aguardando"].includes(status)) ? now : null);
-    const operationEnd = item.operationFinishedAt || (status === "Em operação" ? now : null);
-    const totalEnd = item.checkOutAt || (item.checkInAt && !["Liberada","Cancelada"].includes(status) ? now : null);
-    return {
-      waitMinutes: minutesBetween(item.checkInAt, waitEnd),
-      operationMinutes: minutesBetween(item.operationStartedAt, operationEnd),
-      totalMinutes: minutesBetween(item.checkInAt, totalEnd),
-      scheduleDelayMinutes: minutesBetween(item.scheduledAt, item.checkInAt)
-    };
-  }
-
-  function truckFlowMetricsHtml(item, compact = false) {
-    const metrics = truckFlowMetrics(item);
-    const cells = [
-      ["Espera", formatTruckDuration(metrics.waitMinutes)],
-      ["Operação", formatTruckDuration(metrics.operationMinutes)],
-      ["Permanência", formatTruckDuration(metrics.totalMinutes)]
-    ];
-    return `<div class="truck-time-metrics ${compact ? "compact" : ""}">${cells.map(([label,value]) => `<span><small>${label}</small><strong>${value}</strong></span>`).join("")}</div>`;
-  }
-
-  function truckFlowStepper(item) {
-    const current = truckFlowStatus(item);
-    if (current === "Cancelada") return `<div class="truck-flow-cancelled">Movimentação cancelada</div>`;
-    const index = TRUCK_FLOW_STAGES.indexOf(current);
-    return `<div class="truck-flow-stepper" aria-label="Etapa operacional: ${esc(current)}">${TRUCK_FLOW_STAGES.map((stage,stageIndex) => `<span class="${stageIndex < index ? "done" : stageIndex === index ? "current" : ""}" title="${esc(stage)}"><i></i><small>${esc(stage === "Chegou" ? "Check-in" : stage === "Em operação" ? "Operação" : stage === "Finalizada" ? "Finalizada" : stage === "Liberada" ? "Saída" : stage)}</small></span>`).join("")}</div>`;
-  }
-
-  function truckFlowActionButtons(item, compact = false) {
-    if (!canManageTrucks()) return "";
-    const status = truckFlowStatus(item);
-    const actions = status === "Programada" ? [["Chegou","Fazer check-in","primary"]]
-      : status === "Chegou" ? [["Aguardando","Colocar em espera","secondary"],["Em operação","Iniciar operação","primary"]]
-      : status === "Aguardando" ? [["Em operação","Iniciar operação","primary"]]
-      : status === "Em operação" ? [["Finalizada","Finalizar operação","primary"]]
-      : status === "Finalizada" ? [["Liberada","Fazer check-out","primary"]]
-      : [];
-    if (!actions.length) return "";
-    return `<div class="truck-flow-actions ${compact ? "compact" : ""}">${actions.map(([next,label,tone]) => `<button type="button" class="btn small ${tone}" data-truck-flow="${item.id}" data-truck-next="${esc(next)}">${esc(label)}</button>`).join("")}</div>`;
-  }
-
-  function truckFlowTimelineHtml(item) {
-    const events = (state.data.truckFlowEvents || []).filter(event => event.truckId === item.id).sort((a,b) => new Date(a.eventAt) - new Date(b.eventAt));
-    const milestones = [
-      ["Programação", item.scheduledAt], ["Check-in", item.checkInAt], ["Início da operação", item.operationStartedAt],
-      ["Fim da operação", item.operationFinishedAt], ["Check-out", item.checkOutAt]
-    ].filter(([,time]) => time);
-    return `<div class="truck-flow-modal">${truckFlowStepper(item)}${truckFlowMetricsHtml(item)}<div class="section-title">Marcos registrados</div><div class="truck-milestone-grid">${milestones.map(([label,time]) => `<span><small>${label}</small><strong>${dateTime(time)}</strong></span>`).join("") || `<div class="empty">Nenhum horário registrado ainda.</div>`}</div><div class="section-title">Histórico da fila</div><div class="timeline professional-timeline">${events.map(event => { const user=state.data.users.find(entry=>entry.id===event.changedBy)?.name||"Sistema"; return `<div class="timeline-item"><span class="timeline-dot"></span><div><strong>${esc(event.fromStatus || "Início")} → ${esc(event.toStatus)}</strong><small>${dateTime(event.eventAt)} • ${esc(user)}</small><p>${esc(event.notes || "Etapa operacional atualizada.")}</p></div></div>`; }).join("") || `<div class="empty">Sem eventos registrados.</div>`}</div></div>`;
-  }
-
-  async function advanceTruckFlow(truckId, nextStatus) {
-    const item = state.data.trucks.find(entry => entry.id === truckId);
-    if (!item) throw new Error("Carreta não localizada.");
-    const confirmText = nextStatus === "Finalizada" ? "Finalizar a operação e aplicar o estoque vinculado?" : nextStatus === "Liberada" ? "Confirmar o check-out e liberar a carreta?" : null;
-    if (confirmText && !confirm(confirmText)) return false;
-    const { data, error } = await state.client.rpc("advance_truck_flow_v1", { p_truck_id: truckId, p_next_status: nextStatus, p_notes: null });
-    if (error) throw error;
-    const row = Array.isArray(data) ? data[0] : data;
-    if (!row?.id) throw new Error("O Supabase não confirmou a nova etapa da carreta.");
-    await loadData();
-    renderAll();
-    return true;
-  }
-
   function normalizeTruckFilterValue(value = "") {
     return String(value || "")
       .normalize("NFD")
@@ -4426,7 +4310,6 @@
       item.plate,
       item.driver,
       item.invoice,
-      truckFlowStatus(item),
       item.status,
       item.notes,
       ...truckProductNames(item)
@@ -4449,7 +4332,7 @@
   }
 
   function truckOpenAgeDays(item) {
-    if (["Liberada", "Cancelada"].includes(truckFlowStatus(item))) return 0;
+    if (["Concluída", "Cancelada"].includes(item.status)) return 0;
     const date = recordDateKey(item.date || item.created_at);
     if (!date) return 0;
     const start = new Date(`${date}T12:00:00`);
@@ -4461,10 +4344,7 @@
     const flags = [];
     if (duplicateIds.has(item.id)) flags.push({ key: "duplicate", label: "NF duplicada", tone: "red" });
     if (!item.invoice || !item.plate || (item.truckType !== "Plataforma" && !item.lot)) flags.push({ key: "docs", label: "Documentação", tone: "orange" });
-    if (item.truckType !== "Plataforma" && !item.stockApplied && ["Finalizada", "Liberada"].includes(truckFlowStatus(item))) flags.push({ key: "stock", label: "Estoque pendente", tone: "purple" });
-    const scheduleReference = item.checkInAt || (!["Liberada","Cancelada"].includes(truckFlowStatus(item)) ? new Date().toISOString() : null);
-    const scheduleDelay = minutesBetween(item.scheduledAt, scheduleReference);
-    if (scheduleDelay !== null && scheduleDelay >= 60) flags.push({ key: "late", label: `Atraso ${formatTruckDuration(scheduleDelay)}`, tone: "orange" });
+    if (item.truckType !== "Plataforma" && !item.stockApplied && ["Recebida", "Concluída"].includes(item.status)) flags.push({ key: "stock", label: "Estoque pendente", tone: "purple" });
     const age = truckOpenAgeDays(item);
     if (age >= 1) flags.push({ key: "overdue", label: `${age} dia(s) aberta`, tone: "red" });
     return flags;
@@ -4507,10 +4387,10 @@
       if (f.end && date && date > f.end) return false;
       if (f.movement && item.movement !== f.movement) return false;
       if (f.type && item.truckType !== f.type) return false;
-      if (f.status && truckFlowStatus(item) !== f.status) return false;
+      if (f.status && item.status !== f.status) return false;
       if (f.client && (item.client || "Sem cliente") !== f.client) return false;
       if (f.product && !truckProductNames(item).includes(f.product)) return false;
-      if (f.stock === "pending" && !(item.truckType !== "Plataforma" && !item.stockApplied && ["Finalizada", "Liberada"].includes(truckFlowStatus(item)))) return false;
+      if (f.stock === "pending" && !(item.truckType !== "Plataforma" && !item.stockApplied && ["Recebida", "Concluída"].includes(item.status))) return false;
       if (f.stock === "applied" && !(item.truckType !== "Plataforma" && item.stockApplied)) return false;
       if (f.stock === "not-applicable" && item.truckType !== "Plataforma") return false;
       if (!truckAttentionMatches(item, f.attention, duplicateIds)) return false;
@@ -4545,7 +4425,7 @@
     const filters = state.truckFilters || {};
     const movements = [...new Set(allTrucks.map(item => item.movement).filter(Boolean))].sort();
     const types = [...new Set(allTrucks.map(item => item.truckType).filter(Boolean))].sort();
-    const statuses = [...TRUCK_FLOW_STAGES, "Cancelada"];
+    const statuses = [...new Set(allTrucks.map(item => item.status).filter(Boolean))].sort();
     const clients = [...new Set(allTrucks.map(item => item.client || "Sem cliente"))].sort();
     const products = [...new Set(allTrucks.flatMap(truckProductNames).filter(Boolean))].sort();
     const activeFilterCount = truckFilterActiveCount();
@@ -4553,20 +4433,12 @@
     const typeCount = type => trucks.filter(item => item.truckType === type).length;
     const movementCount = movement => trucks.filter(item => String(item.movement || "").toLowerCase() === movement.toLowerCase()).length;
     const todayCount = trucks.filter(item => recordDateKey(item.date || item.created_at) === today).length;
-    const pendingStock = trucks.filter(item => item.truckType !== "Plataforma" && !item.stockApplied && ["Finalizada", "Liberada"].includes(truckFlowStatus(item))).length;
+    const pendingStock = trucks.filter(item => item.truckType !== "Plataforma" && !item.stockApplied && ["Recebida", "Concluída"].includes(item.status)).length;
     const pendingDocs = trucks.filter(item => !item.invoice || !item.plate || (item.truckType !== "Plataforma" && !item.lot)).length;
-    const activeQueue = trucks.filter(item => !["Liberada", "Cancelada"].includes(truckFlowStatus(item)) && (truckHasOperationalTracking(item) || truckFlowStatus(item) === "Programada"));
-    const completed = trucks.filter(item => ["Finalizada", "Liberada"].includes(truckFlowStatus(item))).length;
-    const atPlant = trucks.filter(item => item.checkInAt && !item.checkOutAt && truckFlowStatus(item) !== "Cancelada").length;
-    const waiting = trucks.filter(item => ["Chegou","Aguardando"].includes(truckFlowStatus(item))).length;
-    const operating = trucks.filter(item => truckFlowStatus(item) === "Em operação").length;
-    const released = trucks.filter(item => truckFlowStatus(item) === "Liberada").length;
-    const averageWait = averageTruckMinutes(trucks.map(item => truckFlowMetrics(item).waitMinutes).filter((_,index) => trucks[index].operationStartedAt));
-    const averageOperation = averageTruckMinutes(trucks.map(item => truckFlowMetrics(item).operationMinutes).filter((_,index) => trucks[index].operationFinishedAt));
-    const averageDwell = averageTruckMinutes(trucks.map(item => truckFlowMetrics(item).totalMinutes).filter((_,index) => trucks[index].checkOutAt));
+    const activeQueue = trucks.filter(item => !["Concluída", "Cancelada"].includes(item.status));
+    const completed = trucks.filter(item => item.status === "Concluída").length;
     const duplicateCount = trucks.filter(item => duplicateIds.has(item.id)).length;
     const overdueCount = trucks.filter(item => truckOpenAgeDays(item) >= 1).length;
-    const delayedCount = trucks.filter(item => truckAttentionFlags(item, duplicateIds).some(flag => flag.key === "late")).length;
     const attentionItems = trucks
       .map(item => ({ item, flags: truckAttentionFlags(item, duplicateIds) }))
       .filter(entry => entry.flags.length)
@@ -4587,16 +4459,14 @@
     const volumeSummary = Object.entries(quantityByUnit).slice(0, 3).map(([unit, quantity]) => `${fmt.format(quantity)} ${esc(unit)}`).join(" • ") || "Sem volume no período";
 
     const rows = trucks.map(item => `<tr>
-      <td><strong>${dateOnly(item.date)}</strong><br><small>${item.scheduledAt ? `Prev. ${dateTime(item.scheduledAt)}` : (recordDateKey(item.date || item.created_at) === today ? "Hoje" : "Sem horário")}</small></td>
+      <td><strong>${dateOnly(item.date)}</strong><br><small>${recordDateKey(item.date || item.created_at) === today ? "Hoje" : "Movimentação"}</small></td>
       <td>${badge(item.movement)}<br><small>${badge(item.truckType)}</small></td>
       <td><strong>${esc(item.supplier || "-")}</strong><br><small>${esc(item.client || "Sem cliente")}</small></td>
       <td>${truckItemsSummary(item)}</td>
       <td><strong>${esc(item.plate || "-")}</strong><br><small>${esc(item.driver || "Motorista não informado")}</small></td>
       <td><strong>${esc(item.invoice || "-")}</strong><br><small>${esc(item.lot || "Sem lote")}</small></td>
-      <td>${badge(truckFlowStatus(item))}${truckFlowMetricsHtml(item,true)}${truckAttentionHtml(item, duplicateIds)}</td>
+      <td>${badge(item.status)}<br><small>${esc(truckInventoryLabel(item))}</small>${truckAttentionHtml(item, duplicateIds)}</td>
       <td><div class="row-actions">
-        ${truckFlowActionButtons(item,true)}
-        <button class="btn small secondary" data-truck-timeline="${item.id}">Linha do tempo</button>
         ${item.truckType === "Plataforma" ? `<button class="btn small secondary" data-truck-items="${item.id}">Ver ${item.items.length} itens</button>` : ""}
         <button class="btn small secondary" data-attachments="truck:${item.id}" data-attachment-title="${esc(item.plate || item.product)}">Anexos (${attachmentCount("truck", item.id)})</button>
         ${canManageTrucks() ? `<button class="btn small primary" data-edit-truck="${item.id}">Editar</button>` : ""}
@@ -4604,23 +4474,21 @@
     </tr>`).join("");
 
     const mobile = trucks.map(item => `<article class="card mobile-record-card truck-mobile-card truck-type-${String(item.truckType).toLowerCase()}">
-      <div class="mobile-record-head"><div><strong>${esc(item.plate || item.product || "Movimentação")}</strong><small>${dateOnly(item.date)} • ${esc(item.movement)}</small></div>${badge(truckFlowStatus(item))}</div>
-      ${truckFlowStepper(item)}
+      <div class="mobile-record-head"><div><strong>${esc(item.plate || item.product || "Movimentação")}</strong><small>${dateOnly(item.date)} • ${esc(item.movement)}</small></div>${badge(item.truckType)}</div>
       <div class="truck-mobile-products">${truckItemsSummary(item)}</div>
-      <div class="mobile-record-grid"><span>Origem/Destino<strong>${esc(item.supplier || "-")}</strong></span><span>Cliente<strong>${esc(item.client || "-")}</strong></span><span>Programação<strong>${item.scheduledAt ? dateTime(item.scheduledAt) : "-"}</strong></span><span>NF<strong>${esc(item.invoice || "-")}</strong></span><span>Lote<strong>${esc(item.lot || "-")}</strong></span><span>Motorista<strong>${esc(item.driver || "-")}</strong></span><span>Integração<strong>${item.truckType === "Plataforma" ? "Sem inventário" : (item.stockApplied ? "Aplicado" : "Pendente")}</strong></span></div>
-      ${truckFlowMetricsHtml(item)}${truckAttentionHtml(item, duplicateIds)}
-      <div class="row-actions">${truckFlowActionButtons(item)}<button class="btn small secondary" data-truck-timeline="${item.id}">Linha do tempo</button>${item.truckType === "Plataforma" ? `<button class="btn small secondary" data-truck-items="${item.id}">Ver itens</button>` : ""}<button class="btn small secondary" data-attachments="truck:${item.id}" data-attachment-title="${esc(item.plate || item.product)}">Anexos</button>${canManageTrucks() ? `<button class="btn small primary" data-edit-truck="${item.id}">Editar</button>` : ""}</div>
+      <div class="mobile-record-grid"><span>Origem/Destino<strong>${esc(item.supplier || "-")}</strong></span><span>Cliente<strong>${esc(item.client || "-")}</strong></span><span>NF<strong>${esc(item.invoice || "-")}</strong></span><span>Lote<strong>${esc(item.lot || "-")}</strong></span><span>Motorista<strong>${esc(item.driver || "-")}</strong></span><span>Status<strong>${esc(item.status)}</strong></span><span>Integração<strong>${item.truckType === "Plataforma" ? "Sem inventário" : (item.stockApplied ? "Aplicado" : "Pendente")}</strong></span></div>
+      ${truckAttentionHtml(item, duplicateIds)}
+      <div class="row-actions">${item.truckType === "Plataforma" ? `<button class="btn small secondary" data-truck-items="${item.id}">Ver itens</button>` : ""}<button class="btn small secondary" data-attachments="truck:${item.id}" data-attachment-title="${esc(item.plate || item.product)}">Anexos</button>${canManageTrucks() ? `<button class="btn small primary" data-edit-truck="${item.id}">Editar</button>` : ""}</div>
     </article>`).join("");
 
-    const flowPriority = { "Em operação":0, "Finalizada":1, "Chegou":2, "Aguardando":3, "Programada":4 };
-    const queueCards = [...activeQueue].sort((a,b) => (flowPriority[truckFlowStatus(a)] ?? 9) - (flowPriority[truckFlowStatus(b)] ?? 9) || new Date(a.scheduledAt || a.created_at) - new Date(b.scheduledAt || b.created_at)).slice(0, 10).map(item => `<article class="truck-queue-card flow-${normalizeTruckFilterValue(truckFlowStatus(item)).replace(/\s+/g,"-")}">
+    const queueCards = [...activeQueue].sort((a,b) => truckAttentionFlags(b, duplicateIds).length - truckAttentionFlags(a, duplicateIds).length || truckOpenAgeDays(b) - truckOpenAgeDays(a)).slice(0, 6).map(item => `<article class="truck-queue-card">
       <div class="truck-queue-icon">${uiIcon("truck")}</div>
-      <div class="truck-queue-main"><div><strong>${esc(item.plate || item.invoice || "Carreta")}</strong>${badge(truckFlowStatus(item))}</div><p>${esc(item.movement || "Movimentação")} • ${esc(item.truckType || "Tipo não definido")} • ${esc(item.product || (item.items || [])[0]?.productName || "Carga não informada")}</p><small>${item.scheduledAt ? `Programada: ${dateTime(item.scheduledAt)} • ` : ""}${esc(item.supplier || "Origem/Destino não informado")} ${item.client ? `→ ${esc(item.client)}` : ""}</small>${truckFlowMetricsHtml(item,true)}${truckAttentionHtml(item, duplicateIds)}</div>
-      <div class="truck-queue-actions">${truckFlowActionButtons(item,true)}<button class="btn small secondary" data-truck-timeline="${item.id}">Detalhes</button>${canManageTrucks() ? `<button class="btn small secondary" data-edit-truck="${item.id}">Editar</button>` : ""}</div>
+      <div class="truck-queue-main"><div><strong>${esc(item.plate || item.invoice || "Carreta")}</strong>${badge(item.status)}</div><p>${esc(item.movement || "Movimentação")} • ${esc(item.truckType || "Tipo não definido")} • ${esc(item.product || (item.items || [])[0]?.productName || "Carga não informada")}</p><small>${esc(item.supplier || "Origem/Destino não informado")} ${item.client ? `→ ${esc(item.client)}` : ""}</small>${truckAttentionHtml(item, duplicateIds)}</div>
+      ${canManageTrucks() ? `<button class="btn small secondary" data-edit-truck="${item.id}">Abrir</button>` : ""}
     </article>`).join("");
 
     $("#page-trucks").innerHTML =
-      header("Central de carretas", "Agendamento, fila operacional, check-in, operação, check-out e integração com estoque.",
+      header("Central de carretas", "Entradas, saídas, documentação, produtos e integração com estoque.",
         `<button class="btn secondary" data-export="trucks">Exportar CSV</button>${canManageTrucks() ? `<button class="btn primary" data-action="new-truck">+ Nova movimentação</button>` : ""}`) +
       `<section class="truck-filter-panel">
         <div class="truck-filter-heading"><div><small>FILTROS</small><h3>Localizar movimentações</h3><p>Filtre toda a central por período, documentação, carga ou situação.</p></div>${activeFilterCount ? `<span>${activeFilterCount} filtro(s) ativo(s)</span>` : ""}</div>
@@ -4630,40 +4498,40 @@
           <div><label>Data final</label><input data-truck-filter="end" type="date" value="${esc(filters.end || "")}"></div>
           <div><label>Movimentação</label><select data-truck-filter="movement"><option value="">Todas</option>${movements.map(value => `<option value="${esc(value)}" ${filters.movement === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></div>
           <div><label>Tipo de carreta</label><select data-truck-filter="type"><option value="">Todos</option>${types.map(value => `<option value="${esc(value)}" ${filters.type === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></div>
-          <div><label>Etapa operacional</label><select data-truck-filter="status"><option value="">Todas</option>${statuses.map(value => `<option value="${esc(value)}" ${filters.status === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></div>
+          <div><label>Status</label><select data-truck-filter="status"><option value="">Todos</option>${statuses.map(value => `<option value="${esc(value)}" ${filters.status === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></div>
           <div><label>Cliente</label><select data-truck-filter="client"><option value="">Todos</option>${clients.map(value => `<option value="${esc(value)}" ${filters.client === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></div>
           <div><label>Produto</label><select data-truck-filter="product"><option value="">Todos</option>${products.map(value => `<option value="${esc(value)}" ${filters.product === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></div>
           <div><label>Integração com estoque</label><select data-truck-filter="stock"><option value="">Todas</option><option value="pending" ${filters.stock === "pending" ? "selected" : ""}>Pendente</option><option value="applied" ${filters.stock === "applied" ? "selected" : ""}>Aplicada</option><option value="not-applicable" ${filters.stock === "not-applicable" ? "selected" : ""}>Não se aplica</option></select></div>
-          <div><label>Atenção operacional</label><select data-truck-filter="attention"><option value="">Todas</option><option value="duplicate" ${filters.attention === "duplicate" ? "selected" : ""}>NF duplicada</option><option value="late" ${filters.attention === "late" ? "selected" : ""}>Atraso na chegada</option><option value="overdue" ${filters.attention === "overdue" ? "selected" : ""}>Aberta há mais de 1 dia</option><option value="docs" ${filters.attention === "docs" ? "selected" : ""}>Documentação incompleta</option><option value="stock" ${filters.attention === "stock" ? "selected" : ""}>Estoque pendente</option></select></div>
+          <div><label>Atenção operacional</label><select data-truck-filter="attention"><option value="">Todas</option><option value="duplicate" ${filters.attention === "duplicate" ? "selected" : ""}>NF duplicada</option><option value="overdue" ${filters.attention === "overdue" ? "selected" : ""}>Aberta há mais de 1 dia</option><option value="docs" ${filters.attention === "docs" ? "selected" : ""}>Documentação incompleta</option><option value="stock" ${filters.attention === "stock" ? "selected" : ""}>Estoque pendente</option></select></div>
           <button class="btn secondary truck-filter-clear" type="button" data-action="clear-truck-filters">Limpar filtros</button>
         </div>
         <div class="truck-filter-result"><strong>${trucks.length}</strong> de ${allTrucks.length} movimentação(ões) exibida(s)</div>
       </section>
       <section class="truck-overview-grid">
-        ${statCard("Agenda de hoje", fmt.format(todayCount), "movimentações do dia", uiIcon("calendar"), "Programação logística", "blue")}
-        ${statCard("Na planta", fmt.format(atPlant), "sem check-out", uiIcon("truck"), "Permanência ativa", "orange")}
-        ${statCard("Aguardando", fmt.format(waiting), "check-in realizado", uiIcon("hourglass"), `Espera média: ${formatTruckDuration(averageWait)}`, "purple")}
-        ${statCard("Em operação", fmt.format(operating), "carga ou descarga", uiIcon("activity"), "Acompanhamento em tempo real", "green")}
+        ${statCard("Carretas hoje", fmt.format(todayCount), "movimentações registradas", uiIcon("truck"), "Entradas e saídas do dia", "blue")}
+        ${statCard("Em andamento", fmt.format(activeQueue.length), "fila operacional", uiIcon("activity"), "Aguardando conclusão", "orange")}
+        ${statCard("Estoque pendente", fmt.format(pendingStock), "movimentações", uiIcon("alert"), "Necessitam aplicação", "red")}
+        ${statCard("Documentação pendente", fmt.format(pendingDocs), "placa, NF ou lote", uiIcon("file"), "Conferência necessária", "purple")}
       </section>
       <section class="truck-intelligence-grid">
         <div class="card truck-attention-panel"><div class="truck-section-heading"><div><small>CONFERÊNCIA INTELIGENTE</small><h3>Pendências que precisam de atenção</h3></div><span>${attentionItems.length} registros</span></div>
-          <div class="truck-attention-summary"><button type="button" data-truck-quick-attention="duplicate"><span>NF duplicada</span><strong>${duplicateCount}</strong></button><button type="button" data-truck-quick-attention="late"><span>Atraso na chegada</span><strong>${delayedCount}</strong></button><button type="button" data-truck-quick-attention="overdue"><span>Abertas +1 dia</span><strong>${overdueCount}</strong></button><button type="button" data-truck-quick-attention="docs"><span>Documentação</span><strong>${pendingDocs}</strong></button><button type="button" data-truck-quick-attention="stock"><span>Estoque</span><strong>${pendingStock}</strong></button></div>
+          <div class="truck-attention-summary"><button type="button" data-truck-quick-attention="duplicate"><span>NF duplicada</span><strong>${duplicateCount}</strong></button><button type="button" data-truck-quick-attention="overdue"><span>Abertas +1 dia</span><strong>${overdueCount}</strong></button><button type="button" data-truck-quick-attention="docs"><span>Documentação</span><strong>${pendingDocs}</strong></button><button type="button" data-truck-quick-attention="stock"><span>Estoque</span><strong>${pendingStock}</strong></button></div>
           <div class="truck-attention-list">${attentionItems.slice(0,5).map(({item,flags}) => `<article><div><strong>${esc(item.plate || item.invoice || item.product || "Carreta")}</strong><small>${dateOnly(item.date)} • ${esc(item.client || item.supplier || "Sem cliente")}</small></div><div>${flags.map(flag => `<span class="${flag.tone}">${esc(flag.label)}</span>`).join("")}</div>${canManageTrucks() ? `<button class="btn small secondary" data-edit-truck="${item.id}">Revisar</button>` : ""}</article>`).join("") || `<div class="empty">Nenhuma pendência encontrada.</div>`}</div>
         </div>
         <div class="card truck-ranking-panel"><div class="truck-section-heading"><div><small>ANÁLISE DO FILTRO</small><h3>Movimentações por cliente e produto</h3></div></div>${truckRankingHtml(trucks, "client", "PRINCIPAIS CLIENTES")}${truckRankingHtml(trucks, "product", "PRINCIPAIS PRODUTOS")}</div>
       </section>
       <section class="truck-control-grid">
         <div class="card truck-flow-card"><div class="truck-section-heading"><div><small>FLUXO LOGÍSTICO</small><h3>Resumo do período</h3></div><span>${trucks.length} registros</span></div>
-          <div class="truck-flow-stats"><div><span>Finalizadas</span><strong>${completed}</strong><small>Operação encerrada</small></div><div><span>Liberadas</span><strong>${released}</strong><small>Check-out concluído</small></div><div><span>Permanência média</span><strong>${formatTruckDuration(averageDwell)}</strong><small>Operação média: ${formatTruckDuration(averageOperation)}</small></div></div>
+          <div class="truck-flow-stats"><div><span>Entradas</span><strong>${movementCount("Entrada")}</strong></div><div><span>Saídas</span><strong>${movementCount("Saída")}</strong></div><div><span>Concluídas</span><strong>${completed}</strong></div></div>
           <div class="truck-volume-summary"><small>VOLUME MOVIMENTADO</small><strong>${volumeSummary}</strong></div>
         </div>
         <div class="card truck-types-card"><div class="truck-section-heading"><div><small>TIPOS DE CARRETA</small><h3>Distribuição</h3></div></div>
           <div class="truck-type-professional"><div><span class="truck-type-mark bulk"></span><p>Bulk<small>Granéis</small></p><strong>${typeCount("Bulk")}</strong></div><div><span class="truck-type-mark tank"></span><p>Tank<small>Fluidos</small></p><strong>${typeCount("Tank")}</strong></div><div><span class="truck-type-mark platform"></span><p>Plataforma<small>Insumos diversos</small></p><strong>${typeCount("Plataforma")}</strong></div></div>
         </div>
       </section>
-      <section class="card truck-queue-panel"><div class="truck-section-heading"><div><small>FILA OPERACIONAL</small><h3>Chegada, espera, operação e liberação</h3></div><span>${activeQueue.length} abertas</span></div><div class="truck-queue-list">${queueCards || `<div class="empty">Nenhuma movimentação pendente.</div>`}</div></section>
+      <section class="card truck-queue-panel"><div class="truck-section-heading"><div><small>FILA OPERACIONAL</small><h3>Movimentações que exigem acompanhamento</h3></div><span>${activeQueue.length} abertas</span></div><div class="truck-queue-list">${queueCards || `<div class="empty">Nenhuma movimentação pendente.</div>`}</div></section>
       <div class="section-title truck-record-title"><span>Histórico de movimentações</span><small>${trucks.length} registro(s) no filtro atual</small></div>
-      <div class="card table-wrap desktop-record-table truck-professional-table"><table class="data-table"><thead><tr><th>Data</th><th>Movimento / Tipo</th><th>Origem / Cliente</th><th>Produtos</th><th>Placa / Motorista</th><th>NF / Lote</th><th>Etapa / Tempos</th><th>Ações</th></tr></thead><tbody>${rows || `<tr><td colspan="8" class="empty">Nenhuma movimentação.</td></tr>`}</tbody></table></div>
+      <div class="card table-wrap desktop-record-table truck-professional-table"><table class="data-table"><thead><tr><th>Data</th><th>Movimento / Tipo</th><th>Origem / Cliente</th><th>Produtos</th><th>Placa / Motorista</th><th>NF / Lote</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows || `<tr><td colspan="8" class="empty">Nenhuma movimentação.</td></tr>`}</tbody></table></div>
       <div class="mobile-record-list">${mobile || `<div class="card empty">Nenhuma movimentação.</div>`}</div>`;
   }
 
@@ -5402,7 +5270,6 @@
       ${stockApplied ? `<div class="info-box truck-stock-lock"><strong>Estoque já aplicado</strong><span>${dateTime(item.stockAppliedAt)} • ${tank?.name || "Inventário químico"}. Produto, quantidade e equipamento ficam protegidos; correções devem ser feitas por ajuste de estoque.</span></div>` : ""}
       <div class="form-grid">
         <div><label>Data *</label><input name="date" type="date" required value="${String(item.date || new Date().toISOString()).slice(0,10)}"></div>
-        <div><label>Horário programado</label><input name="scheduled_at" type="datetime-local" value="${toLocalInput(item.scheduledAt)}"><small class="field-help">Usado para organizar a fila e medir atrasos.</small></div>
         <div><label>Movimento *</label><select name="movement" ${stockApplied ? "disabled" : ""}>${["Entrada","Saída","Backload"].map(value => `<option ${item.movement === value ? "selected" : ""}>${value}</option>`).join("")}</select>${stockApplied ? `<input type="hidden" name="movement" value="${esc(item.movement)}">` : ""}</div>
         <div class="wide truck-type-field"><label>Tipo da carreta *</label><div class="truck-type-selector">${["Bulk","Tank","Plataforma"].map(value => `<label><input type="radio" name="truck_type" value="${value}" ${type===value?"checked":""} ${stockApplied?"disabled":""}><span><b>${value==="Bulk"?uiIcon("package"):value==="Tank"?uiIcon("droplet"):uiIcon("products")}</b><strong>${value}</strong><small>${value==="Bulk"?"Granel":value==="Tank"?"Fluido":"Vários insumos"}</small></span></label>`).join("")}</div>${stockApplied ? `<input type="hidden" name="truck_type" value="${esc(type)}">` : ""}</div>
         <div><label>Origem / Destino *</label><input name="supplier" required value="${esc(item.supplier || "")}"></div>
@@ -5425,7 +5292,7 @@
         <div><label>Placa</label><input name="plate" value="${esc(item.plate || "")}"></div>
         <div><label>Motorista</label><input name="driver" value="${esc(item.driver || "")}"></div>
         <div><label>Nota fiscal</label><input name="invoice" value="${esc(item.invoice || "")}"></div>
-        <div class="wide truck-current-flow"><input type="hidden" name="flow_status" value="${esc(truckFlowStatus(item))}"><label>Etapa operacional</label><div class="info-box"><strong>${esc(truckFlowStatus(item))}</strong><span>${item.id ? "Use os botões da fila para registrar check-in, início, finalização e check-out." : "A nova movimentação será criada como Programada."}</span></div></div>
+        <div><label>Status</label><select name="status">${["Programada","Recebida","Concluída"].map(value => `<option ${item.status===value?"selected":""}>${value}</option>`).join("")}</select><small class="field-help">${type === "Plataforma" ? "O status não altera o Inventário Químico." : "Recebida ou Concluída aplica o saldo no tanque ou silo vinculado."}</small></div>
         <div class="wide"><label>Observações</label><textarea name="notes">${esc(item.notes || "")}</textarea></div>
         <div class="wide"><label>NF, documento ou foto</label><input name="attachment" type="file" accept=".pdf,image/jpeg,image/png,image/webp,image/heic,image/heif" multiple capture="environment"></div>
       </div>${formActions(item.id?"Salvar alterações":"Salvar movimentação")}
@@ -5435,22 +5302,15 @@
   async function saveTruck(payload,id=null,items=[]) {
     const type=payload.truck_type;
     if(!["Bulk","Tank","Plataforma"].includes(type)) throw new Error("Selecione o tipo da carreta.");
-    const finalStatus=["Finalizada","Liberada"].includes(payload.flow_status);
-    if(finalStatus && !payload.invoice) throw new Error("Informe a nota fiscal antes de finalizar a carreta.");
+    const finalStatus=["Recebida","Concluída"].includes(payload.status);
+    if(finalStatus && !payload.invoice) throw new Error("Informe a nota fiscal antes de receber ou concluir a carreta.");
     const quantity=type==="Plataforma"?0:parseTankVolume(payload.quantity || "");
     if(type!=="Plataforma" && (!Number.isFinite(quantity)||quantity<=0)) throw new Error("Informe uma quantidade maior que zero.");
     if(type!=="Plataforma" && !payload.fluid_type_id) throw new Error("Selecione o produto em Fluidos e Granéis.");
     if(type!=="Plataforma" && finalStatus && !payload.tank_id) throw new Error("Selecione o tanque ou silo antes de aplicar o estoque.");
     if(type==="Plataforma" && !items.length) throw new Error("Adicione pelo menos um produto na Plataforma.");
-    let scheduledAt = null;
-    if (payload.scheduled_at) {
-      const scheduledDate = new Date(payload.scheduled_at);
-      if (Number.isNaN(scheduledDate.getTime())) throw new Error("Informe um horário programado válido.");
-      if (localDateKey(scheduledDate) !== payload.date) throw new Error("A data da movimentação deve ser a mesma do horário programado.");
-      scheduledAt = scheduledDate.toISOString();
-    }
-    const truckPayload={movement_date:payload.date,movement_type:payload.movement,truck_type:type,supplier:payload.supplier,client:payload.client||null,fluid_type_id:type==="Plataforma"?null:payload.fluid_type_id,tank_id:type==="Plataforma"?null:(payload.tank_id||null),lot:type==="Plataforma"?null:(payload.lot||null),quantity,plate:payload.plate||null,driver_name:payload.driver||null,invoice_number:payload.invoice||null,flow_status:payload.flow_status||"Programada",scheduled_at:scheduledAt,notes:payload.notes||null};
-    const {data,error}=await state.client.rpc("save_truck_movement_flow_v1",{p_truck_id:id||null,p_truck:truckPayload,p_items:items});
+    const truckPayload={movement_date:payload.date,movement_type:payload.movement,truck_type:type,supplier:payload.supplier,client:payload.client||null,fluid_type_id:type==="Plataforma"?null:payload.fluid_type_id,tank_id:type==="Plataforma"?null:(payload.tank_id||null),lot:type==="Plataforma"?null:(payload.lot||null),quantity,plate:payload.plate||null,driver_name:payload.driver||null,invoice_number:payload.invoice||null,status:payload.status,notes:payload.notes||null};
+    const {data,error}=await state.client.rpc("save_truck_movement_integrated",{p_truck_id:id||null,p_truck:truckPayload,p_items:items});
     if(error) throw error;
     const row=Array.isArray(data)?data[0]:data;
     if(!row?.id) throw new Error("O Supabase não confirmou a movimentação da carreta.");
@@ -7127,24 +6987,6 @@
     if (button.dataset.editFluid) {
       const item = state.data.fluids.find(x => x.id === button.dataset.editFluid);
       return openModal(`Editar produto — ${item.name}`, genericForm("fluid", item), "ADMIN");
-    }
-
-    if (button.dataset.truckFlow) {
-      if (!canManageTrucks()) return toast("Seu perfil não pode movimentar a fila de carretas.", "error");
-      try {
-        const changed = await advanceTruckFlow(button.dataset.truckFlow, button.dataset.truckNext);
-        if (changed) toast(`Carreta atualizada para ${button.dataset.truckNext}.`, "success");
-      } catch (error) {
-        console.error("Falha ao avançar carreta:", error);
-        toast(error.message || "Não foi possível atualizar a etapa da carreta.", "error");
-      }
-      return;
-    }
-
-    if (button.dataset.truckTimeline) {
-      const item = state.data.trucks.find(x => x.id === button.dataset.truckTimeline);
-      if (!item) return toast("Carreta não localizada.", "error");
-      return openModal(`Linha do tempo — ${item.plate || item.invoice || item.product}`, truckFlowTimelineHtml(item), "FILA OPERACIONAL");
     }
 
     if (button.dataset.editTruck) {

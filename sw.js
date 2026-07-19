@@ -1,13 +1,13 @@
-const CACHE="opscontrol-20260719-v33-12-16-truck-excel-import";
+const CACHE="opscontrol-20260719-v33-12-14-1-client-tickets";
 const FILES=[
   "./",
   "./index.html",
-  "./app.css?v=20260719-v33-12-16-truck-excel-import",
-  "./v33.css?v=20260719-v33-12-16-truck-excel-import",
-  "./js/config.js?v=20260719-v33-12-16-truck-excel-import",
-  "./js/app.js?v=20260719-v33-12-16-truck-excel-import",
+  "./app.css?v=20260719-v33-12-14-1-client-tickets",
+  "./v33.css?v=20260719-v33-12-14-1-client-tickets",
+  "./js/config.js?v=20260719-v33-12-14-1-client-tickets",
+  "./js/app.js?v=20260719-v33-12-14-1-client-tickets",
   "./manifest.json",
-  "./assets/icon.svg","./vendor/qrcode.js","./vendor/jszip.min.js"
+  "./assets/icon.svg","./vendor/qrcode.js"
 ];
 
 self.addEventListener("install", event => {
@@ -34,8 +34,7 @@ self.addEventListener("fetch", event => {
     url.pathname.endsWith("/app.css") ||
     url.pathname.endsWith("/v33.css") ||
     url.pathname.endsWith("/js/app.js") ||
-    url.pathname.endsWith("/js/config.js") ||
-    url.pathname.endsWith("/vendor/jszip.min.js")
+    url.pathname.endsWith("/js/config.js")
   );
 
   if (appFile) {

@@ -55,6 +55,19 @@
       ]
     },
     {
+      "name": "Tickets de Clientes",
+      "short_name": "Tickets",
+      "description": "Abrir FDT, FRT, MDT e MRT",
+      "url": "./index.html#client-tickets",
+      "icons": [
+        {
+          "src": "assets/icon.svg",
+          "sizes": "any",
+          "type": "image/svg+xml"
+        }
+      ]
+    },
+    {
       "name": "Passagem de Serviço",
       "short_name": "Passagem",
       "description": "Abrir relatórios e passagem",
@@ -81,5 +94,5 @@
       ]
     }
   ],
-  "version": "20260719-v33-12-16-truck-excel-import"
+  "version": "20260719-v33-12-14-1-client-tickets"
 }

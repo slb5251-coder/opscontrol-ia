@@ -7,8 +7,8 @@
   <title>OpsControl IA Pro</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="app.css?v=20260719-v33-12-16-truck-excel-import">
-  <link rel="stylesheet" href="v33.css?v=20260719-v33-12-16-truck-excel-import">
+  <link rel="stylesheet" href="app.css?v=20260719-v33-12-14-1-client-tickets">
+  <link rel="stylesheet" href="v33.css?v=20260719-v33-12-14-1-client-tickets">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
@@ -67,6 +67,7 @@
           <button class="nav-item" data-page="chemical-catalog"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path></svg></span><span class="nav-label">Catálogo Químico</span></button>
           <button class="nav-item" data-page="chemicals"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v7.5L5 18a3 3 0 0 0 2.6 4.5h8.8A3 3 0 0 0 19 18l-5-8.5V2"></path><path d="M8 2h8"></path><path d="M8.5 14h7"></path></svg></span><span class="nav-label">Inventário Químico</span></button>
           <button class="nav-item" data-page="trucks"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 17h4"></path><path d="M3 6h11v9H3z"></path><path d="M14 9h3l4 4v2h-7z"></path><circle cx="7.5" cy="18" r="1.5"></circle><circle cx="17.5" cy="18" r="1.5"></circle></svg></span><span class="nav-label">Carretas</span></button>
+          <button class="nav-item" data-page="client-tickets"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h6l2 2h8v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path><path d="M8 12h8"></path><path d="M8 16h5"></path></svg></span><span class="nav-label">Tickets de Clientes</span></button>
           <button class="nav-item" data-page="qhse"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8.7-7 10-4-1.3-7-5.5-7-10V6l7-3z"></path><path d="M9.5 12.5l1.8 1.8 3.7-4"></path></svg></span><span class="nav-label">QHSE</span></button>
           <button class="nav-item" data-page="maintenance"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.3 2.3-2-2z"></path></svg></span><span class="nav-label">Manutenção</span></button>
           <button class="nav-item" data-page="certificates"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3h8l5 5v11a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"></path><path d="M16 3v5h5"></path><path d="M9 13h6"></path><path d="M9 17h4"></path></svg></span><span class="nav-label">Certificados</span></button>
@@ -93,6 +94,7 @@
         <section id="page-chemical-catalog" class="page"></section>
         <section id="page-chemicals" class="page"></section>
         <section id="page-trucks" class="page"></section>
+        <section id="page-client-tickets" class="page"></section>
         <section id="page-qhse" class="page"></section>
         <section id="page-maintenance" class="page"></section>
         <section id="page-certificates" class="page"></section>
@@ -154,9 +156,8 @@
   </div>
 
   <div id="toastContainer" class="toast-container"></div>
-  <script src="js/config.js?v=20260719-v33-12-16-truck-excel-import"></script>
-  <script src="vendor/qrcode.js?v=20260719-v33-12-16-truck-excel-import"></script>
-  <script src="vendor/jszip.min.js?v=20260719-v33-12-16-truck-excel-import"></script>
-  <script src="js/app.js?v=20260719-v33-12-16-truck-excel-import"></script>
+  <script src="js/config.js?v=20260719-v33-12-14-1-client-tickets"></script>
+  <script src="vendor/qrcode.js?v=20260719-v33-12-14-1-client-tickets"></script>
+  <script src="js/app.js?v=20260719-v33-12-14-1-client-tickets"></script>
 </body>
 </html>

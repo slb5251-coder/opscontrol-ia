@@ -12,7 +12,7 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const APP_VERSION = "20260719-v33-12-16-truck-excel-import";
+  const APP_VERSION = "20260719-v33-12-14-1-client-tickets";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -32,7 +32,8 @@
     filters: { start: "", end: "", client: "", product: "" },
     truckFilters: { query: "", start: "", end: "", movement: "", type: "", status: "", client: "", product: "", stock: "", attention: "" },
     truckFilterTimer: null,
-    truckImport: { parsed: null, fileName: "", reading: false, progress: 0 },
+    clientTicketFilters: { query: "", client: "", status: "", completeness: "" },
+    clientTicketFilterTimer: null,
     vesselFilters: { query: "", client: "", status: "", window: "30" },
     vesselMap: { instance: null, markers: new Map(), selected: "", timer: null, filterTimer: null },
     handover: { date: "", shift: "" },
@@ -204,6 +205,7 @@
     "chemical-catalog": ["Catálogo Químico", "Nomes e unidades oficiais"],
     chemicals: ["Inventário Químico", "Lotes, validade e saldo"],
     trucks: ["Carretas", "Entradas e saídas"],
+    "client-tickets": ["Tickets de Clientes", "FDT, FRT, MDT e MRT"],
     qhse: ["QHSE", "Segurança e ações"],
     maintenance: ["Manutenção", "Equipamentos e ordens"],
     certificates: ["Certificados", "Documentos da equipe"],
@@ -246,7 +248,7 @@
     const moduleIcons = {
       fluids: "droplet", "chemical-catalog": "products", quality: "shield", sanitation: "database", vessels: "anchor", "vessel-registry": "anchor",
       reports: "gauge", chemicals: "flask", trucks: "truck", qhse: "shield", maintenance: "wrench",
-      certificates: "file", alerts: "bell", audit: "check", settings: "settings", tv: "monitor"
+      certificates: "file", "client-tickets": "file", alerts: "bell", audit: "check", settings: "settings", tv: "monitor"
     };
     return `<button class="mobile-module-button" data-mobile-page="${page}">
       <span class="mobile-module-icon">${uiIcon(moduleIcons[page] || "database")}</span>
@@ -285,6 +287,7 @@
       ["reports", "Relatórios", "Passagem e indicadores"],
       ["chemicals", "Químicos", "Estoque e validade"],
       ["trucks", "Carretas", "Entradas e saídas"],
+      ["client-tickets", "Tickets de Clientes", "FDT, FRT, MDT e MRT por cliente"],
       ["qhse", "QHSE", "Segurança e ocorrências"],
       ["maintenance", "Manutenção", "Equipamentos e OS"],
       ["certificates", "Certificados", "Documentos"],
@@ -313,6 +316,9 @@
     }
     if (moduleAllowed("trucks") && hasRole(["supervisor", "lider", "logistica"])) {
       quickActions.push(mobileQuickButton("new-truck", "Movimentar carreta", "Entrada, saída, NF e produto", uiIcon("truck")));
+    }
+    if (moduleAllowed("client-tickets") && canManageClientTickets()) {
+      quickActions.push(mobileQuickButton("new-client-ticket", "Novo ticket de cliente", "Organizar FDT, FRT, MDT e MRT", uiIcon("file")));
     }
     if (moduleAllowed("qhse") && hasRole(["supervisor", "lider", "operador", "qhse"])) {
       quickActions.push(mobileQuickButton("new-qhse", "Novo registro QHSE", "DDS, APR, risco, inspeção ou ocorrência", uiIcon("shield")));
@@ -364,6 +370,22 @@
       .trim();
   }
 
+  function clientLogoConfig(client = "") {
+    const normalized = normalizeSearch(client);
+    if (!normalized) return null;
+    if (normalized.includes("equinor")) return { src: "assets/client-logos/equinor.png", alt: "Equinor" };
+    if (normalized.includes("petrobras") || normalized === "br") return { src: "assets/client-logos/petrobras.gif", alt: "Petrobras" };
+    if (normalized.includes("prio") || normalized === "pro") return { src: "assets/client-logos/prio.png", alt: "PRIO" };
+    return null;
+  }
+
+  function clientLogoBadge(client = "", fallbackIcon = "calendar", extraClass = "") {
+    const logo = clientLogoConfig(client);
+    const classes = ["client-logo-badge", extraClass].filter(Boolean).join(" ");
+    if (logo) return `<span class="${classes}" title="${esc(logo.alt)}"><img src="${logo.src}" alt="${esc(logo.alt)}" loading="lazy"></span>`;
+    return `<span class="${classes} client-logo-fallback" title="${esc(client || "Operação")}">${uiIcon(fallbackIcon)}</span>`;
+  }
+
   function searchIndex() {
     const d = state.data || {};
     const rows = [];
@@ -378,6 +400,10 @@
     (d.trucks || []).forEach(x => {
       const itemTerms = (x.items || []).map(item => `${item.productName} ${item.quantity} ${item.unit}`).join(" ");
       add("truck", x.id, "trucks", x.plate || x.product, `${x.truckType} • ${x.product} • NF ${x.invoice || "-"}`, `${x.driver} ${x.supplier} ${x.client} ${x.lot} ${itemTerms}`);
+    });
+    (d.clientTickets || []).forEach(x => {
+      const docs = clientTicketDocuments(x.id).map(item => `${item.documentType} ${item.documentNumber} ${item.fileName}`).join(" ");
+      add("client-ticket", x.id, "client-tickets", `${x.ticketNumber} • ${x.client}`, x.title, `${x.vessel} ${x.serviceOrder} ${x.responsible} ${x.status} ${docs}`);
     });
     (d.chemicalProducts || []).forEach(x => add("chemical-product", x.id, "chemical-catalog", x.name, `${x.category || "Produto químico"} • ${x.unit}`, x.notes));
     (d.chemicals || []).forEach(x => add("chemical", x.id, "chemicals", x.name, `Lote ${x.lot || "-"} • ${fmt.format(x.quantity)} ${x.unit}`, `${x.location} ${x.supplier} ${x.category}`));
@@ -401,7 +427,7 @@
   }
 
   function searchResultIcon(type) {
-    return ({ tank: "TK", operation: "OP", truck: "CR", "chemical-product": "CQ", chemical: "QI", equipment: "EQ", maintenance: "OS", qhse: "QS", certificate: "CT", user: "US" })[type] || "•";
+    return ({ tank: "TK", operation: "OP", truck: "CR", "client-ticket": "DC", "chemical-product": "CQ", chemical: "QI", equipment: "EQ", maintenance: "OS", qhse: "QS", certificate: "CT", user: "US" })[type] || "•";
   }
 
   function renderGlobalSearchResults(query = "") {
@@ -456,6 +482,11 @@
     if (type === "maintenance") {
       const item = state.data.maintenanceOrders.find(x => x.id === id);
       if (item && hasRole(["supervisor", "lider", "mecanico"])) openModal("Ordem de serviço", maintenanceOrderForm(item), "RESULTADO");
+      return;
+    }
+    if (type === "client-ticket") {
+      const item = state.data.clientTickets.find(x => x.id === id);
+      if (item) openModal(`Ticket ${item.ticketNumber}`, clientTicketDetails(item), "DOCUMENTAÇÃO DO CLIENTE");
       return;
     }
     if (type === "qhse") {
@@ -767,6 +798,14 @@
     return hasRole(["supervisor", "logistica"]);
   }
 
+  function canManageClientTickets() {
+    return hasRole(["supervisor", "lider", "logistica", "operador", "qhse"]);
+  }
+
+  function canDeleteClientTickets() {
+    return hasRole(["supervisor"]);
+  }
+
   function canManageHandover() {
     return hasRole(["supervisor", "lider", "operador", "logistica", "qhse", "mecanico"]);
   }
@@ -800,12 +839,12 @@
     if (Object.prototype.hasOwnProperty.call(permissions, module)) return permissions[module] !== false;
 
     const defaults = {
-      supervisor: ["dashboard", "quality", "sanitation",  "tv", "operations", "vessel-registry", "tanks", "fluids", "chemical-catalog", "chemicals", "trucks", "qhse", "maintenance", "certificates", "alerts", "reports", "audit"],
-      lider: ["dashboard", "quality",  "tv", "operations", "vessel-registry", "tanks", "fluids", "chemical-catalog", "chemicals", "trucks", "qhse", "maintenance", "certificates", "alerts", "reports"],
-      operador: ["dashboard", "quality", "tv", "operations", "vessel-registry", "tanks", "fluids", "chemical-catalog", "chemicals", "trucks", "qhse", "alerts", "reports"],
-      logistica: ["dashboard", "quality",  "tv", "operations", "vessel-registry", "tanks", "fluids", "chemical-catalog", "chemicals", "trucks", "certificates", "alerts", "reports"],
+      supervisor: ["dashboard", "quality", "sanitation",  "tv", "operations", "vessel-registry", "tanks", "fluids", "chemical-catalog", "chemicals", "trucks", "client-tickets", "qhse", "maintenance", "certificates", "alerts", "reports", "audit"],
+      lider: ["dashboard", "quality",  "tv", "operations", "vessel-registry", "tanks", "fluids", "chemical-catalog", "chemicals", "trucks", "client-tickets", "qhse", "maintenance", "certificates", "alerts", "reports"],
+      operador: ["dashboard", "quality", "tv", "operations", "vessel-registry", "tanks", "fluids", "chemical-catalog", "chemicals", "trucks", "client-tickets", "qhse", "alerts", "reports"],
+      logistica: ["dashboard", "quality",  "tv", "operations", "vessel-registry", "tanks", "fluids", "chemical-catalog", "chemicals", "trucks", "client-tickets", "certificates", "alerts", "reports"],
       mecanico: ["dashboard", "quality", "tv", "maintenance", "certificates", "alerts", "reports"],
-      qhse: ["dashboard", "quality",  "tv", "operations", "chemicals", "qhse", "certificates", "alerts", "reports"],
+      qhse: ["dashboard", "quality",  "tv", "operations", "chemicals", "client-tickets", "qhse", "certificates", "alerts", "reports"],
       tv: ["tv"],
       user: ["dashboard", "quality", "tv", "certificates", "alerts"]
     };
@@ -814,8 +853,8 @@
 
   function statusClass(status = "") {
     const s = String(status).toLowerCase();
-    if (["conclu", "finalizada", "liberada", "liberado", "válido", "ativo", "recebida", "operando", "em operação", "disponível", "fechada"].some(x => s.includes(x))) return "green";
-    if (["andamento", "programada", "chegou", "aguardando", "atenção", "a vencer", "próximo vencimento", "manutenção", "média", "aberta"].some(x => s.includes(x))) return "amber";
+    if (["conclu", "liberado", "válido", "ativo", "recebida", "operando", "disponível", "fechada"].some(x => s.includes(x))) return "green";
+    if (["andamento", "programada", "atenção", "a vencer", "próximo vencimento", "manutenção", "média", "aberta"].some(x => s.includes(x))) return "amber";
     if (["bloqueado", "parado", "crítico", "vencido", "baixo estoque", "alta", "cancelada", "inativo"].some(x => s.includes(x))) return "red";
     if (s.includes("wbm")) return "blue";
     return "neutral";
@@ -1059,7 +1098,7 @@
       equipment: d.equipment || [], maintenanceOrders: d.maintenanceOrders || [],
       certificates: d.certificates || [], handoverPendings: d.handoverPendings || [],
       handoverNotes: d.handoverNotes || [], handoverApprovals: d.handoverApprovals || [],
-      checklistItems: d.shiftChecklist || []
+      checklistItems: d.shiftChecklist || [], clientTickets: d.clientTickets || [], clientTicketDocuments: d.clientTicketDocuments || []
     };
   }
 
@@ -1099,14 +1138,17 @@
     }
     if (kind === "trucks") {
       const truckRows = state.page === "trucks" ? trucksForPage() : filteredTrucks();
-      const rows = truckRows.flatMap(t => {
-        const metrics = truckFlowMetrics(t);
-        const common = [t.date,t.movement,t.truckType,t.supplier,t.client,t.plate,t.driver,t.invoice,truckFlowStatus(t),t.scheduledAt||"",t.checkInAt||"",t.operationStartedAt||"",t.operationFinishedAt||"",t.checkOutAt||"",metrics.waitMinutes??"",metrics.operationMinutes??"",metrics.totalMinutes??"",truckInventoryIntegrationLabel(t),t.carrier||"",t.mrt||"",t.shCode||"",t.shipment||"",t.destination||"",t.invoiceWeightKg??"",t.scaleWeightKg??"",t.liters??"",t.ticketNumber||"",t.importSheet||"",t.importRow??"",t.importedAt||""];
-        return t.truckType === "Plataforma" && t.items.length
-          ? t.items.map((item,index) => [common[0],common[1],common[2],common[3],common[4],item.productName,"",item.quantity,item.unit,index+1,t.items.length,...common.slice(5)])
-          : [[common[0],common[1],common[2],common[3],common[4],t.product,t.lot,t.quantity,t.unit,1,1,...common.slice(5)]];
+      const rows = truckRows.flatMap(t => t.truckType === "Plataforma" && t.items.length
+        ? t.items.map((item,index) => [t.date,t.movement,t.truckType,t.supplier,t.client,item.productName,"",item.quantity,item.unit,index+1,t.items.length,t.plate,t.driver,t.invoice,t.status])
+        : [[t.date,t.movement,t.truckType,t.supplier,t.client,t.product,t.lot,t.quantity,t.unit,1,1,t.plate,t.driver,t.invoice,t.status]]);
+      return downloadCsv(`carretas-${date}.csv`, ["Data","Movimento","Tipo da carreta","Origem/Destino","Cliente","Produto","Lote","Quantidade","Unidade","Item","Total de itens","Placa","Motorista","NF","Status"], rows);
+    }
+    if (kind === "client-tickets") {
+      const rows = filteredClientTickets().map(ticket => {
+        const metrics = clientTicketMetrics(ticket);
+        return [ticket.ticketNumber,ticket.date,ticket.client,ticket.title,ticket.vessel,ticket.serviceOrder,ticket.responsible,ticket.status,metrics.complete,metrics.total,metrics.missing.join(" / "),clientTicketDocuments(ticket.id).map(doc => `${doc.documentType}: ${doc.fileName}`).join(" | ")];
       });
-      return downloadCsv(`carretas-${date}.csv`, ["Data","Movimento","Tipo da carreta","Origem/Destino","Cliente","Produto","Lote","Quantidade","Unidade","Item","Total de itens","Placa","Motorista","NF","Etapa operacional","Programação","Check-in","Início da operação","Fim da operação","Check-out","Espera (min)","Operação (min)","Permanência (min)","Integração estoque","Transportadora","MRT","SH","Remessa","Destino/Silo","Peso NF (kg)","Peso balança (kg)","Litros","Ticket","Aba Excel","Linha Excel","Importado em"], rows);
+      return downloadCsv(`tickets-clientes-${date}.csv`, ["Ticket","Data","Cliente","Título","Embarcação","OS","Responsável","Status","Documentos anexados","Documentos exigidos","Pendentes","Arquivos"], rows);
     }
     if (kind === "maintenance") {
       const rows = state.data.equipment.map(e => [e.name, e.category, e.status, e.hourmeter, e.next_maintenance_date, e.maintenance_due_hourmeter, e.location]);
@@ -1506,7 +1548,8 @@
       c.from("vessel_ais_sync_runs").select("*").order("started_at", { ascending: false }).limit(100),
       c.from("vessel_registry").select("*").order("name", { ascending: true }).limit(2000),
       c.from("dismissed_system_alerts").select("*").order("dismissed_at", { ascending: false }).limit(2000),
-      c.from("truck_flow_events").select("*").order("event_at", { ascending: false }).limit(5000)
+      c.from("client_document_tickets").select("*").order("ticket_date", { ascending: false }).order("created_at", { ascending: false }).limit(2000),
+      c.from("client_ticket_documents").select("*").order("created_at", { ascending: false }).limit(5000)
     ]);
 
     if (results[0]?.error) throw results[0].error;
@@ -1518,8 +1561,7 @@
       vesselGeofences: !results[39]?.error,
       vesselAlerts: !results[40]?.error,
       vesselSyncRuns: !results[41]?.error,
-      vesselRegistry: !results[42]?.error,
-      truckFlowEvents: !results[44]?.error
+      vesselRegistry: !results[42]?.error
     };
 
     results.forEach((result, index) => {
@@ -1615,28 +1657,10 @@
           stockApplied: x.stock_applied === true,
           stockAppliedAt: x.stock_applied_at,
           stockSummary: x.stock_application_summary || {},
-          inventoryEffect: x.inventory_effect || "normal",
-          importSource: x.import_source || "",
-          importSheet: x.import_sheet || "",
-          importRow: x.import_row === null || x.import_row === undefined ? null : Number(x.import_row),
-          importKey: x.import_key || "",
-          importPayload: x.import_payload || {},
-          importedAt: x.imported_at || null,
-          carrier: x.carrier || "", mrt: x.mrt || "", shCode: x.sh_code || "",
-          shipment: x.shipment || "", destination: x.destination || "", ticketNumber: x.ticket_number || "",
-          invoiceWeightKg: x.invoice_weight_kg === null || x.invoice_weight_kg === undefined ? null : Number(x.invoice_weight_kg),
-          scaleWeightKg: x.scale_weight_kg === null || x.scale_weight_kg === undefined ? null : Number(x.scale_weight_kg),
-          liters: x.liters === null || x.liters === undefined ? null : Number(x.liters),
           supplier: x.supplier, client: x.client || "",
           product: linkedProduct?.name || x.product, lot: x.lot || "",
           quantity: Number(x.quantity || 0), unit: x.unit, plate: x.plate || "",
           driver: x.driver_name || "", invoice: x.invoice_number || "", status: x.status,
-          flowStatus: x.flow_status || (x.status === "Concluída" ? "Finalizada" : x.status === "Recebida" ? "Chegou" : x.status === "Cancelada" ? "Cancelada" : "Programada"),
-          scheduledAt: x.scheduled_at || null,
-          checkInAt: x.check_in_at || null,
-          operationStartedAt: x.operation_started_at || null,
-          operationFinishedAt: x.operation_finished_at || null,
-          checkOutAt: x.check_out_at || null,
           notes: x.notes || "", items, created_by: x.created_by,
           created_at: x.created_at, updated_at: x.updated_at
         };
@@ -1845,9 +1869,19 @@
         id:item.id, alertKey:item.alert_key, title:item.title || "", category:item.category || "",
         dismissedBy:item.dismissed_by, dismissedAt:item.dismissed_at
       })),
-      truckFlowEvents: (results[44].data || []).map(item => ({
-        id:item.id, truckId:item.truck_id, fromStatus:item.from_status || "", toStatus:item.to_status,
-        notes:item.notes || "", eventAt:item.event_at, changedBy:item.changed_by, createdAt:item.created_at
+      clientTickets: (results[44].data || []).map(item => ({
+        id:item.id, ticketNumber:item.ticket_number, client:item.client, title:item.title,
+        date:item.ticket_date, operationId:item.operation_id || null, vessel:item.vessel || "",
+        serviceOrder:item.service_order || "", responsible:item.responsible || "", status:item.status,
+        requiredTypes:Array.isArray(item.required_document_types) ? item.required_document_types : ["FDT","FRT","MDT","MRT"],
+        notes:item.notes || "", createdBy:item.created_by, createdAt:item.created_at, updatedAt:item.updated_at
+      })),
+      clientTicketDocuments: (results[45].data || []).map(item => ({
+        id:item.id, ticketId:item.ticket_id, documentType:item.document_type,
+        documentNumber:item.document_number || "", documentDate:item.document_date || "", revision:item.revision || "",
+        status:item.status || "Anexado", fileName:item.file_name, filePath:item.file_path, mimeType:item.mime_type || "",
+        fileSize:Number(item.file_size || 0), notes:item.notes || "", uploadedBy:item.uploaded_by,
+        createdAt:item.created_at, updatedAt:item.updated_at
       })),
       vesselRegistryAvailable: optionalAvailability.vesselRegistry,
       vesselModuleAvailable: optionalAvailability.vessels,
@@ -2037,6 +2071,7 @@
       ["Catálogo químico", "chemical-catalog", renderChemicalCatalog],
       ["Inventário químico", "chemicals", renderChemicalInventory],
       ["Carretas", "trucks", renderTrucks],
+      ["Tickets de Clientes", "client-tickets", renderClientTickets],
       ["QHSE", "qhse", renderQhse],
       ["Manutenção", "maintenance", renderMaintenance],
       ["Certificados", "certificates", renderCertificates],
@@ -2870,7 +2905,7 @@
     const statusIcon = op.status === "Em andamento" ? "activity" : op.status === "Paralisada" ? "alert" : "calendar";
     return `<article class="operation-focus-card ${statusClass(op.status)}">
       <div class="operation-focus-head">
-        <div class="operation-focus-icon">${uiIcon(statusIcon)}</div>
+        <div class="operation-focus-icon">${clientLogoBadge(op.client, statusIcon, "operation-card-logo")}</div>
         <div><small>${esc(op.client || "Cliente não informado")}</small><h3>${esc(op.vessel || "Operação")}</h3></div>
         ${badge(op.status)}
       </div>
@@ -2928,7 +2963,7 @@
     }).join("");
 
     const mobile = operations.map(op => `<div class="card mobile-record-card operation-mobile-card">
-      <div class="mobile-record-head"><div><strong>${esc(op.client)}</strong><small>${esc(op.vessel)} • ${esc(op.activity)}</small></div>${badge(op.status)}</div>
+      <div class="mobile-record-head operation-mobile-head"><div class="operation-mobile-title">${clientLogoBadge(op.client, "calendar", "operation-mobile-logo")}<div><strong>${esc(op.client)}</strong><small>${esc(op.vessel)} • ${esc(op.activity)}</small></div></div>${badge(op.status)}</div>
       <div class="operation-mobile-meta">${op.rig ? `<span>Sonda <strong>${esc(op.rig)}</strong></span>` : ""}${op.well ? `<span>Poço <strong>${esc(op.well)}</strong></span>` : ""}${op.ticketNumber ? `<span>Ticket <strong>${esc(op.ticketNumber)}</strong></span>` : ""}</div>
       <div class="mobile-record-grid"><span>Produto<strong>${esc(op.product)}</strong></span><span>Executado<strong>${fmt.format(op.executed)} ${esc(op.unit)}</strong></span><span>Vazão<strong>${fmt.format(operationFlow(op))} ${esc(op.unit)}/h</strong></span><span>Tancagem<strong>${normalizedOperationAllocations(op).length} equipamento(s)</strong></span></div>
       <div class="mobile-allocation-summary">${operationAllocationHtml(op)}</div>
@@ -4312,106 +4347,6 @@
     const result=page.querySelector("[data-chemical-filter-result]"); if(result) result.textContent=`${visible} produto(s) exibido(s)`;
   }
 
-  const TRUCK_FLOW_STAGES = ["Programada","Chegou","Aguardando","Em operação","Finalizada","Liberada"];
-
-  function truckFlowStatus(item = {}) {
-    return item.flowStatus || (item.status === "Concluída" ? "Finalizada" : item.status === "Recebida" ? "Chegou" : item.status === "Cancelada" ? "Cancelada" : "Programada");
-  }
-
-  function truckHasOperationalTracking(item = {}) {
-    return Boolean(item.scheduledAt || item.checkInAt || item.operationStartedAt || item.operationFinishedAt || item.checkOutAt || (state.data?.truckFlowEvents || []).some(event => event.truckId === item.id));
-  }
-
-  function minutesBetween(start, end) {
-    if (!start || !end) return null;
-    const a = new Date(start).getTime();
-    const b = new Date(end).getTime();
-    if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) return null;
-    return Math.round((b - a) / 60000);
-  }
-
-  function formatTruckDuration(minutes) {
-    if (minutes === null || minutes === undefined || !Number.isFinite(Number(minutes))) return "-";
-    const total = Math.max(0, Math.round(Number(minutes)));
-    const days = Math.floor(total / 1440);
-    const hours = Math.floor((total % 1440) / 60);
-    const mins = total % 60;
-    if (days) return `${days}d ${hours}h`;
-    if (hours) return `${hours}h ${mins}min`;
-    return `${mins}min`;
-  }
-
-  function averageTruckMinutes(values) {
-    const valid = values.filter(value => value !== null && value !== undefined && Number.isFinite(Number(value)));
-    return valid.length ? Math.round(valid.reduce((sum,value) => sum + Number(value), 0) / valid.length) : null;
-  }
-
-  function truckFlowMetrics(item, now = new Date().toISOString()) {
-    const status = truckFlowStatus(item);
-    const waitEnd = item.operationStartedAt || ((["Chegou","Aguardando"].includes(status)) ? now : null);
-    const operationEnd = item.operationFinishedAt || (status === "Em operação" ? now : null);
-    const totalEnd = item.checkOutAt || (item.checkInAt && !["Liberada","Cancelada"].includes(status) ? now : null);
-    return {
-      waitMinutes: minutesBetween(item.checkInAt, waitEnd),
-      operationMinutes: minutesBetween(item.operationStartedAt, operationEnd),
-      totalMinutes: minutesBetween(item.checkInAt, totalEnd),
-      scheduleDelayMinutes: minutesBetween(item.scheduledAt, item.checkInAt)
-    };
-  }
-
-  function truckFlowMetricsHtml(item, compact = false) {
-    const metrics = truckFlowMetrics(item);
-    const cells = [
-      ["Espera", formatTruckDuration(metrics.waitMinutes)],
-      ["Operação", formatTruckDuration(metrics.operationMinutes)],
-      ["Permanência", formatTruckDuration(metrics.totalMinutes)]
-    ];
-    return `<div class="truck-time-metrics ${compact ? "compact" : ""}">${cells.map(([label,value]) => `<span><small>${label}</small><strong>${value}</strong></span>`).join("")}</div>`;
-  }
-
-  function truckFlowStepper(item) {
-    const current = truckFlowStatus(item);
-    if (current === "Cancelada") return `<div class="truck-flow-cancelled">Movimentação cancelada</div>`;
-    const index = TRUCK_FLOW_STAGES.indexOf(current);
-    return `<div class="truck-flow-stepper" aria-label="Etapa operacional: ${esc(current)}">${TRUCK_FLOW_STAGES.map((stage,stageIndex) => `<span class="${stageIndex < index ? "done" : stageIndex === index ? "current" : ""}" title="${esc(stage)}"><i></i><small>${esc(stage === "Chegou" ? "Check-in" : stage === "Em operação" ? "Operação" : stage === "Finalizada" ? "Finalizada" : stage === "Liberada" ? "Saída" : stage)}</small></span>`).join("")}</div>`;
-  }
-
-  function truckFlowActionButtons(item, compact = false) {
-    if (!canManageTrucks()) return "";
-    const status = truckFlowStatus(item);
-    const actions = status === "Programada" ? [["Chegou","Fazer check-in","primary"]]
-      : status === "Chegou" ? [["Aguardando","Colocar em espera","secondary"],["Em operação","Iniciar operação","primary"]]
-      : status === "Aguardando" ? [["Em operação","Iniciar operação","primary"]]
-      : status === "Em operação" ? [["Finalizada","Finalizar operação","primary"]]
-      : status === "Finalizada" ? [["Liberada","Fazer check-out","primary"]]
-      : [];
-    if (!actions.length) return "";
-    return `<div class="truck-flow-actions ${compact ? "compact" : ""}">${actions.map(([next,label,tone]) => `<button type="button" class="btn small ${tone}" data-truck-flow="${item.id}" data-truck-next="${esc(next)}">${esc(label)}</button>`).join("")}</div>`;
-  }
-
-  function truckFlowTimelineHtml(item) {
-    const events = (state.data.truckFlowEvents || []).filter(event => event.truckId === item.id).sort((a,b) => new Date(a.eventAt) - new Date(b.eventAt));
-    const milestones = [
-      ["Programação", item.scheduledAt], ["Check-in", item.checkInAt], ["Início da operação", item.operationStartedAt],
-      ["Fim da operação", item.operationFinishedAt], ["Check-out", item.checkOutAt]
-    ].filter(([,time]) => time);
-    return `<div class="truck-flow-modal">${truckFlowStepper(item)}${truckFlowMetricsHtml(item)}<div class="section-title">Marcos registrados</div><div class="truck-milestone-grid">${milestones.map(([label,time]) => `<span><small>${label}</small><strong>${dateTime(time)}</strong></span>`).join("") || `<div class="empty">Nenhum horário registrado ainda.</div>`}</div><div class="section-title">Histórico da fila</div><div class="timeline professional-timeline">${events.map(event => { const user=state.data.users.find(entry=>entry.id===event.changedBy)?.name||"Sistema"; return `<div class="timeline-item"><span class="timeline-dot"></span><div><strong>${esc(event.fromStatus || "Início")} → ${esc(event.toStatus)}</strong><small>${dateTime(event.eventAt)} • ${esc(user)}</small><p>${esc(event.notes || "Etapa operacional atualizada.")}</p></div></div>`; }).join("") || `<div class="empty">Sem eventos registrados.</div>`}</div></div>`;
-  }
-
-  async function advanceTruckFlow(truckId, nextStatus) {
-    const item = state.data.trucks.find(entry => entry.id === truckId);
-    if (!item) throw new Error("Carreta não localizada.");
-    const confirmText = nextStatus === "Finalizada" ? "Finalizar a operação e aplicar o estoque vinculado?" : nextStatus === "Liberada" ? "Confirmar o check-out e liberar a carreta?" : null;
-    if (confirmText && !confirm(confirmText)) return false;
-    const { data, error } = await state.client.rpc("advance_truck_flow_v1", { p_truck_id: truckId, p_next_status: nextStatus, p_notes: null });
-    if (error) throw error;
-    const row = Array.isArray(data) ? data[0] : data;
-    if (!row?.id) throw new Error("O Supabase não confirmou a nova etapa da carreta.");
-    await loadData();
-    renderAll();
-    return true;
-  }
-
   function normalizeTruckFilterValue(value = "") {
     return String(value || "")
       .normalize("NFD")
@@ -4439,11 +4374,8 @@
       item.plate,
       item.driver,
       item.invoice,
-      truckFlowStatus(item),
       item.status,
       item.notes,
-      item.carrier, item.mrt, item.shCode, item.shipment, item.destination, item.ticketNumber,
-      item.importSource, item.importSheet, item.importRow,
       ...truckProductNames(item)
     ].filter(Boolean).join(" "));
   }
@@ -4455,18 +4387,16 @@
   function duplicateTruckInvoiceIds(items = state.data?.trucks || []) {
     const groups = new Map();
     items.forEach(item => {
-      if (item.inventoryEffect === "historical") return;
       const invoice = normalizedTruckInvoice(item.invoice);
       if (!invoice) return;
-      const key = `${invoice}|${recordDateKey(item.date || item.created_at)}|${item.truckType || ""}`;
-      if (!groups.has(key)) groups.set(key, []);
-      groups.get(key).push(item.id);
+      if (!groups.has(invoice)) groups.set(invoice, []);
+      groups.get(invoice).push(item.id);
     });
     return new Set([...groups.values()].filter(ids => ids.length > 1).flat());
   }
 
   function truckOpenAgeDays(item) {
-    if (["Liberada", "Cancelada"].includes(truckFlowStatus(item))) return 0;
+    if (["Concluída", "Cancelada"].includes(item.status)) return 0;
     const date = recordDateKey(item.date || item.created_at);
     if (!date) return 0;
     const start = new Date(`${date}T12:00:00`);
@@ -4476,13 +4406,9 @@
 
   function truckAttentionFlags(item, duplicateIds = duplicateTruckInvoiceIds()) {
     const flags = [];
-    if (item.inventoryEffect === "historical") return flags;
     if (duplicateIds.has(item.id)) flags.push({ key: "duplicate", label: "NF duplicada", tone: "red" });
     if (!item.invoice || !item.plate || (item.truckType !== "Plataforma" && !item.lot)) flags.push({ key: "docs", label: "Documentação", tone: "orange" });
-    if (item.inventoryEffect === "normal" && item.truckType !== "Plataforma" && !item.stockApplied && ["Finalizada", "Liberada"].includes(truckFlowStatus(item))) flags.push({ key: "stock", label: "Estoque pendente", tone: "purple" });
-    const scheduleReference = item.checkInAt || (!["Liberada","Cancelada"].includes(truckFlowStatus(item)) ? new Date().toISOString() : null);
-    const scheduleDelay = minutesBetween(item.scheduledAt, scheduleReference);
-    if (scheduleDelay !== null && scheduleDelay >= 60) flags.push({ key: "late", label: `Atraso ${formatTruckDuration(scheduleDelay)}`, tone: "orange" });
+    if (item.truckType !== "Plataforma" && !item.stockApplied && ["Recebida", "Concluída"].includes(item.status)) flags.push({ key: "stock", label: "Estoque pendente", tone: "purple" });
     const age = truckOpenAgeDays(item);
     if (age >= 1) flags.push({ key: "overdue", label: `${age} dia(s) aberta`, tone: "red" });
     return flags;
@@ -4513,455 +4439,6 @@
     return `<div class="truck-ranking-block"><small>${esc(title)}</small>${ranking.map(([name,count]) => `<div class="truck-ranking-row"><span>${esc(name)}</span><div><i style="width:${Math.max(8, Math.round(count / max * 100))}%"></i></div><strong>${count}</strong></div>`).join("") || `<div class="empty">Sem dados no filtro.</div>`}</div>`;
   }
 
-  const TRUCK_IMPORT_SHEETS = ["Insumos", "Sal BR", "Carreta Bulk", "Carreta Tank"];
-  const TRUCK_IMPORT_IGNORED_SHEETS = ["Menu", "Cutting Box", "Equipamentos", "Dados"];
-
-  function normalizeTruckImportText(value = "") {
-    return String(value ?? "")
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .replace(/[^A-Za-z0-9]+/g, " ")
-      .trim()
-      .toUpperCase();
-  }
-
-  function cleanTruckImportText(value) {
-    if (value === null || value === undefined) return "";
-    if (typeof value === "number" && Number.isInteger(value)) return String(value);
-    return String(value).trim();
-  }
-
-  function truckImportNumber(value) {
-    if (value === null || value === undefined || String(value).trim() === "") return null;
-    if (typeof value === "number") return Number.isFinite(value) ? value : null;
-    let normalized = String(value).trim().replace(/\s/g, "");
-    if (normalized.includes(",") && normalized.includes(".")) normalized = normalized.replace(/\./g, "").replace(",", ".");
-    else if (normalized.includes(",")) normalized = normalized.replace(",", ".");
-    else normalized = normalized.replace(/\.(?=\d{3}(?:\D|$))/g, "");
-    const parsed = Number(normalized);
-    return Number.isFinite(parsed) ? parsed : null;
-  }
-
-  function truckImportDate(value, date1904 = false) {
-    if (value instanceof Date && !Number.isNaN(value.getTime())) return value.toISOString().slice(0, 10);
-    if (typeof value === "number" && value > 1000) {
-      const epoch = date1904 ? Date.UTC(1904, 0, 1) : Date.UTC(1899, 11, 30);
-      return new Date(epoch + Math.floor(value) * 86400000).toISOString().slice(0, 10);
-    }
-    const text = cleanTruckImportText(value);
-    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
-    const match = text.match(/^(\d{1,2})[\/-](\d{1,2})[\/-](\d{2,4})$/);
-    if (!match) return "";
-    const year = match[3].length === 2 ? `20${match[3]}` : match[3];
-    return `${year}-${match[2].padStart(2, "0")}-${match[1].padStart(2, "0")}`;
-  }
-
-  function truckImportMovement(value, fallback = "Entrada") {
-    const normalized = normalizeTruckImportText(value || fallback);
-    if (normalized === "SAIDA") return "Saída";
-    if (normalized === "BACKLOAD") return "Backload";
-    return "Entrada";
-  }
-
-  function truckImportClient(value) {
-    const text = cleanTruckImportText(value);
-    const normalized = normalizeTruckImportText(text);
-    if (normalized === "PRIO") return "PRIO";
-    if (normalized === "PETROBRAS") return "Petrobras";
-    if (normalized === "EQUINOR") return "Equinor";
-    if (normalized === "SLB") return "SLB";
-    return text;
-  }
-
-  function truckImportColumnNumber(reference = "A1") {
-    const letters = String(reference).match(/[A-Z]+/i)?.[0]?.toUpperCase() || "A";
-    return [...letters].reduce((total, letter) => total * 26 + letter.charCodeAt(0) - 64, 0) - 1;
-  }
-
-  function truckImportXml(text, label) {
-    const xml = new DOMParser().parseFromString(text, "application/xml");
-    const parserError = xml.getElementsByTagName("parsererror")[0];
-    if (parserError) throw new Error(`Não foi possível interpretar ${label}.`);
-    return xml;
-  }
-
-  function truckImportXmlNodes(root, localName) {
-    return [...root.getElementsByTagNameNS("*", localName)];
-  }
-
-  function truckImportXmlChild(node, localName) {
-    return [...(node?.children || [])].find(child => child.localName === localName) || null;
-  }
-
-  function truckImportZipPath(target) {
-    const source = String(target || "").replace(/^\//, "");
-    const parts = (source.startsWith("xl/") ? source : `xl/${source.replace(/^\.\//, "")}`).split("/");
-    const resolved = [];
-    parts.forEach(part => {
-      if (!part || part === ".") return;
-      if (part === "..") resolved.pop();
-      else resolved.push(part);
-    });
-    return resolved.join("/");
-  }
-
-  async function readTruckSpreadsheetWorkbook(file) {
-    if (!window.JSZip) throw new Error("Leitor de planilhas não carregado. Atualize a página e tente novamente.");
-    const zip = await window.JSZip.loadAsync(await file.arrayBuffer());
-    const workbookFile = zip.file("xl/workbook.xml");
-    const relsFile = zip.file("xl/_rels/workbook.xml.rels");
-    if (!workbookFile || !relsFile) throw new Error("O arquivo não possui uma estrutura XLSX válida.");
-
-    const workbookXml = truckImportXml(await workbookFile.async("text"), "a estrutura da planilha");
-    const relsXml = truckImportXml(await relsFile.async("text"), "os vínculos da planilha");
-    const date1904 = truckImportXmlNodes(workbookXml, "workbookPr")[0]?.getAttribute("date1904") === "1";
-    const relationships = new Map(truckImportXmlNodes(relsXml, "Relationship").map(node => [
-      node.getAttribute("Id"),
-      node.getAttribute("Target")
-    ]));
-
-    let sharedStrings = [];
-    const sharedFile = zip.file("xl/sharedStrings.xml");
-    if (sharedFile) {
-      const sharedXml = truckImportXml(await sharedFile.async("text"), "os textos da planilha");
-      sharedStrings = truckImportXmlNodes(sharedXml, "si").map(node => node.textContent || "");
-    }
-
-    const sheets = new Map();
-    for (const sheetNode of truckImportXmlNodes(workbookXml, "sheet")) {
-      const name = sheetNode.getAttribute("name") || "";
-      const relationshipId = sheetNode.getAttributeNS("http://schemas.openxmlformats.org/officeDocument/2006/relationships", "id") || sheetNode.getAttribute("r:id");
-      const target = relationships.get(relationshipId) || "";
-      const path = truckImportZipPath(target);
-      const sheetFile = zip.file(path);
-      if (!sheetFile) continue;
-      const sheetXml = truckImportXml(await sheetFile.async("text"), `a aba ${name}`);
-      const rows = [];
-      for (const rowNode of truckImportXmlNodes(sheetXml, "row")) {
-        const rowNumber = Number(rowNode.getAttribute("r") || rows.length + 1);
-        const values = [];
-        for (const cell of [...rowNode.children].filter(node => node.localName === "c")) {
-          const column = truckImportColumnNumber(cell.getAttribute("r") || "A1");
-          const type = cell.getAttribute("t") || "n";
-          const valueNode = truckImportXmlChild(cell, "v");
-          let value = null;
-          if (type === "inlineStr") value = truckImportXmlChild(cell, "is")?.textContent || "";
-          else if (type === "s") value = sharedStrings[Number(valueNode?.textContent || 0)] ?? "";
-          else if (type === "b") value = valueNode?.textContent === "1";
-          else if (type === "str") value = valueNode?.textContent || "";
-          else if (valueNode?.textContent !== undefined && valueNode?.textContent !== null) {
-            const numeric = Number(valueNode.textContent);
-            value = Number.isFinite(numeric) ? numeric : valueNode.textContent;
-          }
-          values[column] = value;
-        }
-        rows.push({ rowNumber, values });
-      }
-      sheets.set(name, rows);
-    }
-    return { sheets, date1904, sheetNames: [...sheets.keys()] };
-  }
-
-  function truckImportHeaderMap(rows) {
-    const headerRow = rows.find(row => normalizeTruckImportText(row.values[0]) === "DATA");
-    if (!headerRow) return null;
-    const headers = new Map();
-    headerRow.values.forEach((value, index) => {
-      const key = normalizeTruckImportText(value);
-      if (key) headers.set(key, index);
-    });
-    return { headerRow, headers };
-  }
-
-  function truckImportCell(row, headers, ...names) {
-    for (const name of names) {
-      const index = headers.get(normalizeTruckImportText(name));
-      if (index !== undefined) return row.values[index];
-    }
-    return null;
-  }
-
-  function truckImportMaterialItems(material) {
-    const text = cleanTruckImportText(material);
-    const parts = text.split(/[,;\n]+/).map(part => part.trim()).filter(Boolean);
-    const items = parts.map(part => {
-      const match = part.match(/^(.*?)(?:\s*\(([\d.,]+)\))\s*$/);
-      const productName = cleanTruckImportText(match ? match[1] : part).replace(/^[-–—\s]+|[-–—\s]+$/g, "");
-      const quantity = match ? (truckImportNumber(match[2]) || 1) : 1;
-      return productName ? { product_name: productName, quantity, unit: "un" } : null;
-    }).filter(Boolean);
-    return items.length ? items : (text ? [{ product_name: text, quantity: 1, unit: "un" }] : []);
-  }
-
-  function truckImportIdentity(record) {
-    return [
-      record.source_sheet, record.movement_date, record.movement_type, record.truck_type,
-      record.invoice_number, record.plate, record.client, record.product,
-      Number(record.quantity || 0).toFixed(6), record.unit, record.driver_name,
-      record.lot, record.destination, record.carrier
-    ].map(normalizeTruckImportText).join("|");
-  }
-
-  function buildTruckImportRecord(sheetName, row, headers, date1904) {
-    const date = truckImportDate(truckImportCell(row, headers, "Data"), date1904);
-    if (!date) return { error: "Data inválida ou ausente." };
-    const original = {};
-    headers.forEach((index, name) => {
-      const value = row.values[index];
-      if (value !== null && value !== undefined && String(value).trim() !== "") original[name] = value;
-    });
-
-    if (sheetName === "Insumos") {
-      const material = cleanTruckImportText(truckImportCell(row, headers, "Material"));
-      const items = truckImportMaterialItems(material);
-      if (!items.length) return { error: "Material não informado." };
-      return {
-        source_sheet: sheetName, source_row: row.rowNumber, movement_date: date,
-        movement_type: truckImportMovement(truckImportCell(row, headers, "Movimentação")), truck_type: "Plataforma",
-        supplier: cleanTruckImportText(truckImportCell(row, headers, "Transportadora")) || "Importação Excel",
-        client: truckImportClient(truckImportCell(row, headers, "Cliente")) || null,
-        product: `${items[0].product_name}${items.length > 1 ? ` + ${items.length - 1} item(ns)` : ""}`,
-        lot: cleanTruckImportText(truckImportCell(row, headers, "Lote")) || null,
-        quantity: items.length, unit: "itens", plate: null, driver_name: null,
-        invoice_number: cleanTruckImportText(truckImportCell(row, headers, "Nota Fiscal")) || null,
-        carrier: cleanTruckImportText(truckImportCell(row, headers, "Transportadora")) || null,
-        mrt: cleanTruckImportText(truckImportCell(row, headers, "MRT")) || null,
-        sh_code: cleanTruckImportText(truckImportCell(row, headers, "SH")) || null,
-        shipment: null, destination: null, invoice_weight_kg: null, scale_weight_kg: null,
-        liters: null, ticket_number: null, items, source_payload: original
-      };
-    }
-
-    if (sheetName === "Sal BR") {
-      const tonnes = truckImportNumber(truckImportCell(row, headers, "Toneladas")) || 0;
-      const volume = truckImportNumber(truckImportCell(row, headers, "Volume")) || 0;
-      if (tonnes <= 0 && volume <= 0) return { error: "Quantidade de Sal BR inválida." };
-      return {
-        source_sheet: sheetName, source_row: row.rowNumber, movement_date: date,
-        movement_type: "Entrada", truck_type: "Plataforma", supplier: "Sal BR", client: null,
-        product: "Cloreto de Sódio - Sal", lot: cleanTruckImportText(truckImportCell(row, headers, "Lote")) || null,
-        quantity: tonnes || volume, unit: tonnes ? "ton" : "sacos",
-        plate: cleanTruckImportText(truckImportCell(row, headers, "Placa da carreta")) || null,
-        driver_name: cleanTruckImportText(truckImportCell(row, headers, "Motorista")) || null,
-        invoice_number: cleanTruckImportText(truckImportCell(row, headers, "Nota Fiscal")) || null,
-        carrier: null, mrt: null, sh_code: null, shipment: null, destination: null,
-        invoice_weight_kg: tonnes ? tonnes * 1000 : null, scale_weight_kg: null, liters: null,
-        ticket_number: cleanTruckImportText(truckImportCell(row, headers, "Ticket")) || null,
-        items: [{ product_name: "Cloreto de Sódio - Sal", quantity: volume || tonnes, unit: volume ? "sacos" : "ton" }],
-        source_payload: original
-      };
-    }
-
-    if (sheetName === "Carreta Bulk") {
-      const tonInvoice = truckImportNumber(truckImportCell(row, headers, "Ton NF"));
-      const tonScale = truckImportNumber(truckImportCell(row, headers, "Ton balança", "Ton balanca"));
-      const invoiceWeight = truckImportNumber(truckImportCell(row, headers, "Peso da Nota (kg)"));
-      const scaleWeight = truckImportNumber(truckImportCell(row, headers, "Peso da balança", "Peso da balanca"));
-      const quantity = (tonScale && tonScale > 0 ? tonScale : tonInvoice && tonInvoice > 0 ? tonInvoice : (scaleWeight || invoiceWeight || 0) / 1000);
-      const product = cleanTruckImportText(truckImportCell(row, headers, "Material"));
-      if (!product || quantity <= 0) return { error: "Material ou tonelagem inválida." };
-      return {
-        source_sheet: sheetName, source_row: row.rowNumber, movement_date: date,
-        movement_type: truckImportMovement(truckImportCell(row, headers, "Movimentação")), truck_type: "Bulk",
-        supplier: cleanTruckImportText(truckImportCell(row, headers, "Transportadora")) || "Importação Excel",
-        client: truckImportClient(truckImportCell(row, headers, "Cliente")) || null,
-        product, lot: cleanTruckImportText(truckImportCell(row, headers, "Lote")) || null,
-        quantity, unit: "ton", plate: null, driver_name: null,
-        invoice_number: cleanTruckImportText(truckImportCell(row, headers, "Nota Fiscal")) || null,
-        carrier: cleanTruckImportText(truckImportCell(row, headers, "Transportadora")) || null,
-        mrt: cleanTruckImportText(truckImportCell(row, headers, "MRT")) || null,
-        sh_code: cleanTruckImportText(truckImportCell(row, headers, "SH")) || null,
-        shipment: null, destination: cleanTruckImportText(truckImportCell(row, headers, "SILO")) || null,
-        invoice_weight_kg: invoiceWeight, scale_weight_kg: scaleWeight, liters: null, ticket_number: null,
-        items: [], source_payload: original
-      };
-    }
-
-    if (sheetName === "Carreta Tank") {
-      const movement = truckImportMovement(truckImportCell(row, headers, "Movimentação"));
-      const bblInvoice = truckImportNumber(truckImportCell(row, headers, "bbl Nota"));
-      const bblScale = truckImportNumber(truckImportCell(row, headers, "bbl Balança", "bbl Balanca"));
-      const quantity = bblScale && bblScale > 0 ? bblScale : (bblInvoice || 0);
-      const product = cleanTruckImportText(truckImportCell(row, headers, "Material"));
-      const destination = cleanTruckImportText(truckImportCell(row, headers, "Destino"));
-      const provider = cleanTruckImportText(truckImportCell(row, headers, "Fornecedor"));
-      const carrier = cleanTruckImportText(truckImportCell(row, headers, "Transportadora"));
-      if (!product || quantity <= 0) return { error: "Material ou volume em bbl inválido." };
-      return {
-        source_sheet: sheetName, source_row: row.rowNumber, movement_date: date,
-        movement_type: movement, truck_type: "Tank",
-        supplier: (movement === "Entrada" ? provider : destination) || carrier || "Importação Excel",
-        client: truckImportClient(truckImportCell(row, headers, "Cliente")) || null,
-        product, lot: cleanTruckImportText(truckImportCell(row, headers, "Lote")) || null,
-        quantity, unit: "bbl",
-        plate: cleanTruckImportText(truckImportCell(row, headers, "Placa da carreta")) || null,
-        driver_name: null,
-        invoice_number: cleanTruckImportText(truckImportCell(row, headers, "Nota Fiscal")) || null,
-        carrier, mrt: cleanTruckImportText(truckImportCell(row, headers, "MRT")) || null,
-        sh_code: null, shipment: cleanTruckImportText(truckImportCell(row, headers, "Remessa")) || null,
-        destination: destination || null,
-        invoice_weight_kg: truckImportNumber(truckImportCell(row, headers, "Peso da Nota (kg)")),
-        scale_weight_kg: truckImportNumber(truckImportCell(row, headers, "Peso da Balança (kg)", "Peso da Balanca (kg)")),
-        liters: truckImportNumber(truckImportCell(row, headers, "Litros")), ticket_number: null,
-        items: [], source_payload: original
-      };
-    }
-    return { error: "Aba não reconhecida." };
-  }
-
-  async function parseTruckImportFile(file) {
-    const workbook = await readTruckSpreadsheetWorkbook(file);
-    const foundAllowed = TRUCK_IMPORT_SHEETS.filter(name => workbook.sheets.has(name));
-    if (!foundAllowed.length) throw new Error("Nenhuma aba válida foi encontrada. Use o controle com Insumos, Sal BR, Carreta Bulk ou Carreta Tank.");
-
-    const records = [];
-    const invalid = [];
-    const counts = {};
-    for (const sheetName of foundAllowed) {
-      const rows = workbook.sheets.get(sheetName) || [];
-      const headerData = truckImportHeaderMap(rows);
-      if (!headerData) {
-        invalid.push({ sheet: sheetName, row: 0, message: "Cabeçalho com a coluna Data não localizado." });
-        counts[sheetName] = 0;
-        continue;
-      }
-      let sheetCount = 0;
-      for (const row of rows) {
-        if (row.rowNumber <= headerData.headerRow.rowNumber) continue;
-        const dateCell = truckImportCell(row, headerData.headers, "Data");
-        if (dateCell === null || dateCell === undefined || String(dateCell).trim() === "") continue;
-        const record = buildTruckImportRecord(sheetName, row, headerData.headers, workbook.date1904);
-        if (record.error) invalid.push({ sheet: sheetName, row: row.rowNumber, message: record.error });
-        else { records.push(record); sheetCount += 1; }
-      }
-      counts[sheetName] = sheetCount;
-    }
-
-    const unique = [];
-    const seen = new Set();
-    let duplicatesInFile = 0;
-    const duplicatesBySheet = {};
-    records.forEach(record => {
-      const key = truckImportIdentity(record);
-      if (seen.has(key)) {
-        duplicatesInFile += 1;
-        duplicatesBySheet[record.source_sheet] = Number(duplicatesBySheet[record.source_sheet] || 0) + 1;
-      } else { seen.add(key); unique.push(record); }
-    });
-
-    return {
-      fileName: file.name,
-      records: unique,
-      rawCount: records.length,
-      duplicatesInFile,
-      duplicatesBySheet,
-      invalid,
-      counts,
-      foundAllowed,
-      ignoredFound: TRUCK_IMPORT_IGNORED_SHEETS.filter(name => workbook.sheets.has(name)),
-      otherIgnored: workbook.sheetNames.filter(name => !TRUCK_IMPORT_SHEETS.includes(name) && !TRUCK_IMPORT_IGNORED_SHEETS.includes(name))
-    };
-  }
-
-  function truckImportForm() {
-    return `<form id="truckImportForm">
-      <div class="truck-import-hero">
-        <span>${uiIcon("file")}</span>
-        <div><small>IMPORTAÇÃO CONTROLADA</small><h3>Controle de carretas em Excel</h3><p>O sistema lê somente Insumos, Sal BR, Carreta Bulk e Carreta Tank. Menu, Cutting Box, Equipamentos e Dados são ignoradas.</p></div>
-      </div>
-      <div class="info-box truck-import-safety"><strong>Importação histórica segura</strong><span>Os registros entram como histórico liberado, sem alterar os saldos atuais de tanques, silos ou inventário químico. Dados repetidos são ignorados automaticamente.</span></div>
-      <label class="truck-import-dropzone">
-        <input name="spreadsheet" type="file" accept=".xlsx,.xlsm" required>
-        <span>${uiIcon("upload")}</span><strong>Selecionar planilha</strong><small>Formatos aceitos: XLSX e XLSM</small>
-      </label>
-      <div class="truck-import-preview" data-truck-import-preview><div class="empty">Selecione a planilha para conferir as abas e a quantidade de registros.</div></div>
-      <div class="truck-import-progress hidden" data-truck-import-progress><div><span data-truck-import-progress-label>Preparando importação...</span><strong data-truck-import-progress-value>0%</strong></div><progress max="100" value="0"></progress></div>
-      <div class="form-actions"><button type="button" class="btn secondary" data-close-modal>Cancelar</button><button class="btn primary" data-truck-import-submit disabled>Importar somente novos</button></div>
-    </form>`;
-  }
-
-  function truckImportPreviewHtml(parsed) {
-    const sheetCards = TRUCK_IMPORT_SHEETS.map(name => `<div class="truck-import-sheet-card ${parsed.foundAllowed.includes(name) ? "ok" : "missing"}"><span>${parsed.foundAllowed.includes(name) ? uiIcon("check") : uiIcon("alert")}</span><div><strong>${esc(name)}</strong><small>${parsed.foundAllowed.includes(name) ? `${fmt.format(parsed.counts[name] || 0)} registro(s)` : "Aba não encontrada"}</small></div></div>`).join("");
-    const ignored = [...parsed.ignoredFound, ...parsed.otherIgnored];
-    return `<div class="truck-import-file-head"><div><small>ARQUIVO ANALISADO</small><strong>${esc(parsed.fileName)}</strong></div><span>${fmt.format(parsed.records.length)} registro(s) único(s) para conferência</span></div>
-      <div class="truck-import-sheet-grid">${sheetCards}</div>
-      <div class="truck-import-summary-grid"><span>Linhas válidas<strong>${fmt.format(parsed.rawCount)}</strong></span><span>Repetidas na planilha<strong>${fmt.format(parsed.duplicatesInFile)}</strong></span><span>Linhas inválidas<strong>${fmt.format(parsed.invalid.length)}</strong></span><span>Abas ignoradas<strong>${fmt.format(ignored.length)}</strong></span></div>
-      ${ignored.length ? `<div class="truck-import-ignored"><strong>Ignoradas:</strong> ${ignored.map(esc).join(", ")}</div>` : ""}
-      ${parsed.invalid.length ? `<details class="truck-import-errors"><summary>Ver primeiras inconsistências</summary>${parsed.invalid.slice(0, 12).map(item => `<p><strong>${esc(item.sheet)} • linha ${item.row || "-"}</strong><span>${esc(item.message)}</span></p>`).join("")}</details>` : ""}`;
-  }
-
-  function updateTruckImportProgress(percent, label) {
-    const box = $("[data-truck-import-progress]");
-    if (!box) return;
-    box.classList.remove("hidden");
-    box.querySelector("progress").value = Math.max(0, Math.min(100, percent));
-    $("[data-truck-import-progress-value]", box).textContent = `${Math.round(percent)}%`;
-    $("[data-truck-import-progress-label]", box).textContent = label;
-  }
-
-  async function importTruckSpreadsheetRows(parsed) {
-    const batches = [];
-    for (let index = 0; index < parsed.records.length; index += 100) batches.push(parsed.records.slice(index, index + 100));
-    const bySheet = Object.fromEntries(TRUCK_IMPORT_SHEETS.map(name => [name, {
-      imported: 0,
-      duplicates: Number(parsed.duplicatesBySheet?.[name] || 0),
-      invalid: parsed.invalid.filter(item => item.sheet === name).length
-    }]));
-    const summary = { received: 0, imported: 0, duplicates: parsed.duplicatesInFile, invalid: parsed.invalid.length, by_sheet: bySheet, errors: [] };
-    for (let index = 0; index < batches.length; index += 1) {
-      const percent = batches.length ? index / batches.length * 100 : 100;
-      updateTruckImportProgress(percent, `Enviando lote ${index + 1} de ${batches.length}...`);
-      const { data, error } = await state.client.rpc("import_truck_spreadsheet_rows_v1", { p_rows: batches[index] });
-      if (error) throw new Error(`Lote ${index + 1}: ${error.message}`);
-      const result = Array.isArray(data) ? data[0] : data;
-      summary.received += Number(result?.received || 0);
-      summary.imported += Number(result?.imported || 0);
-      summary.duplicates += Number(result?.duplicates || 0);
-      summary.invalid += Number(result?.invalid || 0);
-      Object.entries(result?.by_sheet || {}).forEach(([sheet, values]) => {
-        const current = summary.by_sheet[sheet] || { imported: 0, duplicates: 0, invalid: 0 };
-        summary.by_sheet[sheet] = {
-          imported: current.imported + Number(values?.imported || 0),
-          duplicates: current.duplicates + Number(values?.duplicates || 0),
-          invalid: current.invalid + Number(values?.invalid || 0)
-        };
-      });
-      if (Array.isArray(result?.errors)) summary.errors.push(...result.errors);
-    }
-    updateTruckImportProgress(100, "Importação concluída.");
-    return summary;
-  }
-
-  function truckImportReportHtml(summary, parsed) {
-    return `<div class="truck-import-report">
-      <div class="truck-import-report-hero"><span>${uiIcon("check")}</span><div><small>IMPORTAÇÃO CONCLUÍDA</small><h3>${fmt.format(summary.imported)} carreta(s) adicionada(s)</h3><p>O histórico foi incorporado sem movimentar o estoque atual.</p></div></div>
-      <div class="truck-import-summary-grid"><span>Importadas<strong>${fmt.format(summary.imported)}</strong></span><span>Duplicadas ignoradas<strong>${fmt.format(summary.duplicates)}</strong></span><span>Inválidas ignoradas<strong>${fmt.format(summary.invalid)}</strong></span><span>Arquivo<strong>${esc(parsed.fileName)}</strong></span></div>
-      <div class="section-title">Resultado por aba</div>
-      <div class="truck-import-result-list">${TRUCK_IMPORT_SHEETS.map(name => { const item = summary.by_sheet[name] || {}; return `<div><strong>${esc(name)}</strong><span>${fmt.format(item.imported || 0)} importadas</span><small>${fmt.format(item.duplicates || 0)} duplicadas • ${fmt.format(item.invalid || 0)} inválidas</small></div>`; }).join("")}</div>
-      ${summary.errors?.length ? `<details class="truck-import-errors"><summary>Ver avisos do banco</summary>${summary.errors.slice(0, 20).map(item => `<p><strong>${esc(item.sheet || "Planilha")} • linha ${item.row || "-"}</strong><span>${esc(item.message || "Registro ignorado")}</span></p>`).join("")}</details>` : ""}
-      <div class="form-actions"><button type="button" class="btn primary" data-close-modal>Concluir</button></div>
-    </div>`;
-  }
-
-  function truckInventoryIntegrationLabel(item) {
-    if (item.inventoryEffect === "historical") return "Histórico — sem estoque";
-    if (item.truckType === "Plataforma") return "Sem inventário";
-    return item.stockApplied ? "Aplicado" : "Pendente";
-  }
-
-  function truckImportDetailsHtml(item) {
-    const payloadEntries = Object.entries(item.importPayload || {}).slice(0, 20);
-    const fields = [
-      ["Aba de origem", item.importSheet], ["Linha", item.importRow], ["Transportadora", item.carrier],
-      ["MRT", item.mrt], ["SH", item.shCode], ["Ticket", item.ticketNumber], ["Remessa", item.shipment],
-      ["Destino / Silo", item.destination], ["Peso da NF", item.invoiceWeightKg !== null && item.invoiceWeightKg !== undefined ? `${fmt.format(item.invoiceWeightKg)} kg` : ""],
-      ["Peso da balança", item.scaleWeightKg !== null && item.scaleWeightKg !== undefined ? `${fmt.format(item.scaleWeightKg)} kg` : ""],
-      ["Litros", item.liters !== null && item.liters !== undefined ? fmt.format(item.liters) : ""], ["Importado em", item.importedAt ? dateTime(item.importedAt) : ""]
-    ].filter(([,value]) => value !== null && value !== undefined && String(value).trim() !== "");
-    return `<div class="truck-import-detail"><div class="info-box"><strong>Registro histórico do Excel</strong><span>Este lançamento não alterou o estoque operacional do Control IA.</span></div><div class="truck-milestone-grid">${fields.map(([label,value]) => `<span><small>${esc(label)}</small><strong>${esc(value)}</strong></span>`).join("")}</div>${payloadEntries.length ? `<div class="section-title">Dados originais da linha</div><div class="truck-import-payload">${payloadEntries.map(([label,value]) => `<div><span>${esc(label)}</span><strong>${esc(value)}</strong></div>`).join("")}</div>` : ""}</div>`;
-  }
-
-
   function trucksForPage() {
     const f = state.truckFilters || {};
     const query = normalizeTruckFilterValue(f.query);
@@ -4974,12 +4451,12 @@
       if (f.end && date && date > f.end) return false;
       if (f.movement && item.movement !== f.movement) return false;
       if (f.type && item.truckType !== f.type) return false;
-      if (f.status && truckFlowStatus(item) !== f.status) return false;
+      if (f.status && item.status !== f.status) return false;
       if (f.client && (item.client || "Sem cliente") !== f.client) return false;
       if (f.product && !truckProductNames(item).includes(f.product)) return false;
-      if (f.stock === "pending" && !(item.inventoryEffect === "normal" && item.truckType !== "Plataforma" && !item.stockApplied && ["Finalizada", "Liberada"].includes(truckFlowStatus(item)))) return false;
-      if (f.stock === "applied" && !(item.inventoryEffect === "normal" && item.truckType !== "Plataforma" && item.stockApplied)) return false;
-      if (f.stock === "not-applicable" && !(item.truckType === "Plataforma" || item.inventoryEffect !== "normal")) return false;
+      if (f.stock === "pending" && !(item.truckType !== "Plataforma" && !item.stockApplied && ["Recebida", "Concluída"].includes(item.status))) return false;
+      if (f.stock === "applied" && !(item.truckType !== "Plataforma" && item.stockApplied)) return false;
+      if (f.stock === "not-applicable" && item.truckType !== "Plataforma") return false;
       if (!truckAttentionMatches(item, f.attention, duplicateIds)) return false;
       return true;
     });
@@ -5012,7 +4489,7 @@
     const filters = state.truckFilters || {};
     const movements = [...new Set(allTrucks.map(item => item.movement).filter(Boolean))].sort();
     const types = [...new Set(allTrucks.map(item => item.truckType).filter(Boolean))].sort();
-    const statuses = [...TRUCK_FLOW_STAGES, "Cancelada"];
+    const statuses = [...new Set(allTrucks.map(item => item.status).filter(Boolean))].sort();
     const clients = [...new Set(allTrucks.map(item => item.client || "Sem cliente"))].sort();
     const products = [...new Set(allTrucks.flatMap(truckProductNames).filter(Boolean))].sort();
     const activeFilterCount = truckFilterActiveCount();
@@ -5020,20 +4497,12 @@
     const typeCount = type => trucks.filter(item => item.truckType === type).length;
     const movementCount = movement => trucks.filter(item => String(item.movement || "").toLowerCase() === movement.toLowerCase()).length;
     const todayCount = trucks.filter(item => recordDateKey(item.date || item.created_at) === today).length;
-    const pendingStock = trucks.filter(item => item.inventoryEffect === "normal" && item.truckType !== "Plataforma" && !item.stockApplied && ["Finalizada", "Liberada"].includes(truckFlowStatus(item))).length;
-    const pendingDocs = trucks.filter(item => item.inventoryEffect !== "historical" && (!item.invoice || !item.plate || (item.truckType !== "Plataforma" && !item.lot))).length;
-    const activeQueue = trucks.filter(item => !["Liberada", "Cancelada"].includes(truckFlowStatus(item)) && (truckHasOperationalTracking(item) || truckFlowStatus(item) === "Programada"));
-    const completed = trucks.filter(item => ["Finalizada", "Liberada"].includes(truckFlowStatus(item))).length;
-    const atPlant = trucks.filter(item => item.checkInAt && !item.checkOutAt && truckFlowStatus(item) !== "Cancelada").length;
-    const waiting = trucks.filter(item => ["Chegou","Aguardando"].includes(truckFlowStatus(item))).length;
-    const operating = trucks.filter(item => truckFlowStatus(item) === "Em operação").length;
-    const released = trucks.filter(item => truckFlowStatus(item) === "Liberada").length;
-    const averageWait = averageTruckMinutes(trucks.map(item => truckFlowMetrics(item).waitMinutes).filter((_,index) => trucks[index].operationStartedAt));
-    const averageOperation = averageTruckMinutes(trucks.map(item => truckFlowMetrics(item).operationMinutes).filter((_,index) => trucks[index].operationFinishedAt));
-    const averageDwell = averageTruckMinutes(trucks.map(item => truckFlowMetrics(item).totalMinutes).filter((_,index) => trucks[index].checkOutAt));
+    const pendingStock = trucks.filter(item => item.truckType !== "Plataforma" && !item.stockApplied && ["Recebida", "Concluída"].includes(item.status)).length;
+    const pendingDocs = trucks.filter(item => !item.invoice || !item.plate || (item.truckType !== "Plataforma" && !item.lot)).length;
+    const activeQueue = trucks.filter(item => !["Concluída", "Cancelada"].includes(item.status));
+    const completed = trucks.filter(item => item.status === "Concluída").length;
     const duplicateCount = trucks.filter(item => duplicateIds.has(item.id)).length;
     const overdueCount = trucks.filter(item => truckOpenAgeDays(item) >= 1).length;
-    const delayedCount = trucks.filter(item => truckAttentionFlags(item, duplicateIds).some(flag => flag.key === "late")).length;
     const attentionItems = trucks
       .map(item => ({ item, flags: truckAttentionFlags(item, duplicateIds) }))
       .filter(entry => entry.flags.length)
@@ -5054,42 +4523,37 @@
     const volumeSummary = Object.entries(quantityByUnit).slice(0, 3).map(([unit, quantity]) => `${fmt.format(quantity)} ${esc(unit)}`).join(" • ") || "Sem volume no período";
 
     const rows = trucks.map(item => `<tr>
-      <td><strong>${dateOnly(item.date)}</strong><br><small>${item.importSheet ? `Excel • ${esc(item.importSheet)} • linha ${item.importRow || "-"}` : (item.scheduledAt ? `Prev. ${dateTime(item.scheduledAt)}` : (recordDateKey(item.date || item.created_at) === today ? "Hoje" : "Sem horário"))}</small></td>
+      <td><strong>${dateOnly(item.date)}</strong><br><small>${recordDateKey(item.date || item.created_at) === today ? "Hoje" : "Movimentação"}</small></td>
       <td>${badge(item.movement)}<br><small>${badge(item.truckType)}</small></td>
       <td><strong>${esc(item.supplier || "-")}</strong><br><small>${esc(item.client || "Sem cliente")}</small></td>
       <td>${truckItemsSummary(item)}</td>
       <td><strong>${esc(item.plate || "-")}</strong><br><small>${esc(item.driver || "Motorista não informado")}</small></td>
       <td><strong>${esc(item.invoice || "-")}</strong><br><small>${esc(item.lot || "Sem lote")}</small></td>
-      <td>${badge(truckFlowStatus(item))}${truckFlowMetricsHtml(item,true)}${truckAttentionHtml(item, duplicateIds)}</td>
+      <td>${badge(item.status)}<br><small>${esc(truckInventoryLabel(item))}</small>${truckAttentionHtml(item, duplicateIds)}</td>
       <td><div class="row-actions">
-        ${truckFlowActionButtons(item,true)}
-        <button class="btn small secondary" data-truck-timeline="${item.id}">Linha do tempo</button>
-        ${item.importSource ? `<button class="btn small secondary" data-truck-import-details="${item.id}">Dados do Excel</button>` : ""}
         ${item.truckType === "Plataforma" ? `<button class="btn small secondary" data-truck-items="${item.id}">Ver ${item.items.length} itens</button>` : ""}
         <button class="btn small secondary" data-attachments="truck:${item.id}" data-attachment-title="${esc(item.plate || item.product)}">Anexos (${attachmentCount("truck", item.id)})</button>
-        ${canManageTrucks() && item.inventoryEffect !== "historical" ? `<button class="btn small primary" data-edit-truck="${item.id}">Editar</button>` : ""}
+        ${canManageTrucks() ? `<button class="btn small primary" data-edit-truck="${item.id}">Editar</button>` : ""}
       </div></td>
     </tr>`).join("");
 
     const mobile = trucks.map(item => `<article class="card mobile-record-card truck-mobile-card truck-type-${String(item.truckType).toLowerCase()}">
-      <div class="mobile-record-head"><div><strong>${esc(item.plate || item.product || "Movimentação")}</strong><small>${dateOnly(item.date)} • ${esc(item.movement)}</small></div>${badge(truckFlowStatus(item))}</div>
-      ${truckFlowStepper(item)}
+      <div class="mobile-record-head"><div><strong>${esc(item.plate || item.product || "Movimentação")}</strong><small>${dateOnly(item.date)} • ${esc(item.movement)}</small></div>${badge(item.truckType)}</div>
       <div class="truck-mobile-products">${truckItemsSummary(item)}</div>
-      <div class="mobile-record-grid"><span>Origem/Destino<strong>${esc(item.supplier || "-")}</strong></span><span>Cliente<strong>${esc(item.client || "-")}</strong></span><span>Programação<strong>${item.scheduledAt ? dateTime(item.scheduledAt) : "-"}</strong></span><span>NF<strong>${esc(item.invoice || "-")}</strong></span><span>Lote<strong>${esc(item.lot || "-")}</strong></span><span>Motorista<strong>${esc(item.driver || "-")}</strong></span><span>Integração<strong>${esc(truckInventoryIntegrationLabel(item))}</strong></span></div>
-      ${truckFlowMetricsHtml(item)}${truckAttentionHtml(item, duplicateIds)}
-      <div class="row-actions">${truckFlowActionButtons(item)}<button class="btn small secondary" data-truck-timeline="${item.id}">Linha do tempo</button>${item.importSource ? `<button class="btn small secondary" data-truck-import-details="${item.id}">Dados do Excel</button>` : ""}${item.truckType === "Plataforma" ? `<button class="btn small secondary" data-truck-items="${item.id}">Ver itens</button>` : ""}<button class="btn small secondary" data-attachments="truck:${item.id}" data-attachment-title="${esc(item.plate || item.product)}">Anexos</button>${canManageTrucks() && item.inventoryEffect !== "historical" ? `<button class="btn small primary" data-edit-truck="${item.id}">Editar</button>` : ""}</div>
+      <div class="mobile-record-grid"><span>Origem/Destino<strong>${esc(item.supplier || "-")}</strong></span><span>Cliente<strong>${esc(item.client || "-")}</strong></span><span>NF<strong>${esc(item.invoice || "-")}</strong></span><span>Lote<strong>${esc(item.lot || "-")}</strong></span><span>Motorista<strong>${esc(item.driver || "-")}</strong></span><span>Status<strong>${esc(item.status)}</strong></span><span>Integração<strong>${item.truckType === "Plataforma" ? "Sem inventário" : (item.stockApplied ? "Aplicado" : "Pendente")}</strong></span></div>
+      ${truckAttentionHtml(item, duplicateIds)}
+      <div class="row-actions">${item.truckType === "Plataforma" ? `<button class="btn small secondary" data-truck-items="${item.id}">Ver itens</button>` : ""}<button class="btn small secondary" data-attachments="truck:${item.id}" data-attachment-title="${esc(item.plate || item.product)}">Anexos</button>${canManageTrucks() ? `<button class="btn small primary" data-edit-truck="${item.id}">Editar</button>` : ""}</div>
     </article>`).join("");
 
-    const flowPriority = { "Em operação":0, "Finalizada":1, "Chegou":2, "Aguardando":3, "Programada":4 };
-    const queueCards = [...activeQueue].sort((a,b) => (flowPriority[truckFlowStatus(a)] ?? 9) - (flowPriority[truckFlowStatus(b)] ?? 9) || new Date(a.scheduledAt || a.created_at) - new Date(b.scheduledAt || b.created_at)).slice(0, 10).map(item => `<article class="truck-queue-card flow-${normalizeTruckFilterValue(truckFlowStatus(item)).replace(/\s+/g,"-")}">
+    const queueCards = [...activeQueue].sort((a,b) => truckAttentionFlags(b, duplicateIds).length - truckAttentionFlags(a, duplicateIds).length || truckOpenAgeDays(b) - truckOpenAgeDays(a)).slice(0, 6).map(item => `<article class="truck-queue-card">
       <div class="truck-queue-icon">${uiIcon("truck")}</div>
-      <div class="truck-queue-main"><div><strong>${esc(item.plate || item.invoice || "Carreta")}</strong>${badge(truckFlowStatus(item))}</div><p>${esc(item.movement || "Movimentação")} • ${esc(item.truckType || "Tipo não definido")} • ${esc(item.product || (item.items || [])[0]?.productName || "Carga não informada")}</p><small>${item.scheduledAt ? `Programada: ${dateTime(item.scheduledAt)} • ` : ""}${esc(item.supplier || "Origem/Destino não informado")} ${item.client ? `→ ${esc(item.client)}` : ""}</small>${truckFlowMetricsHtml(item,true)}${truckAttentionHtml(item, duplicateIds)}</div>
-      <div class="truck-queue-actions">${truckFlowActionButtons(item,true)}<button class="btn small secondary" data-truck-timeline="${item.id}">Detalhes</button>${canManageTrucks() && item.inventoryEffect !== "historical" ? `<button class="btn small secondary" data-edit-truck="${item.id}">Editar</button>` : ""}</div>
+      <div class="truck-queue-main"><div><strong>${esc(item.plate || item.invoice || "Carreta")}</strong>${badge(item.status)}</div><p>${esc(item.movement || "Movimentação")} • ${esc(item.truckType || "Tipo não definido")} • ${esc(item.product || (item.items || [])[0]?.productName || "Carga não informada")}</p><small>${esc(item.supplier || "Origem/Destino não informado")} ${item.client ? `→ ${esc(item.client)}` : ""}</small>${truckAttentionHtml(item, duplicateIds)}</div>
+      ${canManageTrucks() ? `<button class="btn small secondary" data-edit-truck="${item.id}">Abrir</button>` : ""}
     </article>`).join("");
 
     $("#page-trucks").innerHTML =
-      header("Central de carretas", "Agendamento, fila operacional, check-in, operação, check-out e integração com estoque.",
-        `<button class="btn secondary" data-export="trucks">Exportar CSV</button>${canManageTrucks() ? `<button class="btn secondary" data-action="import-trucks-excel">Importar Excel</button><button class="btn primary" data-action="new-truck">+ Nova movimentação</button>` : ""}`) +
+      header("Central de carretas", "Entradas, saídas, documentação, produtos e integração com estoque.",
+        `<button class="btn secondary" data-export="trucks">Exportar CSV</button>${canManageTrucks() ? `<button class="btn primary" data-action="new-truck">+ Nova movimentação</button>` : ""}`) +
       `<section class="truck-filter-panel">
         <div class="truck-filter-heading"><div><small>FILTROS</small><h3>Localizar movimentações</h3><p>Filtre toda a central por período, documentação, carga ou situação.</p></div>${activeFilterCount ? `<span>${activeFilterCount} filtro(s) ativo(s)</span>` : ""}</div>
         <div class="truck-filter-grid">
@@ -5098,41 +4562,262 @@
           <div><label>Data final</label><input data-truck-filter="end" type="date" value="${esc(filters.end || "")}"></div>
           <div><label>Movimentação</label><select data-truck-filter="movement"><option value="">Todas</option>${movements.map(value => `<option value="${esc(value)}" ${filters.movement === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></div>
           <div><label>Tipo de carreta</label><select data-truck-filter="type"><option value="">Todos</option>${types.map(value => `<option value="${esc(value)}" ${filters.type === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></div>
-          <div><label>Etapa operacional</label><select data-truck-filter="status"><option value="">Todas</option>${statuses.map(value => `<option value="${esc(value)}" ${filters.status === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></div>
+          <div><label>Status</label><select data-truck-filter="status"><option value="">Todos</option>${statuses.map(value => `<option value="${esc(value)}" ${filters.status === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></div>
           <div><label>Cliente</label><select data-truck-filter="client"><option value="">Todos</option>${clients.map(value => `<option value="${esc(value)}" ${filters.client === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></div>
           <div><label>Produto</label><select data-truck-filter="product"><option value="">Todos</option>${products.map(value => `<option value="${esc(value)}" ${filters.product === value ? "selected" : ""}>${esc(value)}</option>`).join("")}</select></div>
           <div><label>Integração com estoque</label><select data-truck-filter="stock"><option value="">Todas</option><option value="pending" ${filters.stock === "pending" ? "selected" : ""}>Pendente</option><option value="applied" ${filters.stock === "applied" ? "selected" : ""}>Aplicada</option><option value="not-applicable" ${filters.stock === "not-applicable" ? "selected" : ""}>Não se aplica</option></select></div>
-          <div><label>Atenção operacional</label><select data-truck-filter="attention"><option value="">Todas</option><option value="duplicate" ${filters.attention === "duplicate" ? "selected" : ""}>NF duplicada</option><option value="late" ${filters.attention === "late" ? "selected" : ""}>Atraso na chegada</option><option value="overdue" ${filters.attention === "overdue" ? "selected" : ""}>Aberta há mais de 1 dia</option><option value="docs" ${filters.attention === "docs" ? "selected" : ""}>Documentação incompleta</option><option value="stock" ${filters.attention === "stock" ? "selected" : ""}>Estoque pendente</option></select></div>
+          <div><label>Atenção operacional</label><select data-truck-filter="attention"><option value="">Todas</option><option value="duplicate" ${filters.attention === "duplicate" ? "selected" : ""}>NF duplicada</option><option value="overdue" ${filters.attention === "overdue" ? "selected" : ""}>Aberta há mais de 1 dia</option><option value="docs" ${filters.attention === "docs" ? "selected" : ""}>Documentação incompleta</option><option value="stock" ${filters.attention === "stock" ? "selected" : ""}>Estoque pendente</option></select></div>
           <button class="btn secondary truck-filter-clear" type="button" data-action="clear-truck-filters">Limpar filtros</button>
         </div>
         <div class="truck-filter-result"><strong>${trucks.length}</strong> de ${allTrucks.length} movimentação(ões) exibida(s)</div>
       </section>
       <section class="truck-overview-grid">
-        ${statCard("Agenda de hoje", fmt.format(todayCount), "movimentações do dia", uiIcon("calendar"), "Programação logística", "blue")}
-        ${statCard("Na planta", fmt.format(atPlant), "sem check-out", uiIcon("truck"), "Permanência ativa", "orange")}
-        ${statCard("Aguardando", fmt.format(waiting), "check-in realizado", uiIcon("hourglass"), `Espera média: ${formatTruckDuration(averageWait)}`, "purple")}
-        ${statCard("Em operação", fmt.format(operating), "carga ou descarga", uiIcon("activity"), "Acompanhamento em tempo real", "green")}
+        ${statCard("Carretas hoje", fmt.format(todayCount), "movimentações registradas", uiIcon("truck"), "Entradas e saídas do dia", "blue")}
+        ${statCard("Em andamento", fmt.format(activeQueue.length), "fila operacional", uiIcon("activity"), "Aguardando conclusão", "orange")}
+        ${statCard("Estoque pendente", fmt.format(pendingStock), "movimentações", uiIcon("alert"), "Necessitam aplicação", "red")}
+        ${statCard("Documentação pendente", fmt.format(pendingDocs), "placa, NF ou lote", uiIcon("file"), "Conferência necessária", "purple")}
       </section>
       <section class="truck-intelligence-grid">
         <div class="card truck-attention-panel"><div class="truck-section-heading"><div><small>CONFERÊNCIA INTELIGENTE</small><h3>Pendências que precisam de atenção</h3></div><span>${attentionItems.length} registros</span></div>
-          <div class="truck-attention-summary"><button type="button" data-truck-quick-attention="duplicate"><span>NF duplicada</span><strong>${duplicateCount}</strong></button><button type="button" data-truck-quick-attention="late"><span>Atraso na chegada</span><strong>${delayedCount}</strong></button><button type="button" data-truck-quick-attention="overdue"><span>Abertas +1 dia</span><strong>${overdueCount}</strong></button><button type="button" data-truck-quick-attention="docs"><span>Documentação</span><strong>${pendingDocs}</strong></button><button type="button" data-truck-quick-attention="stock"><span>Estoque</span><strong>${pendingStock}</strong></button></div>
+          <div class="truck-attention-summary"><button type="button" data-truck-quick-attention="duplicate"><span>NF duplicada</span><strong>${duplicateCount}</strong></button><button type="button" data-truck-quick-attention="overdue"><span>Abertas +1 dia</span><strong>${overdueCount}</strong></button><button type="button" data-truck-quick-attention="docs"><span>Documentação</span><strong>${pendingDocs}</strong></button><button type="button" data-truck-quick-attention="stock"><span>Estoque</span><strong>${pendingStock}</strong></button></div>
           <div class="truck-attention-list">${attentionItems.slice(0,5).map(({item,flags}) => `<article><div><strong>${esc(item.plate || item.invoice || item.product || "Carreta")}</strong><small>${dateOnly(item.date)} • ${esc(item.client || item.supplier || "Sem cliente")}</small></div><div>${flags.map(flag => `<span class="${flag.tone}">${esc(flag.label)}</span>`).join("")}</div>${canManageTrucks() ? `<button class="btn small secondary" data-edit-truck="${item.id}">Revisar</button>` : ""}</article>`).join("") || `<div class="empty">Nenhuma pendência encontrada.</div>`}</div>
         </div>
         <div class="card truck-ranking-panel"><div class="truck-section-heading"><div><small>ANÁLISE DO FILTRO</small><h3>Movimentações por cliente e produto</h3></div></div>${truckRankingHtml(trucks, "client", "PRINCIPAIS CLIENTES")}${truckRankingHtml(trucks, "product", "PRINCIPAIS PRODUTOS")}</div>
       </section>
       <section class="truck-control-grid">
         <div class="card truck-flow-card"><div class="truck-section-heading"><div><small>FLUXO LOGÍSTICO</small><h3>Resumo do período</h3></div><span>${trucks.length} registros</span></div>
-          <div class="truck-flow-stats"><div><span>Finalizadas</span><strong>${completed}</strong><small>Operação encerrada</small></div><div><span>Liberadas</span><strong>${released}</strong><small>Check-out concluído</small></div><div><span>Permanência média</span><strong>${formatTruckDuration(averageDwell)}</strong><small>Operação média: ${formatTruckDuration(averageOperation)}</small></div></div>
+          <div class="truck-flow-stats"><div><span>Entradas</span><strong>${movementCount("Entrada")}</strong></div><div><span>Saídas</span><strong>${movementCount("Saída")}</strong></div><div><span>Concluídas</span><strong>${completed}</strong></div></div>
           <div class="truck-volume-summary"><small>VOLUME MOVIMENTADO</small><strong>${volumeSummary}</strong></div>
         </div>
         <div class="card truck-types-card"><div class="truck-section-heading"><div><small>TIPOS DE CARRETA</small><h3>Distribuição</h3></div></div>
           <div class="truck-type-professional"><div><span class="truck-type-mark bulk"></span><p>Bulk<small>Granéis</small></p><strong>${typeCount("Bulk")}</strong></div><div><span class="truck-type-mark tank"></span><p>Tank<small>Fluidos</small></p><strong>${typeCount("Tank")}</strong></div><div><span class="truck-type-mark platform"></span><p>Plataforma<small>Insumos diversos</small></p><strong>${typeCount("Plataforma")}</strong></div></div>
         </div>
       </section>
-      <section class="card truck-queue-panel"><div class="truck-section-heading"><div><small>FILA OPERACIONAL</small><h3>Chegada, espera, operação e liberação</h3></div><span>${activeQueue.length} abertas</span></div><div class="truck-queue-list">${queueCards || `<div class="empty">Nenhuma movimentação pendente.</div>`}</div></section>
+      <section class="card truck-queue-panel"><div class="truck-section-heading"><div><small>FILA OPERACIONAL</small><h3>Movimentações que exigem acompanhamento</h3></div><span>${activeQueue.length} abertas</span></div><div class="truck-queue-list">${queueCards || `<div class="empty">Nenhuma movimentação pendente.</div>`}</div></section>
       <div class="section-title truck-record-title"><span>Histórico de movimentações</span><small>${trucks.length} registro(s) no filtro atual</small></div>
-      <div class="card table-wrap desktop-record-table truck-professional-table"><table class="data-table"><thead><tr><th>Data</th><th>Movimento / Tipo</th><th>Origem / Cliente</th><th>Produtos</th><th>Placa / Motorista</th><th>NF / Lote</th><th>Etapa / Tempos</th><th>Ações</th></tr></thead><tbody>${rows || `<tr><td colspan="8" class="empty">Nenhuma movimentação.</td></tr>`}</tbody></table></div>
+      <div class="card table-wrap desktop-record-table truck-professional-table"><table class="data-table"><thead><tr><th>Data</th><th>Movimento / Tipo</th><th>Origem / Cliente</th><th>Produtos</th><th>Placa / Motorista</th><th>NF / Lote</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows || `<tr><td colspan="8" class="empty">Nenhuma movimentação.</td></tr>`}</tbody></table></div>
       <div class="mobile-record-list">${mobile || `<div class="card empty">Nenhuma movimentação.</div>`}</div>`;
+  }
+
+
+  const CLIENT_TICKET_DOCUMENT_TYPES = ["FDT", "FRT", "MDT", "MRT"];
+
+  function clientTicketDocuments(ticketId) {
+    return (state.data?.clientTicketDocuments || []).filter(item => item.ticketId === ticketId);
+  }
+
+  function clientTicketMetrics(ticket) {
+    const required = [...new Set((ticket.requiredTypes || CLIENT_TICKET_DOCUMENT_TYPES).filter(type => CLIENT_TICKET_DOCUMENT_TYPES.includes(type)))];
+    const documents = clientTicketDocuments(ticket.id).filter(item => item.status !== "Substituído");
+    const present = new Set(documents.map(item => item.documentType));
+    const complete = required.filter(type => present.has(type)).length;
+    const missing = required.filter(type => !present.has(type));
+    const total = required.length;
+    const percent = total ? Math.round(complete / total * 100) : 100;
+    return { required, documents, present, complete, missing, total, percent, ready: missing.length === 0 };
+  }
+
+  function filteredClientTickets() {
+    const filters = state.clientTicketFilters || {};
+    const query = normalizeSearch(filters.query || "");
+    return (state.data?.clientTickets || []).filter(ticket => {
+      const metrics = clientTicketMetrics(ticket);
+      const docs = metrics.documents.map(item => `${item.documentType} ${item.documentNumber} ${item.fileName}`).join(" ");
+      const search = normalizeSearch(`${ticket.ticketNumber} ${ticket.client} ${ticket.title} ${ticket.vessel} ${ticket.serviceOrder} ${ticket.responsible} ${ticket.status} ${ticket.notes} ${docs}`);
+      if (query && !search.includes(query)) return false;
+      if (filters.client && ticket.client !== filters.client) return false;
+      if (filters.status && ticket.status !== filters.status) return false;
+      if (filters.completeness === "complete" && !metrics.ready) return false;
+      if (filters.completeness === "pending" && metrics.ready) return false;
+      return true;
+    });
+  }
+
+  function clientTicketFilterActiveCount() {
+    return Object.values(state.clientTicketFilters || {}).filter(Boolean).length;
+  }
+
+  function scheduleClientTicketFilterRender(field) {
+    clearTimeout(state.clientTicketFilterTimer);
+    const key = field.dataset.clientTicketFilter;
+    const cursor = typeof field.selectionStart === "number" ? field.selectionStart : null;
+    state.clientTicketFilterTimer = setTimeout(() => {
+      renderClientTickets();
+      const replacement = document.querySelector(`#page-client-tickets [data-client-ticket-filter="${key}"]`);
+      if (replacement) {
+        replacement.focus();
+        if (cursor !== null && typeof replacement.setSelectionRange === "function") replacement.setSelectionRange(cursor, cursor);
+      }
+    }, 180);
+  }
+
+  function clientTicketDocumentChip(ticket, type) {
+    const docs = clientTicketDocuments(ticket.id).filter(item => item.documentType === type && item.status !== "Substituído");
+    const required = (ticket.requiredTypes || []).includes(type);
+    const present = docs.length > 0;
+    const className = present ? "present" : required ? "missing" : "optional";
+    const label = present ? `${type} • ${docs.length}` : required ? `${type} pendente` : `${type} opcional`;
+    return `<span class="client-ticket-doc-chip ${className}">${present ? uiIcon("check") : uiIcon("file")} ${esc(label)}</span>`;
+  }
+
+  function clientTicketStatusTone(ticket) {
+    const metrics = clientTicketMetrics(ticket);
+    if (["Cancelado", "Arquivado"].includes(ticket.status)) return "neutral";
+    if (["Concluído", "Enviado"].includes(ticket.status) || metrics.ready) return "green";
+    if (ticket.status === "Em revisão") return "blue";
+    return "amber";
+  }
+
+  function renderClientTickets() {
+    const all = state.data?.clientTickets || [];
+    const tickets = filteredClientTickets();
+    const clients = [...new Set(all.map(item => item.client).filter(Boolean))].sort((a,b) => a.localeCompare(b));
+    const statuses = [...new Set(all.map(item => item.status).filter(Boolean))].sort((a,b) => a.localeCompare(b));
+    const totalDocs = (state.data?.clientTicketDocuments || []).length;
+    const ready = all.filter(ticket => clientTicketMetrics(ticket).ready).length;
+    const pending = all.length - ready;
+    const sent = all.filter(ticket => ["Enviado","Arquivado"].includes(ticket.status)).length;
+    const actions = `<button class="btn secondary" data-export="client-tickets">Exportar CSV</button>${canManageClientTickets() ? `<button class="btn primary" data-action="new-client-ticket">+ Novo ticket</button>` : ""}`;
+
+    const cards = tickets.map(ticket => {
+      const metrics = clientTicketMetrics(ticket);
+      return `<article class="card client-ticket-card tone-${clientTicketStatusTone(ticket)}">
+        <div class="client-ticket-card-head"><div><small>${esc(ticket.ticketNumber)}</small><h3>${esc(ticket.client)}</h3><p>${esc(ticket.title)}</p></div>${badge(ticket.status)}</div>
+        <div class="client-ticket-context"><span>Data<strong>${dateOnly(ticket.date)}</strong></span><span>Embarcação<strong>${esc(ticket.vessel || "-")}</strong></span><span>OS<strong>${esc(ticket.serviceOrder || "-")}</strong></span><span>Responsável<strong>${esc(ticket.responsible || "-")}</strong></span></div>
+        <div class="client-ticket-progress"><div><span>Documentação</span><strong>${metrics.complete}/${metrics.total}</strong></div><div class="client-ticket-progress-bar"><i style="width:${metrics.percent}%"></i></div><small>${metrics.ready ? "Pacote documental completo" : `Pendentes: ${esc(metrics.missing.join(", "))}`}</small></div>
+        <div class="client-ticket-doc-chips">${CLIENT_TICKET_DOCUMENT_TYPES.map(type => clientTicketDocumentChip(ticket,type)).join("")}</div>
+        <div class="row-actions"><button class="btn small secondary" data-view-client-ticket="${ticket.id}">Abrir documentos</button>${canManageClientTickets() ? `<button class="btn small primary" data-edit-client-ticket="${ticket.id}">Editar ticket</button>` : ""}</div>
+      </article>`;
+    }).join("");
+
+    $("#page-client-tickets").innerHTML = header("Tickets de Clientes", "Organize FDT, FRT, MDT e MRT por cliente, operação ou embarcação.", actions) +
+      `<section class="client-ticket-kpis">${statCard("Tickets", fmt.format(all.length), "pacotes documentais", uiIcon("file"), "Todos os clientes", "blue")}${statCard("Completos", fmt.format(ready), "sem documentos pendentes", uiIcon("check"), "Prontos para revisão/envio", "green")}${statCard("Pendentes", fmt.format(pending), "com documento faltando", uiIcon("alert"), "Exigem acompanhamento", "orange")}${statCard("Arquivos", fmt.format(totalDocs), "FDT, FRT, MDT e MRT", uiIcon("paperclip"), `${sent} ticket(s) enviados`, "purple")}</section>
+      <section class="card client-ticket-filter-panel"><div class="client-ticket-filter-heading"><div><small>LOCALIZAÇÃO</small><h3>Pesquisar tickets e documentos</h3><p>Busque por cliente, ticket, embarcação, OS, tipo ou nome do arquivo.</p></div>${clientTicketFilterActiveCount() ? `<span>${clientTicketFilterActiveCount()} filtro(s)</span>` : ""}</div><div class="client-ticket-filter-grid">
+        <div class="wide"><label>Busca geral</label><input data-client-ticket-filter="query" value="${esc(state.clientTicketFilters.query || "")}" placeholder="Ex.: Equinor, FDT, embarcação ou número do ticket"></div>
+        <div><label>Cliente</label><select data-client-ticket-filter="client"><option value="">Todos</option>${clients.map(value => `<option value="${esc(value)}" ${state.clientTicketFilters.client===value?"selected":""}>${esc(value)}</option>`).join("")}</select></div>
+        <div><label>Status</label><select data-client-ticket-filter="status"><option value="">Todos</option>${statuses.map(value => `<option value="${esc(value)}" ${state.clientTicketFilters.status===value?"selected":""}>${esc(value)}</option>`).join("")}</select></div>
+        <div><label>Documentação</label><select data-client-ticket-filter="completeness"><option value="">Todos</option><option value="complete" ${state.clientTicketFilters.completeness==="complete"?"selected":""}>Completa</option><option value="pending" ${state.clientTicketFilters.completeness==="pending"?"selected":""}>Pendente</option></select></div>
+        <div class="client-ticket-filter-action"><button class="btn secondary full" data-action="clear-client-ticket-filters">Limpar filtros</button></div>
+      </div></section>
+      <div class="section-title professional-record-title"><span>Pacotes documentais</span><small>${tickets.length} ticket(s) no filtro</small></div>
+      <section class="client-ticket-grid">${cards || `<div class="card empty">Nenhum ticket de cliente encontrado.</div>`}</section>`;
+  }
+
+  function clientTicketForm(ticket = {}) {
+    const required = ticket.requiredTypes || CLIENT_TICKET_DOCUMENT_TYPES;
+    const clientNames = [...new Set([...(state.data.operations || []).map(item => item.client), ...(state.data.trucks || []).map(item => item.client), ticket.client].filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+    const operationOptions = (state.data.operations || []).map(op => `<option value="${op.id}" ${ticket.operationId===op.id?"selected":""}>${esc(op.client)} • ${esc(op.vessel)} • ${esc(op.service_order || op.activity)}</option>`).join("");
+    return `<form id="clientTicketForm" data-id="${ticket.id || ""}"><div class="form-grid">
+      ${ticket.ticketNumber ? `<div><label>Número do ticket</label><input value="${esc(ticket.ticketNumber)}" disabled></div>` : ""}
+      <div><label>Data *</label><input name="ticket_date" type="date" required value="${String(ticket.date || localDateKey()).slice(0,10)}"></div>
+      <div class="wide"><label>Cliente *</label><input name="client" list="clientTicketClientList" required value="${esc(ticket.client || "")}" placeholder="Ex.: Equinor"><datalist id="clientTicketClientList">${clientNames.map(name => `<option value="${esc(name)}"></option>`).join("")}</datalist></div>
+      <div class="wide"><label>Título *</label><input name="title" required value="${esc(ticket.title || "Documentação operacional")}" placeholder="Ex.: Bombeio de Barita — campanha Wahoo"></div>
+      <div class="wide"><label>Vincular a uma operação</label><select name="operation_id" data-client-ticket-operation><option value="">Sem vínculo direto</option>${operationOptions}</select></div>
+      <div><label>Embarcação</label><input name="vessel" value="${esc(ticket.vessel || "")}"></div>
+      <div><label>OS</label><input name="service_order" value="${esc(ticket.serviceOrder || "")}"></div>
+      <div><label>Responsável</label><input name="responsible" value="${esc(ticket.responsible || state.data.profile.name || "")}"></div>
+      <div><label>Status</label><select name="status">${["Aberto","Em montagem","Em revisão","Concluído","Enviado","Arquivado","Cancelado"].map(value => `<option ${String(ticket.status || "Em montagem")===value?"selected":""}>${value}</option>`).join("")}</select></div>
+      <div class="wide"><label>Documentos obrigatórios *</label><div class="client-ticket-required-grid">${CLIENT_TICKET_DOCUMENT_TYPES.map(type => `<label><input type="checkbox" name="required_document_types" value="${type}" ${required.includes(type)?"checked":""}><span><strong>${type}</strong><small>${({FDT:"Fluid Delivery Ticket",FRT:"Fluid Return Ticket",MDT:"Material Delivery Ticket",MRT:"Material Return Ticket"})[type]}</small></span></label>`).join("")}</div></div>
+      <div class="wide"><label>Observações</label><textarea name="notes" placeholder="Campanha, poço, sonda, orientação do cliente ou pendências.">${esc(ticket.notes || "")}</textarea></div>
+    </div>${formActions(ticket.id ? "Salvar alterações" : "Criar ticket")}</form>`;
+  }
+
+  function clientTicketDocumentUploadForm(ticket, preferredType = "") {
+    const missing = clientTicketMetrics(ticket).missing;
+    const selected = preferredType || missing[0] || ticket.requiredTypes?.[0] || "FDT";
+    return `<form id="clientTicketDocumentForm" data-ticket-id="${ticket.id}"><div class="form-grid">
+      <div><label>Tipo do documento *</label><select name="document_type" required>${CLIENT_TICKET_DOCUMENT_TYPES.map(type => `<option ${type===selected?"selected":""}>${type}</option>`).join("")}</select></div>
+      <div><label>Status</label><select name="status">${["Anexado","Em revisão","Aprovado"].map(value => `<option>${value}</option>`).join("")}</select></div>
+      <div><label>Número do documento</label><input name="document_number" placeholder="Ex.: FDT-00125"></div>
+      <div><label>Data do documento</label><input name="document_date" type="date" value="${localDateKey()}"></div>
+      <div><label>Revisão</label><input name="revision" placeholder="Ex.: Rev. 0"></div>
+      <div class="wide"><label>Arquivo *</label><input name="document_file" type="file" accept=".pdf,image/jpeg,image/png,image/webp,image/heic,image/heif" required><small class="field-help">PDF ou imagem, com no máximo 20 MB.</small></div>
+      <div class="wide"><label>Observações</label><textarea name="notes"></textarea></div>
+    </div>${formActions("Anexar documento")}</form>`;
+  }
+
+  function clientTicketDocumentEditForm(document) {
+    return `<form id="clientTicketDocumentEditForm" data-id="${document.id}" data-ticket-id="${document.ticketId}"><div class="form-grid">
+      <div><label>Tipo *</label><select name="document_type">${CLIENT_TICKET_DOCUMENT_TYPES.map(type => `<option ${type===document.documentType?"selected":""}>${type}</option>`).join("")}</select></div>
+      <div><label>Status</label><select name="status">${["Anexado","Em revisão","Aprovado","Substituído"].map(value => `<option ${value===document.status?"selected":""}>${value}</option>`).join("")}</select></div>
+      <div><label>Número</label><input name="document_number" value="${esc(document.documentNumber || "")}"></div>
+      <div><label>Data</label><input name="document_date" type="date" value="${String(document.documentDate || "").slice(0,10)}"></div>
+      <div><label>Revisão</label><input name="revision" value="${esc(document.revision || "")}"></div>
+      <div class="wide"><label>Arquivo</label><input value="${esc(document.fileName)}" disabled></div>
+      <div class="wide"><label>Observações</label><textarea name="notes">${esc(document.notes || "")}</textarea></div>
+    </div>${formActions("Salvar documento")}</form>`;
+  }
+
+  function clientTicketDetails(ticket) {
+    const metrics = clientTicketMetrics(ticket);
+    const documents = clientTicketDocuments(ticket.id);
+    const rows = documents.map(document => {
+      const uploader = state.data.users.find(user => user.id === document.uploadedBy)?.name || "Usuário";
+      const canDelete = canDeleteClientTickets() || document.uploadedBy === state.user.id;
+      return `<article class="client-ticket-document-row status-${normalizeSearch(document.status)}"><span class="client-ticket-document-type">${esc(document.documentType)}</span><div class="client-ticket-document-info"><strong>${esc(document.fileName)}</strong><small>${document.documentNumber ? `Nº ${esc(document.documentNumber)} • ` : ""}${document.documentDate ? `${dateOnly(document.documentDate)} • ` : ""}${document.revision ? `${esc(document.revision)} • ` : ""}${esc(document.status)}</small><small>Enviado por ${esc(uploader)} em ${dateTime(document.createdAt)}</small>${document.notes ? `<p>${esc(document.notes)}</p>` : ""}</div><div class="row-actions"><button class="btn small secondary" data-open-client-ticket-document="${document.id}">Visualizar</button>${canManageClientTickets()?`<button class="btn small secondary" data-edit-client-ticket-document="${document.id}">Editar</button>`:""}${canDelete?`<button class="btn small danger outline" data-delete-client-ticket-document="${document.id}">Excluir</button>`:""}</div></article>`;
+    }).join("");
+    return `<div class="client-ticket-detail-head"><div><small>${esc(ticket.ticketNumber)}</small><h3>${esc(ticket.client)} — ${esc(ticket.title)}</h3><p>${dateOnly(ticket.date)}${ticket.vessel?` • ${esc(ticket.vessel)}`:""}${ticket.serviceOrder?` • OS ${esc(ticket.serviceOrder)}`:""}</p></div>${badge(ticket.status)}</div>
+      <div class="client-ticket-detail-progress"><div><strong>${metrics.complete}/${metrics.total} documentos obrigatórios</strong><span>${metrics.percent}%</span></div><div class="client-ticket-progress-bar"><i style="width:${metrics.percent}%"></i></div><div class="client-ticket-doc-chips">${CLIENT_TICKET_DOCUMENT_TYPES.map(type => clientTicketDocumentChip(ticket,type)).join("")}</div></div>
+      ${ticket.notes ? `<div class="info-box">${esc(ticket.notes)}</div>` : ""}
+      ${canManageClientTickets() ? `<div class="client-ticket-upload-panel"><div class="professional-section-heading"><div><small>NOVO ARQUIVO</small><h3>Anexar FDT, FRT, MDT ou MRT</h3></div></div>${clientTicketDocumentUploadForm(ticket)}</div>` : ""}
+      <div class="section-title"><span>Documentos anexados</span><small>${documents.length} arquivo(s)</small></div><div class="client-ticket-document-list">${rows || `<div class="empty">Nenhum documento anexado.</div>`}</div>`;
+  }
+
+  async function saveClientTicket(payload, id = null, requiredTypes = []) {
+    if (!canManageClientTickets()) throw new Error("Seu perfil não pode alterar tickets de clientes.");
+    if (!requiredTypes.length) throw new Error("Selecione pelo menos um documento obrigatório.");
+    const row = {
+      client:String(payload.client || "").trim(), title:String(payload.title || "").trim(),
+      ticket_date:payload.ticket_date, operation_id:payload.operation_id || null,
+      vessel:String(payload.vessel || "").trim() || null, service_order:String(payload.service_order || "").trim() || null,
+      responsible:String(payload.responsible || "").trim() || null, status:payload.status || "Em montagem",
+      required_document_types:requiredTypes, notes:String(payload.notes || "").trim() || null
+    };
+    if (!row.client) throw new Error("Informe o cliente.");
+    const query = id
+      ? state.client.from("client_document_tickets").update(row).eq("id",id).select("id,ticket_number").single()
+      : state.client.from("client_document_tickets").insert({...row,created_by:state.user.id}).select("id,ticket_number").single();
+    const {data,error} = await query;
+    if (error) throw error;
+    return data;
+  }
+
+  async function uploadClientTicketDocument(form) {
+    if (!canManageClientTickets()) throw new Error("Seu perfil não pode anexar documentos.");
+    const payload = Object.fromEntries(new FormData(form));
+    const file = form.elements.document_file?.files?.[0];
+    if (!file) throw new Error("Selecione o arquivo.");
+    const allowed = ["application/pdf","image/jpeg","image/png","image/webp","image/heic","image/heif"];
+    if (!allowed.includes(file.type)) throw new Error("Formato não permitido. Use PDF ou imagem.");
+    if (file.size > 20 * 1024 * 1024) throw new Error("O arquivo ultrapassa 20 MB.");
+    const ticketId = form.dataset.ticketId;
+    const path = `client-tickets/${ticketId}/${payload.document_type}/${Date.now()}-${uid("document")}-${safeFileName(file.name)}`;
+    const {error:uploadError} = await state.client.storage.from("opscontrol-files").upload(path,file,{contentType:file.type,upsert:false});
+    if (uploadError) throw uploadError;
+    const {error:metaError} = await state.client.from("client_ticket_documents").insert({
+      ticket_id:ticketId, document_type:payload.document_type, document_number:String(payload.document_number||"").trim()||null,
+      document_date:payload.document_date||null, revision:String(payload.revision||"").trim()||null,
+      status:payload.status||"Anexado", file_name:file.name, file_path:path, mime_type:file.type,
+      file_size:file.size, notes:String(payload.notes||"").trim()||null, uploaded_by:state.user.id
+    });
+    if (metaError) {
+      await state.client.storage.from("opscontrol-files").remove([path]);
+      throw metaError;
+    }
+    const ticket = state.data.clientTickets.find(item => item.id === ticketId);
+    if (ticket && ["Aberto","Em montagem"].includes(ticket.status)) {
+      const futurePresent = new Set([...clientTicketDocuments(ticketId).filter(item=>item.status!=="Substituído").map(item=>item.documentType),payload.document_type]);
+      const complete = (ticket.requiredTypes || []).every(type => futurePresent.has(type));
+      if (complete) await state.client.from("client_document_tickets").update({status:"Em revisão"}).eq("id",ticketId);
+    }
+  }
+
+  async function openClientTicketDocument(documentId) {
+    const document = state.data.clientTicketDocuments.find(item => item.id === documentId);
+    if (!document) return toast("Documento não localizado.","error");
+    const {data,error} = await state.client.storage.from("opscontrol-files").createSignedUrl(document.filePath,3600);
+    if (error) return toast(error.message,"error");
+    window.open(data.signedUrl,"_blank","noopener,noreferrer");
   }
 
   function renderQhse() {
@@ -5870,7 +5555,6 @@
       ${stockApplied ? `<div class="info-box truck-stock-lock"><strong>Estoque já aplicado</strong><span>${dateTime(item.stockAppliedAt)} • ${tank?.name || "Inventário químico"}. Produto, quantidade e equipamento ficam protegidos; correções devem ser feitas por ajuste de estoque.</span></div>` : ""}
       <div class="form-grid">
         <div><label>Data *</label><input name="date" type="date" required value="${String(item.date || new Date().toISOString()).slice(0,10)}"></div>
-        <div><label>Horário programado</label><input name="scheduled_at" type="datetime-local" value="${toLocalInput(item.scheduledAt)}"><small class="field-help">Usado para organizar a fila e medir atrasos.</small></div>
         <div><label>Movimento *</label><select name="movement" ${stockApplied ? "disabled" : ""}>${["Entrada","Saída","Backload"].map(value => `<option ${item.movement === value ? "selected" : ""}>${value}</option>`).join("")}</select>${stockApplied ? `<input type="hidden" name="movement" value="${esc(item.movement)}">` : ""}</div>
         <div class="wide truck-type-field"><label>Tipo da carreta *</label><div class="truck-type-selector">${["Bulk","Tank","Plataforma"].map(value => `<label><input type="radio" name="truck_type" value="${value}" ${type===value?"checked":""} ${stockApplied?"disabled":""}><span><b>${value==="Bulk"?uiIcon("package"):value==="Tank"?uiIcon("droplet"):uiIcon("products")}</b><strong>${value}</strong><small>${value==="Bulk"?"Granel":value==="Tank"?"Fluido":"Vários insumos"}</small></span></label>`).join("")}</div>${stockApplied ? `<input type="hidden" name="truck_type" value="${esc(type)}">` : ""}</div>
         <div><label>Origem / Destino *</label><input name="supplier" required value="${esc(item.supplier || "")}"></div>
@@ -5893,7 +5577,7 @@
         <div><label>Placa</label><input name="plate" value="${esc(item.plate || "")}"></div>
         <div><label>Motorista</label><input name="driver" value="${esc(item.driver || "")}"></div>
         <div><label>Nota fiscal</label><input name="invoice" value="${esc(item.invoice || "")}"></div>
-        <div class="wide truck-current-flow"><input type="hidden" name="flow_status" value="${esc(truckFlowStatus(item))}"><label>Etapa operacional</label><div class="info-box"><strong>${esc(truckFlowStatus(item))}</strong><span>${item.id ? "Use os botões da fila para registrar check-in, início, finalização e check-out." : "A nova movimentação será criada como Programada."}</span></div></div>
+        <div><label>Status</label><select name="status">${["Programada","Recebida","Concluída"].map(value => `<option ${item.status===value?"selected":""}>${value}</option>`).join("")}</select><small class="field-help">${type === "Plataforma" ? "O status não altera o Inventário Químico." : "Recebida ou Concluída aplica o saldo no tanque ou silo vinculado."}</small></div>
         <div class="wide"><label>Observações</label><textarea name="notes">${esc(item.notes || "")}</textarea></div>
         <div class="wide"><label>NF, documento ou foto</label><input name="attachment" type="file" accept=".pdf,image/jpeg,image/png,image/webp,image/heic,image/heif" multiple capture="environment"></div>
       </div>${formActions(item.id?"Salvar alterações":"Salvar movimentação")}
@@ -5903,22 +5587,15 @@
   async function saveTruck(payload,id=null,items=[]) {
     const type=payload.truck_type;
     if(!["Bulk","Tank","Plataforma"].includes(type)) throw new Error("Selecione o tipo da carreta.");
-    const finalStatus=["Finalizada","Liberada"].includes(payload.flow_status);
-    if(finalStatus && !payload.invoice) throw new Error("Informe a nota fiscal antes de finalizar a carreta.");
+    const finalStatus=["Recebida","Concluída"].includes(payload.status);
+    if(finalStatus && !payload.invoice) throw new Error("Informe a nota fiscal antes de receber ou concluir a carreta.");
     const quantity=type==="Plataforma"?0:parseTankVolume(payload.quantity || "");
     if(type!=="Plataforma" && (!Number.isFinite(quantity)||quantity<=0)) throw new Error("Informe uma quantidade maior que zero.");
     if(type!=="Plataforma" && !payload.fluid_type_id) throw new Error("Selecione o produto em Fluidos e Granéis.");
     if(type!=="Plataforma" && finalStatus && !payload.tank_id) throw new Error("Selecione o tanque ou silo antes de aplicar o estoque.");
     if(type==="Plataforma" && !items.length) throw new Error("Adicione pelo menos um produto na Plataforma.");
-    let scheduledAt = null;
-    if (payload.scheduled_at) {
-      const scheduledDate = new Date(payload.scheduled_at);
-      if (Number.isNaN(scheduledDate.getTime())) throw new Error("Informe um horário programado válido.");
-      if (localDateKey(scheduledDate) !== payload.date) throw new Error("A data da movimentação deve ser a mesma do horário programado.");
-      scheduledAt = scheduledDate.toISOString();
-    }
-    const truckPayload={movement_date:payload.date,movement_type:payload.movement,truck_type:type,supplier:payload.supplier,client:payload.client||null,fluid_type_id:type==="Plataforma"?null:payload.fluid_type_id,tank_id:type==="Plataforma"?null:(payload.tank_id||null),lot:type==="Plataforma"?null:(payload.lot||null),quantity,plate:payload.plate||null,driver_name:payload.driver||null,invoice_number:payload.invoice||null,flow_status:payload.flow_status||"Programada",scheduled_at:scheduledAt,notes:payload.notes||null};
-    const {data,error}=await state.client.rpc("save_truck_movement_flow_v1",{p_truck_id:id||null,p_truck:truckPayload,p_items:items});
+    const truckPayload={movement_date:payload.date,movement_type:payload.movement,truck_type:type,supplier:payload.supplier,client:payload.client||null,fluid_type_id:type==="Plataforma"?null:payload.fluid_type_id,tank_id:type==="Plataforma"?null:(payload.tank_id||null),lot:type==="Plataforma"?null:(payload.lot||null),quantity,plate:payload.plate||null,driver_name:payload.driver||null,invoice_number:payload.invoice||null,status:payload.status,notes:payload.notes||null};
+    const {data,error}=await state.client.rpc("save_truck_movement_integrated",{p_truck_id:id||null,p_truck:truckPayload,p_items:items});
     if(error) throw error;
     const row=Array.isArray(data)?data[0]:data;
     if(!row?.id) throw new Error("O Supabase não confirmou a movimentação da carreta.");
@@ -6050,7 +5727,7 @@
   function userForm(user) {
     const modules = [
       ["dashboard", "Dashboard"], ["quality", "Qualidade dos Dados"], ["sanitation", "Saneamento de Dados"], ["tv", "Painel TV"], ["operations", "Operações"], ["vessel-registry", "Cadastro de Embarcações"], ["tanks", "Tanques"],
-      ["fluids", "Fluidos e Granéis"], ["chemical-catalog", "Catálogo Químico"], ["chemicals", "Inventário Químico"], ["trucks", "Carretas"], ["qhse", "QHSE"],
+      ["fluids", "Fluidos e Granéis"], ["chemical-catalog", "Catálogo Químico"], ["chemicals", "Inventário Químico"], ["trucks", "Carretas"], ["client-tickets", "Tickets de Clientes"], ["qhse", "QHSE"],
       ["maintenance", "Manutenção"], ["certificates", "Certificados"],
       ["alerts", "Alertas"], ["reports", "Relatórios"], ["audit", "Auditoria"]
     ];
@@ -6777,18 +6454,38 @@
         return;
       }
 
-      if (form.id === "truckImportForm") {
-        if (!canManageTrucks()) throw new Error("Seu perfil não pode importar carretas.");
-        const parsed = state.truckImport?.parsed;
-        if (!parsed?.records?.length) throw new Error("Selecione e valide uma planilha antes de importar.");
-        const submitButton = form.querySelector("[data-truck-import-submit]");
-        if (submitButton) { submitButton.disabled = true; submitButton.textContent = "Importando..."; }
-        const summary = await importTruckSpreadsheetRows(parsed);
+      if (form.id === "clientTicketForm") {
+        const payload = Object.fromEntries(new FormData(form));
+        const requiredTypes = [...new FormData(form).getAll("required_document_types")];
+        await saveClientTicket(payload, form.dataset.id || null, requiredTypes);
+      }
+
+      if (form.id === "clientTicketDocumentForm") {
+        const ticketId = form.dataset.ticketId;
+        await uploadClientTicketDocument(form);
+        clearFormDraft(form);
         await loadData();
         renderAll();
-        closeModal();
-        state.truckImport = { parsed: null, fileName: "", reading: false, progress: 0 };
-        openModal("Importação concluída", truckImportReportHtml(summary, parsed), "EXCEL");
+        const ticket = state.data.clientTickets.find(item => item.id === ticketId);
+        if (ticket) openModal(`Ticket ${ticket.ticketNumber}`, clientTicketDetails(ticket), "DOCUMENTAÇÃO DO CLIENTE");
+        toast("Documento anexado com sucesso.", "success");
+        return;
+      }
+
+      if (form.id === "clientTicketDocumentEditForm") {
+        const payload = Object.fromEntries(new FormData(form));
+        const ticketId = form.dataset.ticketId;
+        const {error} = await state.client.from("client_ticket_documents").update({
+          document_type:payload.document_type, document_number:String(payload.document_number||"").trim()||null,
+          document_date:payload.document_date||null, revision:String(payload.revision||"").trim()||null,
+          status:payload.status, notes:String(payload.notes||"").trim()||null
+        }).eq("id",form.dataset.id);
+        if (error) throw error;
+        clearFormDraft(form);
+        await loadData(); renderAll();
+        const ticket = state.data.clientTickets.find(item => item.id === ticketId);
+        if (ticket) openModal(`Ticket ${ticket.ticketNumber}`, clientTicketDetails(ticket), "DOCUMENTAÇÃO DO CLIENTE");
+        toast("Documento atualizado.","success");
         return;
       }
 
@@ -7081,7 +6778,7 @@
           throw new Error("O administrador atual não pode remover o próprio cargo.");
         }
         const permissions = {};
-        ["dashboard", "quality", "sanitation", "tv", "operations", "vessel-registry", "tanks", "fluids", "chemical-catalog", "chemicals", "trucks", "qhse", "maintenance", "certificates", "alerts", "reports", "audit"].forEach(module => {
+        ["dashboard", "quality", "sanitation", "tv", "operations", "vessel-registry", "tanks", "fluids", "chemical-catalog", "chemicals", "trucks", "client-tickets", "qhse", "maintenance", "certificates", "alerts", "reports", "audit"].forEach(module => {
           permissions[module] = form.querySelector(`[name="perm_${module}"]`)?.checked === true;
         });
         if (payload.role === "tv") Object.keys(permissions).forEach(key => permissions[key] = key === "tv");
@@ -7486,12 +7183,8 @@
       return showPage("fluids");
     }
     if (action === "new-chemical") { if (!canManageChemicals()) return toast("Seu perfil não pode alterar o inventário químico.", "error"); return openModal("Adicionar lote ao inventário", chemicalForm(), "INVENTÁRIO"); }
-    if (action === "import-trucks-excel") {
-      if (!canManageTrucks()) return toast("Seu perfil não pode importar carretas.", "error");
-      state.truckImport = { parsed: null, fileName: "", reading: false, progress: 0 };
-      return openModal("Importar controle de carretas", truckImportForm(), "EXCEL");
-    }
     if (action === "new-truck") return openModal("Nova movimentação de carreta", truckForm(), "CARRETA");
+    if (action === "new-client-ticket") { if (!canManageClientTickets()) return toast("Seu perfil não pode criar tickets de clientes.", "error"); return openModal("Novo ticket de cliente", clientTicketForm(), "DOCUMENTAÇÃO DO CLIENTE"); }
     if (action === "new-qhse") return openModal("Novo registro QHSE", genericForm("qhse"), "QHSE");
     if (action === "new-equipment") return openModal("Novo equipamento", genericForm("equipment"), "EQUIPAMENTO");
     if (action === "new-certificate") { if (!canManageCertificates()) return toast("Somente Logística, Supervisor ou Administrador podem adicionar certificados.", "error"); return openModal("Adicionar certificado", genericForm("certificate"), "CERTIFICADO"); }
@@ -7617,28 +7310,47 @@
       return openModal(`Editar produto — ${item.name}`, genericForm("fluid", item), "ADMIN");
     }
 
-    if (button.dataset.truckFlow) {
-      if (!canManageTrucks()) return toast("Seu perfil não pode movimentar a fila de carretas.", "error");
-      try {
-        const changed = await advanceTruckFlow(button.dataset.truckFlow, button.dataset.truckNext);
-        if (changed) toast(`Carreta atualizada para ${button.dataset.truckNext}.`, "success");
-      } catch (error) {
-        console.error("Falha ao avançar carreta:", error);
-        toast(error.message || "Não foi possível atualizar a etapa da carreta.", "error");
-      }
+    if (button.dataset.viewClientTicket) {
+      const ticket = state.data.clientTickets.find(item => item.id === button.dataset.viewClientTicket);
+      if (!ticket) return toast("Ticket não localizado.","error");
+      return openModal(`Ticket ${ticket.ticketNumber}`, clientTicketDetails(ticket), "DOCUMENTAÇÃO DO CLIENTE");
+    }
+
+    if (button.dataset.editClientTicket) {
+      if (!canManageClientTickets()) return toast("Seu perfil não pode editar tickets.","error");
+      const ticket = state.data.clientTickets.find(item => item.id === button.dataset.editClientTicket);
+      if (!ticket) return toast("Ticket não localizado.","error");
+      return openModal(`Editar ${ticket.ticketNumber}`, clientTicketForm(ticket), "DOCUMENTAÇÃO DO CLIENTE");
+    }
+
+    if (button.dataset.openClientTicketDocument) return openClientTicketDocument(button.dataset.openClientTicketDocument);
+
+    if (button.dataset.editClientTicketDocument) {
+      if (!canManageClientTickets()) return toast("Seu perfil não pode editar documentos.","error");
+      const document = state.data.clientTicketDocuments.find(item => item.id === button.dataset.editClientTicketDocument);
+      if (!document) return toast("Documento não localizado.","error");
+      return openModal(`Editar ${document.documentType}`, clientTicketDocumentEditForm(document), "DOCUMENTO DO CLIENTE");
+    }
+
+    if (button.dataset.deleteClientTicketDocument) {
+      const document = state.data.clientTicketDocuments.find(item => item.id === button.dataset.deleteClientTicketDocument);
+      if (!document) return toast("Documento não localizado.","error");
+      if (!(canDeleteClientTickets() || document.uploadedBy === state.user.id)) return toast("Você não pode excluir este documento.","error");
+      if (!confirm(`Excluir ${document.fileName} permanentemente?`)) return;
+      const {error:storageError} = await state.client.storage.from("opscontrol-files").remove([document.filePath]);
+      if (storageError) return toast(storageError.message,"error");
+      const {error} = await state.client.from("client_ticket_documents").delete().eq("id",document.id);
+      if (error) return toast(error.message,"error");
+      await loadData(); renderAll();
+      const ticket = state.data.clientTickets.find(item => item.id === document.ticketId);
+      if (ticket) openModal(`Ticket ${ticket.ticketNumber}`, clientTicketDetails(ticket), "DOCUMENTAÇÃO DO CLIENTE");
+      return toast("Documento excluído.","success");
+    }
+
+    if (button.dataset.action === "clear-client-ticket-filters") {
+      state.clientTicketFilters = { query:"", client:"", status:"", completeness:"" };
+      renderClientTickets();
       return;
-    }
-
-    if (button.dataset.truckTimeline) {
-      const item = state.data.trucks.find(x => x.id === button.dataset.truckTimeline);
-      if (!item) return toast("Carreta não localizada.", "error");
-      return openModal(`Linha do tempo — ${item.plate || item.invoice || item.product}`, truckFlowTimelineHtml(item), "FILA OPERACIONAL");
-    }
-
-    if (button.dataset.truckImportDetails) {
-      const item = state.data.trucks.find(x => x.id === button.dataset.truckImportDetails);
-      if (!item) return toast("Carreta importada não localizada.", "error");
-      return openModal(`Dados do Excel — ${item.invoice || item.product || item.id}`, truckImportDetailsHtml(item), "IMPORTAÇÃO");
     }
 
     if (button.dataset.editTruck) {
@@ -7917,32 +7629,6 @@
   });
 
   document.addEventListener("change", async event => {
-    if (event.target.closest("#truckImportForm") && event.target.name === "spreadsheet") {
-      const file = event.target.files?.[0];
-      const form = event.target.closest("#truckImportForm");
-      const preview = form?.querySelector("[data-truck-import-preview]");
-      const submit = form?.querySelector("[data-truck-import-submit]");
-      state.truckImport = { parsed: null, fileName: file?.name || "", reading: Boolean(file), progress: 0 };
-      if (submit) submit.disabled = true;
-      if (!file || !preview) return;
-      if (!/\.(xlsx|xlsm)$/i.test(file.name)) {
-        event.target.value = "";
-        preview.innerHTML = `<div class="empty">Use um arquivo XLSX ou XLSM.</div>`;
-        return toast("Formato de planilha não aceito.", "error");
-      }
-      preview.innerHTML = `<div class="truck-import-reading"><span class="spinner"></span><div><strong>Lendo ${esc(file.name)}</strong><small>Conferindo abas, datas e duplicidades...</small></div></div>`;
-      try {
-        const parsed = await parseTruckImportFile(file);
-        state.truckImport = { parsed, fileName: file.name, reading: false, progress: 0 };
-        preview.innerHTML = truckImportPreviewHtml(parsed);
-        if (submit) submit.disabled = parsed.records.length === 0;
-      } catch (error) {
-        state.truckImport = { parsed: null, fileName: file.name, reading: false, progress: 0 };
-        preview.innerHTML = `<div class="truck-import-error"><strong>Não foi possível ler a planilha</strong><span>${esc(error.message)}</span></div>`;
-        toast(error.message, "error");
-      }
-      return;
-    }
     if (event.target.closest("#profileAvatarForm") && event.target.name === "avatar") {
       const file = event.target.files?.[0];
       const preview = event.target.closest("#profileAvatarForm")?.querySelector("[data-avatar-preview]");
@@ -7958,6 +7644,20 @@
       const localUrl = URL.createObjectURL(file);
       preview.innerHTML = `<img class="profile-avatar-render" src="${esc(localUrl)}" alt="Prévia da foto">`;
       return;
+    }
+    if (event.target.matches("[data-client-ticket-filter]:not([data-client-ticket-filter='query'])")) {
+      state.clientTicketFilters[event.target.dataset.clientTicketFilter] = event.target.value;
+      renderClientTickets();
+      return;
+    }
+    if (event.target.closest("#clientTicketForm") && event.target.name === "operation_id") {
+      const form = event.target.closest("#clientTicketForm");
+      const operation = state.data.operations.find(item => item.id === event.target.value);
+      if (operation) {
+        if (!form.elements.client.value.trim()) form.elements.client.value = operation.client || "";
+        if (!form.elements.vessel.value.trim()) form.elements.vessel.value = operation.vessel || "";
+        if (!form.elements.service_order.value.trim()) form.elements.service_order.value = operation.service_order || "";
+      }
     }
     if (event.target.matches("[data-truck-filter]:not([data-truck-filter='query'])")) {
       state.truckFilters[event.target.dataset.truckFilter] = event.target.value;
@@ -8007,6 +7707,11 @@
   });
 
   document.addEventListener("input", event => {
+    if (event.target.matches("[data-client-ticket-filter='query']")) {
+      state.clientTicketFilters.query = event.target.value;
+      scheduleClientTicketFilterRender(event.target);
+      return;
+    }
     if (event.target.matches("[data-truck-filter='query']")) {
       state.truckFilters.query = event.target.value;
       scheduleTruckFilterRender(event.target);

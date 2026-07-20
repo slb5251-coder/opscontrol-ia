@@ -12,7 +12,7 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const APP_VERSION = "20260720-v33-12-14-7-operational-ux";
+  const APP_VERSION = "20260720-v33-12-14-9-industrial-high-contrast";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -1557,9 +1557,33 @@
   }
 
   async function login() {
-    const email = $("#loginEmail").value.trim();
-    const password = $("#loginPassword").value;
-    if (!email || !password) return showLoginMessage("Preencha e-mail e senha.");
+    const emailInput = $("#loginEmail");
+    const passwordInput = $("#loginPassword");
+    const button = $("#loginBtn");
+    const message = $("#loginMessage");
+    const email = emailInput.value.trim();
+    const password = passwordInput.value;
+
+    if (button?.disabled) return;
+    message?.classList.add("hidden");
+
+    if (!email) {
+      showLoginMessage("Informe seu e-mail.");
+      emailInput.focus();
+      return;
+    }
+    if (!password) {
+      showLoginMessage("Informe sua senha.");
+      passwordInput.focus();
+      return;
+    }
+
+    const originalText = button?.textContent || "Entrar";
+    if (button) {
+      button.disabled = true;
+      button.setAttribute("aria-busy", "true");
+      button.textContent = "Entrando…";
+    }
 
     try {
       await initClient();
@@ -1574,6 +1598,14 @@
       openApp();
     } catch (error) {
       showLoginMessage(`Falha no login: ${error.message}`);
+      passwordInput.focus();
+      passwordInput.select();
+    } finally {
+      if (button) {
+        button.disabled = false;
+        button.removeAttribute("aria-busy");
+        button.textContent = originalText;
+      }
     }
   }
 
@@ -2007,6 +2039,9 @@
   function openApp() {
     $("#loginView").classList.add("hidden");
     $("#appView").classList.remove("hidden");
+    $("#mobileBottomNav")?.classList.remove("hidden");
+    document.body.classList.remove("login-active", "keyboard-open");
+    document.body.classList.add("app-active");
 
     const profile = state.data.profile;
     openAppProfileHeader();
@@ -6513,7 +6548,7 @@
     localStorage.setItem(THEME_KEY, selected);
     localStorage.setItem(themeStorageKey(), selected);
     const themeMeta = document.querySelector('meta[name="theme-color"]');
-    if (themeMeta) themeMeta.content = selected === "industrial" ? "#07111d" : selected === "dark" ? "#0b1422" : "#0b1f3a";
+    if (themeMeta) themeMeta.content = selected === "industrial" ? "#030a13" : selected === "dark" ? "#0b1422" : "#0b1f3a";
   }
 
   function themePreview(theme) {
@@ -6525,7 +6560,7 @@
     const themes = [
       ["light", "Claro profissional", "Visual atual claro, limpo e corporativo."],
       ["dark", "Escuro clássico", "Versão escura tradicional do OpsControl IA."],
-      ["industrial", "Industrial IA", "Tema premium azul-marinho com verde-ciano, baseado no modelo enviado."]
+      ["industrial", "Industrial IA", "Tema industrial de alto contraste, com fundo profundo, cartões definidos e destaque verde-ciano."]
     ];
     return `<section class="card appearance-theme-panel"><div class="appearance-theme-heading"><div><small>APARÊNCIA</small><h3>Tema da interface</h3><p>Escolha o visual do sistema. A preferência fica salva neste usuário.</p></div>${badge(themeLabel(current))}</div><div class="appearance-theme-grid">${themes.map(([id,title,description]) => `<button type="button" class="appearance-theme-card ${current===id?"active":""}" data-theme-choice="${id}" aria-pressed="${current===id}">${themePreview(id)}<span class="appearance-theme-copy"><strong>${title}</strong><span>${description}</span></span></button>`).join("")}</div></section>`;
   }
@@ -7014,7 +7049,7 @@
     const button = event.target.closest("button");
     if (!button) return;
 
-    if (button.id === "loginBtn") return login();
+    if (button.id === "loginBtn") return;
     if (button.id === "logoutBtn") return logout();
     if (button.id === "menuBtn") {
       const sidebar = $("#sidebar");
@@ -8006,8 +8041,28 @@
     $("#menuBtn")?.setAttribute("aria-expanded", "false");
   });
 
-  $("#loginPassword").addEventListener("keydown", event => {
-    if (event.key === "Enter") login();
+  $("#loginForm")?.addEventListener("submit", event => {
+    event.preventDefault();
+    login();
+  });
+
+  $("#toggleLoginPassword")?.addEventListener("click", () => {
+    const input = $("#loginPassword");
+    const button = $("#toggleLoginPassword");
+    const visible = input.type === "text";
+    input.type = visible ? "password" : "text";
+    button.textContent = visible ? "Mostrar" : "Ocultar";
+    button.setAttribute("aria-label", visible ? "Mostrar senha" : "Ocultar senha");
+    button.setAttribute("aria-pressed", String(!visible));
+    input.focus({ preventScroll: true });
+    const end = input.value.length;
+    input.setSelectionRange?.(end, end);
+  });
+
+  [$("#loginEmail"), $("#loginPassword")].filter(Boolean).forEach(input => {
+    input.addEventListener("focus", () => {
+      setTimeout(() => input.scrollIntoView({ block: "center", behavior: "smooth" }), 180);
+    });
   });
 
 
@@ -8026,7 +8081,9 @@
 
   function syncMobileViewportState() {
     const viewportHeight = window.visualViewport?.height || window.innerHeight;
+    const keyboardGap = Math.max(0, window.innerHeight - viewportHeight);
     document.documentElement.style.setProperty("--mobile-app-height", `${Math.round(viewportHeight)}px`);
+    document.body.classList.toggle("keyboard-open", document.body.classList.contains("login-active") && isMobileViewport() && keyboardGap > 110);
     if (!isMobileViewport()) {
       $("#sidebar")?.classList.remove("open");
       $("#sidebarBackdrop")?.classList.remove("visible");
@@ -8085,5 +8142,6 @@
   setupSidebarNavigation();
   startTopbarClock();
   $("#connectionHint").textContent = "Acesse com seu e-mail e senha cadastrados.";
+  applyTheme(storedTheme());
   restoreSession();
 })();

@@ -1,0 +1,335 @@
+/* =========================================================
+   OpsControl IA v33.12.14.8 — Login mobile estável
+   Isola a tela de autenticação das regras internas do app.
+   ========================================================= */
+
+body.login-active{
+  min-height:100vh;
+  min-height:100dvh;
+  overflow:auto!important;
+  overscroll-behavior:none;
+  background:#071a35;
+}
+
+body.login-active #appView,
+body.login-active #mobileBottomNav,
+body.login-active #mobileSheetBackdrop,
+body.login-active #mobileQuickSheet,
+body.login-active #mobileMoreSheet,
+body.login-active #modal,
+body.login-active #toastContainer{
+  display:none!important;
+  pointer-events:none!important;
+}
+
+.login-view{
+  position:relative;
+  z-index:200;
+  isolation:isolate;
+  width:100%;
+  min-width:0;
+  min-height:100vh;
+  min-height:100dvh;
+  overflow-x:hidden;
+}
+
+.login-panel{
+  position:relative;
+  z-index:2;
+  min-width:0;
+  overflow:visible;
+}
+
+.login-card{
+  position:relative;
+  z-index:3;
+  min-width:0;
+  overflow:visible;
+}
+
+.login-card label{
+  display:block;
+  margin:0 0 7px;
+  color:#526078;
+  font-size:12px;
+  font-weight:900;
+}
+
+.login-field{
+  display:block;
+  width:100%;
+  min-width:0;
+  margin-top:16px;
+}
+
+.login-input-shell{
+  position:relative;
+  display:flex;
+  align-items:center;
+  width:100%;
+  min-width:0;
+  min-height:52px;
+  border:1px solid #cfd9e6;
+  border-radius:14px;
+  background:#fff;
+  color:#172033;
+  box-shadow:0 5px 16px rgba(22,39,70,.04);
+  transition:border-color .18s ease,box-shadow .18s ease,background .18s ease;
+  overflow:hidden;
+}
+
+.login-input-shell:focus-within{
+  border-color:#1768ff;
+  box-shadow:0 0 0 4px rgba(23,104,255,.12),0 8px 22px rgba(22,39,70,.08);
+}
+
+.login-input-icon{
+  width:46px;
+  height:50px;
+  flex:0 0 46px;
+  display:grid;
+  place-items:center;
+  color:#70839a;
+  pointer-events:none;
+}
+
+.login-input-icon svg{
+  width:19px;
+  height:19px;
+}
+
+.login-card .login-input-shell input{
+  position:relative;
+  z-index:1;
+  width:100%;
+  min-width:0;
+  height:50px;
+  min-height:50px;
+  margin:0;
+  padding:0 13px 0 0;
+  border:0!important;
+  border-radius:0!important;
+  outline:0!important;
+  background:transparent!important;
+  color:#172033!important;
+  box-shadow:none!important;
+  font-size:16px!important;
+  line-height:1.2;
+  caret-color:#1768ff;
+  opacity:1!important;
+  pointer-events:auto!important;
+  touch-action:manipulation;
+  user-select:text;
+  -webkit-user-select:text;
+  -webkit-appearance:none;
+  appearance:none;
+}
+
+.login-card .login-input-shell input::placeholder{
+  color:#93a1b2;
+  opacity:1;
+}
+
+.login-password-shell input{
+  padding-right:76px!important;
+}
+
+.login-password-toggle{
+  position:absolute;
+  z-index:3;
+  right:7px;
+  top:50%;
+  transform:translateY(-50%);
+  min-width:64px;
+  height:36px;
+  padding:0 9px;
+  border:0;
+  border-radius:10px;
+  background:#edf3fa;
+  color:#31577e;
+  font-size:11px;
+  font-weight:850;
+  cursor:pointer;
+  touch-action:manipulation;
+}
+
+.login-password-toggle:focus-visible{
+  outline:2px solid #1768ff;
+  outline-offset:1px;
+}
+
+.login-submit{
+  min-height:50px;
+  margin-top:20px!important;
+  touch-action:manipulation;
+}
+
+.login-submit:disabled{
+  cursor:wait;
+  opacity:.72;
+  transform:none!important;
+}
+
+.login-card .message{
+  margin-top:13px;
+  overflow-wrap:anywhere;
+}
+
+:root[data-theme="industrial"] .login-card label{
+  color:#a9b9ca;
+}
+
+:root[data-theme="industrial"] .login-input-shell{
+  background:#081725;
+  border-color:#294158;
+  color:#f5f8fc;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.025);
+}
+
+:root[data-theme="industrial"] .login-input-shell:focus-within{
+  border-color:#20d4c6;
+  box-shadow:0 0 0 4px rgba(32,212,198,.12),0 10px 28px rgba(0,0,0,.22);
+}
+
+:root[data-theme="industrial"] .login-input-icon{
+  color:#7f98b1;
+}
+
+:root[data-theme="industrial"] .login-card .login-input-shell input{
+  color:#f5f8fc!important;
+  caret-color:#20d4c6;
+}
+
+:root[data-theme="industrial"] .login-card .login-input-shell input::placeholder{
+  color:#6f8499;
+}
+
+:root[data-theme="industrial"] .login-password-toggle{
+  background:#12283d;
+  color:#9ec8ec;
+}
+
+@media(max-width:820px){
+  body.login-active{
+    width:100%;
+    max-width:100%;
+    min-height:100svh;
+    min-height:100dvh;
+  }
+
+  .login-view{
+    display:block!important;
+    width:100%;
+    min-height:100svh;
+    min-height:100dvh;
+    height:auto;
+    padding:0;
+    overflow-y:auto;
+    -webkit-overflow-scrolling:touch;
+  }
+
+  .login-hero{
+    display:none!important;
+  }
+
+  .login-panel{
+    width:100%;
+    min-height:100svh;
+    min-height:100dvh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:
+      max(22px,env(safe-area-inset-top))
+      max(14px,env(safe-area-inset-right))
+      max(22px,env(safe-area-inset-bottom))
+      max(14px,env(safe-area-inset-left));
+    overflow:visible;
+  }
+
+  .login-card{
+    width:min(100%,460px);
+    margin:auto;
+    padding:24px 19px 22px!important;
+    border-radius:22px!important;
+  }
+
+  .login-card .logo-mark{
+    width:48px;
+    height:48px;
+    margin-bottom:18px;
+  }
+
+  .login-card h2{
+    margin:0 0 7px;
+    font-size:24px!important;
+    line-height:1.15;
+  }
+
+  .login-card>p{
+    margin:0 0 4px;
+    font-size:13px;
+    line-height:1.45;
+  }
+
+  .login-input-shell{
+    min-height:54px;
+  }
+
+  .login-card .login-input-shell input{
+    height:52px;
+    min-height:52px;
+    font-size:16px!important;
+  }
+
+  .login-input-icon{
+    height:52px;
+  }
+
+  body.login-active.keyboard-open .login-panel{
+    min-height:var(--mobile-app-height,100dvh);
+    align-items:flex-start;
+    padding-top:10px;
+    padding-bottom:12px;
+  }
+
+  body.login-active.keyboard-open .login-card{
+    margin:0 auto;
+  }
+
+  body.login-active.keyboard-open .login-card .logo-mark{
+    width:38px;
+    height:38px;
+    margin-bottom:10px;
+    border-radius:12px;
+  }
+
+  body.login-active.keyboard-open .login-card h2{
+    font-size:20px!important;
+  }
+
+  body.login-active.keyboard-open .login-field{
+    margin-top:10px;
+  }
+}
+
+@media(max-width:380px){
+  .login-panel{
+    padding-inline:10px;
+  }
+
+  .login-card{
+    padding-inline:15px!important;
+  }
+}
+
+@media(max-height:620px) and (max-width:820px){
+  .login-panel{
+    align-items:flex-start;
+    padding-top:10px;
+  }
+
+  .login-card{
+    margin:0 auto;
+  }
+}

@@ -1,14 +1,16 @@
-const CACHE="opscontrol-20260720-v33-12-14-7-operational-ux";
+const CACHE="opscontrol-20260720-v33-12-14-9-industrial-high-contrast";
 const FILES=[
   "./",
   "./index.html",
-  "./app.css?v=20260720-v33-12-14-7-operational-ux",
-  "./v33.css?v=20260720-v33-12-14-7-operational-ux",
-  "./industrial-theme.css?v=20260720-v33-12-14-7-operational-ux",
-  "./mobile-fix.css?v=20260720-v33-12-14-7-operational-ux",
-  "./ux-overhaul.css?v=20260720-v33-12-14-7-operational-ux",
-  "./js/config.js?v=20260720-v33-12-14-7-operational-ux",
-  "./js/app.js?v=20260720-v33-12-14-7-operational-ux",
+  "./app.css?v=20260720-v33-12-14-9-industrial-high-contrast",
+  "./v33.css?v=20260720-v33-12-14-9-industrial-high-contrast",
+  "./industrial-theme.css?v=20260720-v33-12-14-9-industrial-high-contrast",
+  "./mobile-fix.css?v=20260720-v33-12-14-9-industrial-high-contrast",
+  "./ux-overhaul.css?v=20260720-v33-12-14-9-industrial-high-contrast",
+  "./login-fix.css?v=20260720-v33-12-14-9-industrial-high-contrast",
+  "./contrast-boost.css?v=20260720-v33-12-14-9-industrial-high-contrast",
+  "./js/config.js?v=20260720-v33-12-14-9-industrial-high-contrast",
+  "./js/app.js?v=20260720-v33-12-14-9-industrial-high-contrast",
   "./manifest.json",
   "./assets/icon.svg","./vendor/qrcode.js"
 ];
@@ -38,6 +40,8 @@ self.addEventListener("fetch", event => {
     url.pathname.endsWith("/v33.css") ||
     url.pathname.endsWith("/industrial-theme.css") ||
     url.pathname.endsWith("/mobile-fix.css") ||
+    url.pathname.endsWith("/login-fix.css") ||
+    url.pathname.endsWith("/contrast-boost.css") ||
     url.pathname.endsWith("/js/app.js") ||
     url.pathname.endsWith("/js/config.js")
   );

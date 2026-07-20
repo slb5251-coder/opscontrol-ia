@@ -3,20 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0b1f3a">
+  <meta name="theme-color" content="#030a13">
   <title>OpsControl IA Pro</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="app.css?v=20260720-v33-12-14-7-operational-ux">
-  <link rel="stylesheet" href="v33.css?v=20260720-v33-12-14-7-operational-ux">
-  <link rel="stylesheet" href="industrial-theme.css?v=20260720-v33-12-14-7-operational-ux">
-  <link rel="stylesheet" href="mobile-fix.css?v=20260720-v33-12-14-7-operational-ux">
-  <link rel="stylesheet" href="ux-overhaul.css?v=20260720-v33-12-14-7-operational-ux">
+  <link rel="stylesheet" href="app.css?v=20260720-v33-12-14-9-industrial-high-contrast">
+  <link rel="stylesheet" href="v33.css?v=20260720-v33-12-14-9-industrial-high-contrast">
+  <link rel="stylesheet" href="industrial-theme.css?v=20260720-v33-12-14-9-industrial-high-contrast">
+  <link rel="stylesheet" href="mobile-fix.css?v=20260720-v33-12-14-9-industrial-high-contrast">
+  <link rel="stylesheet" href="ux-overhaul.css?v=20260720-v33-12-14-9-industrial-high-contrast">
+  <link rel="stylesheet" href="login-fix.css?v=20260720-v33-12-14-9-industrial-high-contrast">
+  <link rel="stylesheet" href="contrast-boost.css?v=20260720-v33-12-14-9-industrial-high-contrast">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 </head>
-<body>
+<body class="login-active">
   <section id="loginView" class="login-view">
     <div class="login-hero">
       <span class="hero-badge">B-PORT LMP</span>
@@ -24,17 +26,35 @@
       <p>Controle integrado de operações, tanques, fluidos, carretas, QHSE, manutenção e documentos.</p>
     </div>
     <div class="login-panel">
-      <div class="login-card">
-        <div class="logo-mark">OC</div>
+      <form id="loginForm" class="login-card" novalidate>
+        <div class="logo-mark" aria-hidden="true">OC</div>
         <h2>Entrar no sistema</h2>
         <p id="connectionHint">Acesse com seu e-mail e senha cadastrados.</p>
-        <label>E-mail</label>
-        <input id="loginEmail" type="email" placeholder="nome@empresa.com">
-        <label>Senha</label>
-        <input id="loginPassword" type="password" placeholder="Sua senha">
-        <button id="loginBtn" class="btn primary full">Entrar</button>
-        <div id="loginMessage" class="message hidden"></div>
-      </div>
+
+        <div class="login-field">
+          <label for="loginEmail">E-mail</label>
+          <div class="login-input-shell">
+            <span class="login-input-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16v14H4z"></path><path d="M4 7l8 6 8-6"></path></svg>
+            </span>
+            <input id="loginEmail" name="email" type="email" inputmode="email" autocomplete="username" autocapitalize="none" spellcheck="false" enterkeyhint="next" placeholder="nome@empresa.com" required>
+          </div>
+        </div>
+
+        <div class="login-field">
+          <label for="loginPassword">Senha</label>
+          <div class="login-input-shell login-password-shell">
+            <span class="login-input-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="10" width="14" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>
+            </span>
+            <input id="loginPassword" name="password" type="password" autocomplete="current-password" enterkeyhint="go" placeholder="Sua senha" required>
+            <button id="toggleLoginPassword" class="login-password-toggle" type="button" aria-label="Mostrar senha" aria-pressed="false">Mostrar</button>
+          </div>
+        </div>
+
+        <button id="loginBtn" type="submit" class="btn primary full login-submit">Entrar</button>
+        <div id="loginMessage" class="message hidden" role="alert" aria-live="polite"></div>
+      </form>
     </div>
   </section>
 
@@ -110,7 +130,7 @@
   </section>
 
 
-  <nav id="mobileBottomNav" class="mobile-bottom-nav" aria-label="Navegação principal">
+  <nav id="mobileBottomNav" class="mobile-bottom-nav hidden" aria-label="Navegação principal">
     <button data-mobile-page="dashboard" class="mobile-nav-item active" aria-label="Início">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M3 13h8V3H3z"></path><path d="M13 21h8v-6h-8z"></path><path d="M13 11h8V3h-8z"></path><path d="M3 21h8v-6H3z"></path></svg>
       <span>Início</span>
@@ -159,8 +179,8 @@
   </div>
 
   <div id="toastContainer" class="toast-container"></div>
-  <script src="js/config.js?v=20260720-v33-12-14-7-operational-ux"></script>
-  <script src="vendor/qrcode.js?v=20260720-v33-12-14-7-operational-ux"></script>
-  <script src="js/app.js?v=20260720-v33-12-14-7-operational-ux"></script>
+  <script src="js/config.js?v=20260720-v33-12-14-9-industrial-high-contrast"></script>
+  <script src="vendor/qrcode.js?v=20260720-v33-12-14-9-industrial-high-contrast"></script>
+  <script src="js/app.js?v=20260720-v33-12-14-9-industrial-high-contrast"></script>
 </body>
 </html>

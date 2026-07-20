@@ -12,7 +12,7 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const APP_VERSION = "20260719-v33-12-14-1-client-tickets";
+  const APP_VERSION = "20260720-v33-12-14-4-client-proofs-admin-delete";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -32,7 +32,7 @@
     filters: { start: "", end: "", client: "", product: "" },
     truckFilters: { query: "", start: "", end: "", movement: "", type: "", status: "", client: "", product: "", stock: "", attention: "" },
     truckFilterTimer: null,
-    clientTicketFilters: { query: "", client: "", status: "", completeness: "" },
+    clientTicketFilters: { query: "", client: "", documentType: "" },
     clientTicketFilterTimer: null,
     vesselFilters: { query: "", client: "", status: "", window: "30" },
     vesselMap: { instance: null, markers: new Map(), selected: "", timer: null, filterTimer: null },
@@ -205,7 +205,7 @@
     "chemical-catalog": ["Catálogo Químico", "Nomes e unidades oficiais"],
     chemicals: ["Inventário Químico", "Lotes, validade e saldo"],
     trucks: ["Carretas", "Entradas e saídas"],
-    "client-tickets": ["Tickets de Clientes", "FDT, FRT, MDT e MRT"],
+    "client-tickets": ["Tickets de Clientes", "Comprovantes FDT, FRT, MDT e MRT"],
     qhse: ["QHSE", "Segurança e ações"],
     maintenance: ["Manutenção", "Equipamentos e ordens"],
     certificates: ["Certificados", "Documentos da equipe"],
@@ -287,7 +287,7 @@
       ["reports", "Relatórios", "Passagem e indicadores"],
       ["chemicals", "Químicos", "Estoque e validade"],
       ["trucks", "Carretas", "Entradas e saídas"],
-      ["client-tickets", "Tickets de Clientes", "FDT, FRT, MDT e MRT por cliente"],
+      ["client-tickets", "Tickets de Clientes", "Comprovantes anexados por cliente"],
       ["qhse", "QHSE", "Segurança e ocorrências"],
       ["maintenance", "Manutenção", "Equipamentos e OS"],
       ["certificates", "Certificados", "Documentos"],
@@ -318,7 +318,7 @@
       quickActions.push(mobileQuickButton("new-truck", "Movimentar carreta", "Entrada, saída, NF e produto", uiIcon("truck")));
     }
     if (moduleAllowed("client-tickets") && canManageClientTickets()) {
-      quickActions.push(mobileQuickButton("new-client-ticket", "Novo ticket de cliente", "Organizar FDT, FRT, MDT e MRT", uiIcon("file")));
+      quickActions.push(mobileQuickButton("new-client-proof", "Adicionar comprovante", "Anexar FDT, FRT, MDT ou MRT", uiIcon("file")));
     }
     if (moduleAllowed("qhse") && hasRole(["supervisor", "lider", "operador", "qhse"])) {
       quickActions.push(mobileQuickButton("new-qhse", "Novo registro QHSE", "DDS, APR, risco, inspeção ou ocorrência", uiIcon("shield")));
@@ -1144,11 +1144,8 @@
       return downloadCsv(`carretas-${date}.csv`, ["Data","Movimento","Tipo da carreta","Origem/Destino","Cliente","Produto","Lote","Quantidade","Unidade","Item","Total de itens","Placa","Motorista","NF","Status"], rows);
     }
     if (kind === "client-tickets") {
-      const rows = filteredClientTickets().map(ticket => {
-        const metrics = clientTicketMetrics(ticket);
-        return [ticket.ticketNumber,ticket.date,ticket.client,ticket.title,ticket.vessel,ticket.serviceOrder,ticket.responsible,ticket.status,metrics.complete,metrics.total,metrics.missing.join(" / "),clientTicketDocuments(ticket.id).map(doc => `${doc.documentType}: ${doc.fileName}`).join(" | ")];
-      });
-      return downloadCsv(`tickets-clientes-${date}.csv`, ["Ticket","Data","Cliente","Título","Embarcação","OS","Responsável","Status","Documentos anexados","Documentos exigidos","Pendentes","Arquivos"], rows);
+      const rows = filteredClientProofs().map(proof => [proof.proofDate,proof.client,proof.documentType,CLIENT_TICKET_DOCUMENT_LABELS[proof.documentType] || "",proof.documentNumber,proof.fileName,proof.vessel,proof.serviceOrder,proof.uploader,proof.notes]);
+      return downloadCsv(`comprovantes-clientes-${date}.csv`, ["Data","Cliente","Classificação","Descrição","Número","Arquivo","Embarcação","OS","Anexado por","Observações"], rows);
     }
     if (kind === "maintenance") {
       const rows = state.data.equipment.map(e => [e.name, e.category, e.status, e.hourmeter, e.next_maintenance_date, e.maintenance_due_hourmeter, e.location]);
@@ -1758,8 +1755,8 @@
       })),
       handoverNotes: (results[25].data || []).map(x => ({
         id: x.id, shift_date: x.shift_date, shift_type: x.shift_type,
-        observations: x.observations || "", updated_by: x.updated_by,
-        created_at: x.created_at, updated_at: x.updated_at
+        observations: x.observations || "", full_text: x.full_text,
+        updated_by: x.updated_by, created_at: x.created_at, updated_at: x.updated_at
       })),
       alertCenter: (results[26].data || []).map(x => ({
         id: x.alert_key, title: x.title, message: x.message || "", level: x.level || "Média",
@@ -1921,7 +1918,7 @@
       button.classList.toggle("hidden", !moduleAllowed(button.dataset.page));
     });
 
-    applyTheme(localStorage.getItem(THEME_KEY) || "light");
+    applyTheme(storedTheme());
     updateConnectionBadge();
     renderAll();
 
@@ -2924,7 +2921,7 @@
       <div class="operation-focus-actions">
         ${op.status === "Programada" ? marineTrafficOperationButton(op) : ""}
         <button class="btn small secondary" data-operation-timeline="${op.id}">${uiIcon("history", "ui-icon btn-icon")} Timeline</button>
-        <button class="btn small primary" data-edit-operation="${op.id}">${uiIcon("edit", "ui-icon btn-icon")} Abrir operação</button>
+        <button class="btn small primary" data-edit-operation="${op.id}">${uiIcon("edit", "ui-icon btn-icon")} Abrir operação</button>${isAdmin() ? `<button class="btn small danger outline" data-delete-operation="${op.id}">Excluir</button>` : ""}
       </div>
     </article>`;
   }
@@ -2957,7 +2954,7 @@
           ${op.status === "Programada" ? marineTrafficOperationButton(op, true) : ""}
           <button class="btn small secondary" data-attachments="operation:${op.id}" data-attachment-title="${esc(op.vessel)}">${uiIcon("paperclip", "ui-icon btn-icon")} ${attachmentCount("operation", op.id)}</button>
           ${hasRole(["supervisor", "lider", "operador"]) && op.status === "Concluída" && !op.tank_movement_applied && tankMovementMode(op.activity) !== "none" ? `<button class="btn small soft" data-apply-operation-tank="${op.id}">Aplicar na tancagem</button>` : ""}
-          ${canEdit ? `<button class="btn small primary" data-edit-operation="${op.id}">Editar</button>` : ""}
+          ${canEdit ? `<button class="btn small primary" data-edit-operation="${op.id}">Editar</button>` : ""}${isAdmin() ? `<button class="btn small danger outline" data-delete-operation="${op.id}">Excluir</button>` : ""}
         </div></td>
       </tr>`;
     }).join("");
@@ -2967,7 +2964,7 @@
       <div class="operation-mobile-meta">${op.rig ? `<span>Sonda <strong>${esc(op.rig)}</strong></span>` : ""}${op.well ? `<span>Poço <strong>${esc(op.well)}</strong></span>` : ""}${op.ticketNumber ? `<span>Ticket <strong>${esc(op.ticketNumber)}</strong></span>` : ""}</div>
       <div class="mobile-record-grid"><span>Produto<strong>${esc(op.product)}</strong></span><span>Executado<strong>${fmt.format(op.executed)} ${esc(op.unit)}</strong></span><span>Vazão<strong>${fmt.format(operationFlow(op))} ${esc(op.unit)}/h</strong></span><span>Tancagem<strong>${normalizedOperationAllocations(op).length} equipamento(s)</strong></span></div>
       <div class="mobile-allocation-summary">${operationAllocationHtml(op)}</div>
-      <div class="row-actions">${op.status === "Programada" ? marineTrafficOperationButton(op, true) : ""}<button class="btn small secondary" data-operation-timeline="${op.id}">Timeline</button>${isAdmin() || !op.locked || hasRole(["supervisor"]) ? `<button class="btn small primary" data-edit-operation="${op.id}">Editar</button>` : ""}</div>
+      <div class="row-actions">${op.status === "Programada" ? marineTrafficOperationButton(op, true) : ""}<button class="btn small secondary" data-operation-timeline="${op.id}">Timeline</button>${isAdmin() || !op.locked || hasRole(["supervisor"]) ? `<button class="btn small primary" data-edit-operation="${op.id}">Editar</button>` : ""}${isAdmin() ? `<button class="btn small danger outline" data-delete-operation="${op.id}">Excluir</button>` : ""}</div>
     </div>`).join("");
 
     const priority = [...active, ...programmed].slice(0, 6);
@@ -4601,34 +4598,46 @@
 
 
   const CLIENT_TICKET_DOCUMENT_TYPES = ["FDT", "FRT", "MDT", "MRT"];
+  const CLIENT_TICKET_DOCUMENT_LABELS = {
+    FDT: "Fluid Delivery Ticket",
+    FRT: "Fluid Return Ticket",
+    MDT: "Material Delivery Ticket",
+    MRT: "Material Return Ticket"
+  };
 
   function clientTicketDocuments(ticketId) {
     return (state.data?.clientTicketDocuments || []).filter(item => item.ticketId === ticketId);
   }
 
-  function clientTicketMetrics(ticket) {
-    const required = [...new Set((ticket.requiredTypes || CLIENT_TICKET_DOCUMENT_TYPES).filter(type => CLIENT_TICKET_DOCUMENT_TYPES.includes(type)))];
-    const documents = clientTicketDocuments(ticket.id).filter(item => item.status !== "Substituído");
-    const present = new Set(documents.map(item => item.documentType));
-    const complete = required.filter(type => present.has(type)).length;
-    const missing = required.filter(type => !present.has(type));
-    const total = required.length;
-    const percent = total ? Math.round(complete / total * 100) : 100;
-    return { required, documents, present, complete, missing, total, percent, ready: missing.length === 0 };
+  function clientProofRows() {
+    const tickets = new Map((state.data?.clientTickets || []).map(item => [item.id, item]));
+    const operations = new Map((state.data?.operations || []).map(item => [item.id, item]));
+    return (state.data?.clientTicketDocuments || []).map(document => {
+      const ticket = tickets.get(document.ticketId) || {};
+      const operation = ticket.operationId ? operations.get(ticket.operationId) : null;
+      const uploader = (state.data?.users || []).find(user => user.id === document.uploadedBy)?.name || "Usuário";
+      return {
+        ...document,
+        ticket,
+        operation,
+        client: ticket.client || operation?.client || "Cliente não informado",
+        vessel: ticket.vessel || operation?.vessel || "",
+        serviceOrder: ticket.serviceOrder || operation?.service_order || "",
+        responsible: ticket.responsible || uploader,
+        uploader,
+        proofDate: document.documentDate || ticket.date || document.createdAt
+      };
+    }).sort((a,b) => new Date(b.proofDate || b.createdAt) - new Date(a.proofDate || a.createdAt));
   }
 
-  function filteredClientTickets() {
+  function filteredClientProofs() {
     const filters = state.clientTicketFilters || {};
     const query = normalizeSearch(filters.query || "");
-    return (state.data?.clientTickets || []).filter(ticket => {
-      const metrics = clientTicketMetrics(ticket);
-      const docs = metrics.documents.map(item => `${item.documentType} ${item.documentNumber} ${item.fileName}`).join(" ");
-      const search = normalizeSearch(`${ticket.ticketNumber} ${ticket.client} ${ticket.title} ${ticket.vessel} ${ticket.serviceOrder} ${ticket.responsible} ${ticket.status} ${ticket.notes} ${docs}`);
+    return clientProofRows().filter(proof => {
+      const search = normalizeSearch(`${proof.client} ${proof.documentType} ${CLIENT_TICKET_DOCUMENT_LABELS[proof.documentType] || ""} ${proof.documentNumber} ${proof.fileName} ${proof.vessel} ${proof.serviceOrder} ${proof.notes} ${proof.uploader}`);
       if (query && !search.includes(query)) return false;
-      if (filters.client && ticket.client !== filters.client) return false;
-      if (filters.status && ticket.status !== filters.status) return false;
-      if (filters.completeness === "complete" && !metrics.ready) return false;
-      if (filters.completeness === "pending" && metrics.ready) return false;
+      if (filters.client && proof.client !== filters.client) return false;
+      if (filters.documentType && proof.documentType !== filters.documentType) return false;
       return true;
     });
   }
@@ -4651,164 +4660,157 @@
     }, 180);
   }
 
-  function clientTicketDocumentChip(ticket, type) {
-    const docs = clientTicketDocuments(ticket.id).filter(item => item.documentType === type && item.status !== "Substituído");
-    const required = (ticket.requiredTypes || []).includes(type);
-    const present = docs.length > 0;
-    const className = present ? "present" : required ? "missing" : "optional";
-    const label = present ? `${type} • ${docs.length}` : required ? `${type} pendente` : `${type} opcional`;
-    return `<span class="client-ticket-doc-chip ${className}">${present ? uiIcon("check") : uiIcon("file")} ${esc(label)}</span>`;
-  }
-
-  function clientTicketStatusTone(ticket) {
-    const metrics = clientTicketMetrics(ticket);
-    if (["Cancelado", "Arquivado"].includes(ticket.status)) return "neutral";
-    if (["Concluído", "Enviado"].includes(ticket.status) || metrics.ready) return "green";
-    if (ticket.status === "Em revisão") return "blue";
-    return "amber";
+  function clientProofTypeCard(type, proofs) {
+    const count = proofs.filter(item => item.documentType === type).length;
+    return statCard(type, fmt.format(count), CLIENT_TICKET_DOCUMENT_LABELS[type], uiIcon("file"), "Comprovantes anexados", type === "FDT" ? "blue" : type === "FRT" ? "purple" : type === "MDT" ? "green" : "orange");
   }
 
   function renderClientTickets() {
-    const all = state.data?.clientTickets || [];
-    const tickets = filteredClientTickets();
-    const clients = [...new Set(all.map(item => item.client).filter(Boolean))].sort((a,b) => a.localeCompare(b));
-    const statuses = [...new Set(all.map(item => item.status).filter(Boolean))].sort((a,b) => a.localeCompare(b));
-    const totalDocs = (state.data?.clientTicketDocuments || []).length;
-    const ready = all.filter(ticket => clientTicketMetrics(ticket).ready).length;
-    const pending = all.length - ready;
-    const sent = all.filter(ticket => ["Enviado","Arquivado"].includes(ticket.status)).length;
-    const actions = `<button class="btn secondary" data-export="client-tickets">Exportar CSV</button>${canManageClientTickets() ? `<button class="btn primary" data-action="new-client-ticket">+ Novo ticket</button>` : ""}`;
+    const allProofs = clientProofRows();
+    const proofs = filteredClientProofs();
+    const clients = [...new Set(allProofs.map(item => item.client).filter(Boolean))].sort((a,b) => a.localeCompare(b, "pt-BR"));
+    const actions = `<button class="btn secondary" data-export="client-tickets">Exportar CSV</button>${canManageClientTickets() ? `<button class="btn primary" data-action="new-client-proof">+ Adicionar comprovante</button>` : ""}`;
 
-    const cards = tickets.map(ticket => {
-      const metrics = clientTicketMetrics(ticket);
-      return `<article class="card client-ticket-card tone-${clientTicketStatusTone(ticket)}">
-        <div class="client-ticket-card-head"><div><small>${esc(ticket.ticketNumber)}</small><h3>${esc(ticket.client)}</h3><p>${esc(ticket.title)}</p></div>${badge(ticket.status)}</div>
-        <div class="client-ticket-context"><span>Data<strong>${dateOnly(ticket.date)}</strong></span><span>Embarcação<strong>${esc(ticket.vessel || "-")}</strong></span><span>OS<strong>${esc(ticket.serviceOrder || "-")}</strong></span><span>Responsável<strong>${esc(ticket.responsible || "-")}</strong></span></div>
-        <div class="client-ticket-progress"><div><span>Documentação</span><strong>${metrics.complete}/${metrics.total}</strong></div><div class="client-ticket-progress-bar"><i style="width:${metrics.percent}%"></i></div><small>${metrics.ready ? "Pacote documental completo" : `Pendentes: ${esc(metrics.missing.join(", "))}`}</small></div>
-        <div class="client-ticket-doc-chips">${CLIENT_TICKET_DOCUMENT_TYPES.map(type => clientTicketDocumentChip(ticket,type)).join("")}</div>
-        <div class="row-actions"><button class="btn small secondary" data-view-client-ticket="${ticket.id}">Abrir documentos</button>${canManageClientTickets() ? `<button class="btn small primary" data-edit-client-ticket="${ticket.id}">Editar ticket</button>` : ""}</div>
+    const cards = proofs.map(proof => {
+      const canDelete = canDeleteClientTickets() || proof.uploadedBy === state.user.id;
+      const operationLabel = proof.vessel || proof.serviceOrder ? `${proof.vessel || "Sem embarcação"}${proof.serviceOrder ? ` • OS ${proof.serviceOrder}` : ""}` : "Sem vínculo com operação";
+      return `<article class="card client-proof-card">
+        <div class="client-proof-head">
+          ${clientLogoBadge(proof.client, "file", "client-proof-logo")}
+          <div><small>${esc(proof.documentType)} — ${esc(CLIENT_TICKET_DOCUMENT_LABELS[proof.documentType] || "Comprovante")}</small><h3>${esc(proof.client)}</h3><p>${esc(proof.fileName)}</p></div>
+          <span class="client-proof-type type-${normalizeSearch(proof.documentType)}">${esc(proof.documentType)}</span>
+        </div>
+        <div class="client-proof-context">
+          <span>Data<strong>${dateOnly(proof.proofDate)}</strong></span>
+          <span>Documento<strong>${esc(proof.documentNumber || "Não informado")}</strong></span>
+          <span>Operação<strong>${esc(operationLabel)}</strong></span>
+          <span>Anexado por<strong>${esc(proof.uploader)}</strong></span>
+        </div>
+        ${proof.notes ? `<div class="client-proof-notes">${esc(proof.notes)}</div>` : ""}
+        <div class="row-actions">
+          <button class="btn small secondary" data-open-client-ticket-document="${proof.id}">Visualizar</button>
+          ${canManageClientTickets() ? `<button class="btn small secondary" data-edit-client-ticket-document="${proof.id}">Editar dados</button>` : ""}
+          ${canDelete ? `<button class="btn small danger outline" data-delete-client-ticket-document="${proof.id}">Excluir</button>` : ""}
+        </div>
       </article>`;
     }).join("");
 
-    $("#page-client-tickets").innerHTML = header("Tickets de Clientes", "Organize FDT, FRT, MDT e MRT por cliente, operação ou embarcação.", actions) +
-      `<section class="client-ticket-kpis">${statCard("Tickets", fmt.format(all.length), "pacotes documentais", uiIcon("file"), "Todos os clientes", "blue")}${statCard("Completos", fmt.format(ready), "sem documentos pendentes", uiIcon("check"), "Prontos para revisão/envio", "green")}${statCard("Pendentes", fmt.format(pending), "com documento faltando", uiIcon("alert"), "Exigem acompanhamento", "orange")}${statCard("Arquivos", fmt.format(totalDocs), "FDT, FRT, MDT e MRT", uiIcon("paperclip"), `${sent} ticket(s) enviados`, "purple")}</section>
-      <section class="card client-ticket-filter-panel"><div class="client-ticket-filter-heading"><div><small>LOCALIZAÇÃO</small><h3>Pesquisar tickets e documentos</h3><p>Busque por cliente, ticket, embarcação, OS, tipo ou nome do arquivo.</p></div>${clientTicketFilterActiveCount() ? `<span>${clientTicketFilterActiveCount()} filtro(s)</span>` : ""}</div><div class="client-ticket-filter-grid">
-        <div class="wide"><label>Busca geral</label><input data-client-ticket-filter="query" value="${esc(state.clientTicketFilters.query || "")}" placeholder="Ex.: Equinor, FDT, embarcação ou número do ticket"></div>
+    $("#page-client-tickets").innerHTML = header("Tickets de Clientes", "Anexe os comprovantes enviados ao cliente e classifique cada arquivo como FDT, FRT, MDT ou MRT.", actions) +
+      `<section class="client-ticket-kpis">${CLIENT_TICKET_DOCUMENT_TYPES.map(type => clientProofTypeCard(type, allProofs)).join("")}</section>
+      <section class="card client-ticket-filter-panel"><div class="client-ticket-filter-heading"><div><small>COMPROVANTES</small><h3>Localizar anexos</h3><p>Pesquise por cliente, tipo, nome do arquivo, número, embarcação ou OS.</p></div>${clientTicketFilterActiveCount() ? `<span>${clientTicketFilterActiveCount()} filtro(s)</span>` : ""}</div><div class="client-ticket-filter-grid client-proof-filter-grid">
+        <div class="wide"><label>Busca geral</label><input data-client-ticket-filter="query" value="${esc(state.clientTicketFilters.query || "")}" placeholder="Ex.: Equinor, FDT, nome do arquivo ou OS"></div>
         <div><label>Cliente</label><select data-client-ticket-filter="client"><option value="">Todos</option>${clients.map(value => `<option value="${esc(value)}" ${state.clientTicketFilters.client===value?"selected":""}>${esc(value)}</option>`).join("")}</select></div>
-        <div><label>Status</label><select data-client-ticket-filter="status"><option value="">Todos</option>${statuses.map(value => `<option value="${esc(value)}" ${state.clientTicketFilters.status===value?"selected":""}>${esc(value)}</option>`).join("")}</select></div>
-        <div><label>Documentação</label><select data-client-ticket-filter="completeness"><option value="">Todos</option><option value="complete" ${state.clientTicketFilters.completeness==="complete"?"selected":""}>Completa</option><option value="pending" ${state.clientTicketFilters.completeness==="pending"?"selected":""}>Pendente</option></select></div>
+        <div><label>Classificação</label><select data-client-ticket-filter="documentType"><option value="">Todas</option>${CLIENT_TICKET_DOCUMENT_TYPES.map(type => `<option value="${type}" ${state.clientTicketFilters.documentType===type?"selected":""}>${type} — ${CLIENT_TICKET_DOCUMENT_LABELS[type]}</option>`).join("")}</select></div>
         <div class="client-ticket-filter-action"><button class="btn secondary full" data-action="clear-client-ticket-filters">Limpar filtros</button></div>
       </div></section>
-      <div class="section-title professional-record-title"><span>Pacotes documentais</span><small>${tickets.length} ticket(s) no filtro</small></div>
-      <section class="client-ticket-grid">${cards || `<div class="card empty">Nenhum ticket de cliente encontrado.</div>`}</section>`;
+      <div class="section-title professional-record-title"><span>Comprovantes anexados</span><small>${proofs.length} arquivo(s) no filtro</small></div>
+      <section class="client-proof-grid">${cards || `<div class="card empty">Nenhum comprovante anexado.</div>`}</section>`;
   }
 
-  function clientTicketForm(ticket = {}) {
-    const required = ticket.requiredTypes || CLIENT_TICKET_DOCUMENT_TYPES;
-    const clientNames = [...new Set([...(state.data.operations || []).map(item => item.client), ...(state.data.trucks || []).map(item => item.client), ticket.client].filter(Boolean))].sort((a,b)=>a.localeCompare(b));
-    const operationOptions = (state.data.operations || []).map(op => `<option value="${op.id}" ${ticket.operationId===op.id?"selected":""}>${esc(op.client)} • ${esc(op.vessel)} • ${esc(op.service_order || op.activity)}</option>`).join("");
-    return `<form id="clientTicketForm" data-id="${ticket.id || ""}"><div class="form-grid">
-      ${ticket.ticketNumber ? `<div><label>Número do ticket</label><input value="${esc(ticket.ticketNumber)}" disabled></div>` : ""}
-      <div><label>Data *</label><input name="ticket_date" type="date" required value="${String(ticket.date || localDateKey()).slice(0,10)}"></div>
-      <div class="wide"><label>Cliente *</label><input name="client" list="clientTicketClientList" required value="${esc(ticket.client || "")}" placeholder="Ex.: Equinor"><datalist id="clientTicketClientList">${clientNames.map(name => `<option value="${esc(name)}"></option>`).join("")}</datalist></div>
-      <div class="wide"><label>Título *</label><input name="title" required value="${esc(ticket.title || "Documentação operacional")}" placeholder="Ex.: Bombeio de Barita — campanha Wahoo"></div>
-      <div class="wide"><label>Vincular a uma operação</label><select name="operation_id" data-client-ticket-operation><option value="">Sem vínculo direto</option>${operationOptions}</select></div>
-      <div><label>Embarcação</label><input name="vessel" value="${esc(ticket.vessel || "")}"></div>
-      <div><label>OS</label><input name="service_order" value="${esc(ticket.serviceOrder || "")}"></div>
-      <div><label>Responsável</label><input name="responsible" value="${esc(ticket.responsible || state.data.profile.name || "")}"></div>
-      <div><label>Status</label><select name="status">${["Aberto","Em montagem","Em revisão","Concluído","Enviado","Arquivado","Cancelado"].map(value => `<option ${String(ticket.status || "Em montagem")===value?"selected":""}>${value}</option>`).join("")}</select></div>
-      <div class="wide"><label>Documentos obrigatórios *</label><div class="client-ticket-required-grid">${CLIENT_TICKET_DOCUMENT_TYPES.map(type => `<label><input type="checkbox" name="required_document_types" value="${type}" ${required.includes(type)?"checked":""}><span><strong>${type}</strong><small>${({FDT:"Fluid Delivery Ticket",FRT:"Fluid Return Ticket",MDT:"Material Delivery Ticket",MRT:"Material Return Ticket"})[type]}</small></span></label>`).join("")}</div></div>
-      <div class="wide"><label>Observações</label><textarea name="notes" placeholder="Campanha, poço, sonda, orientação do cliente ou pendências.">${esc(ticket.notes || "")}</textarea></div>
-    </div>${formActions(ticket.id ? "Salvar alterações" : "Criar ticket")}</form>`;
-  }
-
-  function clientTicketDocumentUploadForm(ticket, preferredType = "") {
-    const missing = clientTicketMetrics(ticket).missing;
-    const selected = preferredType || missing[0] || ticket.requiredTypes?.[0] || "FDT";
-    return `<form id="clientTicketDocumentForm" data-ticket-id="${ticket.id}"><div class="form-grid">
-      <div><label>Tipo do documento *</label><select name="document_type" required>${CLIENT_TICKET_DOCUMENT_TYPES.map(type => `<option ${type===selected?"selected":""}>${type}</option>`).join("")}</select></div>
-      <div><label>Status</label><select name="status">${["Anexado","Em revisão","Aprovado"].map(value => `<option>${value}</option>`).join("")}</select></div>
-      <div><label>Número do documento</label><input name="document_number" placeholder="Ex.: FDT-00125"></div>
-      <div><label>Data do documento</label><input name="document_date" type="date" value="${localDateKey()}"></div>
-      <div><label>Revisão</label><input name="revision" placeholder="Ex.: Rev. 0"></div>
+  function clientProofUploadForm() {
+    const clientNames = [...new Set([...(state.data.operations || []).map(item => item.client), ...(state.data.trucks || []).map(item => item.client), ...(state.data.clientTickets || []).map(item => item.client)].filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
+    const operationOptions = (state.data.operations || []).map(op => `<option value="${op.id}">${esc(op.client)} • ${esc(op.vessel || "Operação")} • ${esc(op.service_order || op.activity || "Sem OS")}</option>`).join("");
+    return `<form id="clientProofForm"><div class="form-grid">
+      <div class="wide"><label>Cliente *</label><input name="client" list="clientProofClientList" required placeholder="Ex.: Equinor"><datalist id="clientProofClientList">${clientNames.map(name => `<option value="${esc(name)}"></option>`).join("")}</datalist></div>
+      <div class="wide"><label>Vincular a uma operação</label><select name="operation_id" data-client-proof-operation><option value="">Sem vínculo direto</option>${operationOptions}</select></div>
+      <div><label>Classificação *</label><select name="document_type" required>${CLIENT_TICKET_DOCUMENT_TYPES.map(type => `<option value="${type}">${type} — ${CLIENT_TICKET_DOCUMENT_LABELS[type]}</option>`).join("")}</select></div>
+      <div><label>Data do comprovante *</label><input name="document_date" type="date" required value="${localDateKey()}"></div>
+      <div class="wide"><label>Número do comprovante</label><input name="document_number" placeholder="Ex.: FDT-00125"></div>
       <div class="wide"><label>Arquivo *</label><input name="document_file" type="file" accept=".pdf,image/jpeg,image/png,image/webp,image/heic,image/heif" required><small class="field-help">PDF ou imagem, com no máximo 20 MB.</small></div>
-      <div class="wide"><label>Observações</label><textarea name="notes"></textarea></div>
-    </div>${formActions("Anexar documento")}</form>`;
+      <div class="wide"><label>Observações</label><textarea name="notes" placeholder="Operação, campanha, produto, volume ou informação adicional."></textarea></div>
+    </div>
+    <div class="client-proof-type-help">${CLIENT_TICKET_DOCUMENT_TYPES.map(type => `<span><strong>${type}</strong>${CLIENT_TICKET_DOCUMENT_LABELS[type]}</span>`).join("")}</div>
+    ${formActions("Anexar comprovante")}</form>`;
   }
 
   function clientTicketDocumentEditForm(document) {
     return `<form id="clientTicketDocumentEditForm" data-id="${document.id}" data-ticket-id="${document.ticketId}"><div class="form-grid">
-      <div><label>Tipo *</label><select name="document_type">${CLIENT_TICKET_DOCUMENT_TYPES.map(type => `<option ${type===document.documentType?"selected":""}>${type}</option>`).join("")}</select></div>
-      <div><label>Status</label><select name="status">${["Anexado","Em revisão","Aprovado","Substituído"].map(value => `<option ${value===document.status?"selected":""}>${value}</option>`).join("")}</select></div>
-      <div><label>Número</label><input name="document_number" value="${esc(document.documentNumber || "")}"></div>
+      <div><label>Classificação *</label><select name="document_type">${CLIENT_TICKET_DOCUMENT_TYPES.map(type => `<option value="${type}" ${type===document.documentType?"selected":""}>${type} — ${CLIENT_TICKET_DOCUMENT_LABELS[type]}</option>`).join("")}</select></div>
       <div><label>Data</label><input name="document_date" type="date" value="${String(document.documentDate || "").slice(0,10)}"></div>
-      <div><label>Revisão</label><input name="revision" value="${esc(document.revision || "")}"></div>
+      <div class="wide"><label>Número do comprovante</label><input name="document_number" value="${esc(document.documentNumber || "")}"></div>
       <div class="wide"><label>Arquivo</label><input value="${esc(document.fileName)}" disabled></div>
       <div class="wide"><label>Observações</label><textarea name="notes">${esc(document.notes || "")}</textarea></div>
-    </div>${formActions("Salvar documento")}</form>`;
+    </div>${formActions("Salvar alterações")}</form>`;
   }
 
   function clientTicketDetails(ticket) {
-    const metrics = clientTicketMetrics(ticket);
     const documents = clientTicketDocuments(ticket.id);
     const rows = documents.map(document => {
       const uploader = state.data.users.find(user => user.id === document.uploadedBy)?.name || "Usuário";
       const canDelete = canDeleteClientTickets() || document.uploadedBy === state.user.id;
-      return `<article class="client-ticket-document-row status-${normalizeSearch(document.status)}"><span class="client-ticket-document-type">${esc(document.documentType)}</span><div class="client-ticket-document-info"><strong>${esc(document.fileName)}</strong><small>${document.documentNumber ? `Nº ${esc(document.documentNumber)} • ` : ""}${document.documentDate ? `${dateOnly(document.documentDate)} • ` : ""}${document.revision ? `${esc(document.revision)} • ` : ""}${esc(document.status)}</small><small>Enviado por ${esc(uploader)} em ${dateTime(document.createdAt)}</small>${document.notes ? `<p>${esc(document.notes)}</p>` : ""}</div><div class="row-actions"><button class="btn small secondary" data-open-client-ticket-document="${document.id}">Visualizar</button>${canManageClientTickets()?`<button class="btn small secondary" data-edit-client-ticket-document="${document.id}">Editar</button>`:""}${canDelete?`<button class="btn small danger outline" data-delete-client-ticket-document="${document.id}">Excluir</button>`:""}</div></article>`;
+      return `<article class="client-ticket-document-row"><span class="client-ticket-document-type">${esc(document.documentType)}</span><div class="client-ticket-document-info"><strong>${esc(document.fileName)}</strong><small>${document.documentNumber ? `Nº ${esc(document.documentNumber)} • ` : ""}${document.documentDate ? `${dateOnly(document.documentDate)} • ` : ""}${esc(CLIENT_TICKET_DOCUMENT_LABELS[document.documentType] || "Comprovante")}</small><small>Anexado por ${esc(uploader)} em ${dateTime(document.createdAt)}</small>${document.notes ? `<p>${esc(document.notes)}</p>` : ""}</div><div class="row-actions"><button class="btn small secondary" data-open-client-ticket-document="${document.id}">Visualizar</button>${canManageClientTickets()?`<button class="btn small secondary" data-edit-client-ticket-document="${document.id}">Editar dados</button>`:""}${canDelete?`<button class="btn small danger outline" data-delete-client-ticket-document="${document.id}">Excluir</button>`:""}</div></article>`;
     }).join("");
-    return `<div class="client-ticket-detail-head"><div><small>${esc(ticket.ticketNumber)}</small><h3>${esc(ticket.client)} — ${esc(ticket.title)}</h3><p>${dateOnly(ticket.date)}${ticket.vessel?` • ${esc(ticket.vessel)}`:""}${ticket.serviceOrder?` • OS ${esc(ticket.serviceOrder)}`:""}</p></div>${badge(ticket.status)}</div>
-      <div class="client-ticket-detail-progress"><div><strong>${metrics.complete}/${metrics.total} documentos obrigatórios</strong><span>${metrics.percent}%</span></div><div class="client-ticket-progress-bar"><i style="width:${metrics.percent}%"></i></div><div class="client-ticket-doc-chips">${CLIENT_TICKET_DOCUMENT_TYPES.map(type => clientTicketDocumentChip(ticket,type)).join("")}</div></div>
-      ${ticket.notes ? `<div class="info-box">${esc(ticket.notes)}</div>` : ""}
-      ${canManageClientTickets() ? `<div class="client-ticket-upload-panel"><div class="professional-section-heading"><div><small>NOVO ARQUIVO</small><h3>Anexar FDT, FRT, MDT ou MRT</h3></div></div>${clientTicketDocumentUploadForm(ticket)}</div>` : ""}
-      <div class="section-title"><span>Documentos anexados</span><small>${documents.length} arquivo(s)</small></div><div class="client-ticket-document-list">${rows || `<div class="empty">Nenhum documento anexado.</div>`}</div>`;
+    return `<div class="client-ticket-detail-head"><div><small>COMPROVANTES DO CLIENTE</small><h3>${esc(ticket.client)}</h3><p>${dateOnly(ticket.date)}${ticket.vessel?` • ${esc(ticket.vessel)}`:""}${ticket.serviceOrder?` • OS ${esc(ticket.serviceOrder)}`:""}</p></div></div>
+      <div class="client-ticket-document-list">${rows || `<div class="empty">Nenhum comprovante anexado.</div>`}</div>`;
   }
 
-  async function saveClientTicket(payload, id = null, requiredTypes = []) {
-    if (!canManageClientTickets()) throw new Error("Seu perfil não pode alterar tickets de clientes.");
-    if (!requiredTypes.length) throw new Error("Selecione pelo menos um documento obrigatório.");
-    const row = {
-      client:String(payload.client || "").trim(), title:String(payload.title || "").trim(),
-      ticket_date:payload.ticket_date, operation_id:payload.operation_id || null,
-      vessel:String(payload.vessel || "").trim() || null, service_order:String(payload.service_order || "").trim() || null,
-      responsible:String(payload.responsible || "").trim() || null, status:payload.status || "Em montagem",
-      required_document_types:requiredTypes, notes:String(payload.notes || "").trim() || null
-    };
-    if (!row.client) throw new Error("Informe o cliente.");
-    const query = id
-      ? state.client.from("client_document_tickets").update(row).eq("id",id).select("id,ticket_number").single()
-      : state.client.from("client_document_tickets").insert({...row,created_by:state.user.id}).select("id,ticket_number").single();
-    const {data,error} = await query;
-    if (error) throw error;
-    return data;
-  }
-
-  async function uploadClientTicketDocument(form) {
-    if (!canManageClientTickets()) throw new Error("Seu perfil não pode anexar documentos.");
+  async function createClientProof(form) {
+    if (!canManageClientTickets()) throw new Error("Seu perfil não pode anexar comprovantes.");
     const payload = Object.fromEntries(new FormData(form));
     const file = form.elements.document_file?.files?.[0];
-    if (!file) throw new Error("Selecione o arquivo.");
+    if (!file) throw new Error("Selecione o arquivo do comprovante.");
     const allowed = ["application/pdf","image/jpeg","image/png","image/webp","image/heic","image/heif"];
     if (!allowed.includes(file.type)) throw new Error("Formato não permitido. Use PDF ou imagem.");
     if (file.size > 20 * 1024 * 1024) throw new Error("O arquivo ultrapassa 20 MB.");
-    const ticketId = form.dataset.ticketId;
-    const path = `client-tickets/${ticketId}/${payload.document_type}/${Date.now()}-${uid("document")}-${safeFileName(file.name)}`;
+
+    const documentType = String(payload.document_type || "").trim();
+    const documentDate = payload.document_date || localDateKey();
+    const operationId = payload.operation_id || null;
+    const operation = operationId ? state.data.operations.find(item => item.id === operationId) : null;
+    const client = String(payload.client || operation?.client || "").trim();
+    if (!client) throw new Error("Informe o cliente.");
+
+    const path = `client-tickets/proofs/${state.user.id}/${documentType}/${Date.now()}-${uid("proof")}-${safeFileName(file.name)}`;
     const {error:uploadError} = await state.client.storage.from("opscontrol-files").upload(path,file,{contentType:file.type,upsert:false});
     if (uploadError) throw uploadError;
-    const {error:metaError} = await state.client.from("client_ticket_documents").insert({
-      ticket_id:ticketId, document_type:payload.document_type, document_number:String(payload.document_number||"").trim()||null,
-      document_date:payload.document_date||null, revision:String(payload.revision||"").trim()||null,
-      status:payload.status||"Anexado", file_name:file.name, file_path:path, mime_type:file.type,
-      file_size:file.size, notes:String(payload.notes||"").trim()||null, uploaded_by:state.user.id
-    });
-    if (metaError) {
+
+    let ticket = (state.data.clientTickets || []).find(item =>
+      normalizeSearch(item.client) === normalizeSearch(client) &&
+      String(item.date || "").slice(0,10) === String(documentDate).slice(0,10) &&
+      (operationId ? item.operationId === operationId : !item.operationId) &&
+      item.title === "Comprovantes operacionais"
+    );
+
+    try {
+      if (!ticket) {
+        const {data,error} = await state.client.from("client_document_tickets").insert({
+          client,
+          title:"Comprovantes operacionais",
+          ticket_date:documentDate,
+          operation_id:operationId,
+          vessel:operation?.vessel || null,
+          service_order:operation?.service_order || null,
+          responsible:state.data.profile.name || null,
+          status:"Concluído",
+          required_document_types:[documentType],
+          notes:null,
+          created_by:state.user.id
+        }).select("id,ticket_number,client,ticket_date,operation_id,vessel,service_order,responsible,status,required_document_types,title").single();
+        if (error) throw error;
+        ticket = { id:data.id, ticketNumber:data.ticket_number, client:data.client, date:data.ticket_date, operationId:data.operation_id, vessel:data.vessel || "", serviceOrder:data.service_order || "", responsible:data.responsible || "", status:data.status, requiredTypes:data.required_document_types || [documentType], title:data.title };
+      } else if (!(ticket.requiredTypes || []).includes(documentType)) {
+        const requiredTypes = [...new Set([...(ticket.requiredTypes || []),documentType])];
+        await state.client.from("client_document_tickets").update({required_document_types:requiredTypes}).eq("id",ticket.id);
+      }
+
+      const {error:metaError} = await state.client.from("client_ticket_documents").insert({
+        ticket_id:ticket.id,
+        document_type:documentType,
+        document_number:String(payload.document_number||"").trim()||null,
+        document_date:documentDate,
+        revision:null,
+        status:"Anexado",
+        file_name:file.name,
+        file_path:path,
+        mime_type:file.type,
+        file_size:file.size,
+        notes:String(payload.notes||"").trim()||null,
+        uploaded_by:state.user.id
+      });
+      if (metaError) throw metaError;
+    } catch (error) {
       await state.client.storage.from("opscontrol-files").remove([path]);
-      throw metaError;
-    }
-    const ticket = state.data.clientTickets.find(item => item.id === ticketId);
-    if (ticket && ["Aberto","Em montagem"].includes(ticket.status)) {
-      const futurePresent = new Set([...clientTicketDocuments(ticketId).filter(item=>item.status!=="Substituído").map(item=>item.documentType),payload.document_type]);
-      const complete = (ticket.requiredTypes || []).every(type => futurePresent.has(type));
-      if (complete) await state.client.from("client_document_tickets").update({status:"Em revisão"}).eq("id",ticketId);
+      throw error;
     }
   }
 
@@ -5009,7 +5011,8 @@
       selection, window, completedOperations, activeOperations, events,
       tankMovements, trucks, qhse, maintenanceOpened, maintenanceClosed,
       pendingCompleted, openPendings, openQhseActions, openMaintenance,
-      observations: note?.observations || "", note
+      observations: note?.observations || "", fullText: note?.full_text,
+      noteUpdatedAt: note?.updated_at || null, noteUpdatedBy: note?.updated_by || null, note
     };
   }
 
@@ -5082,6 +5085,18 @@
   function handoverSheetHtml(snapshot) {
     const s = snapshot;
     const generated = new Date();
+    const hasSavedFullText = s.note && s.note.full_text !== null && s.note.full_text !== undefined;
+    if (hasSavedFullText) {
+      const editor = state.data.users.find(user => user.id === s.noteUpdatedBy)?.name || state.data.profile.name || "-";
+      return `<article class="handover-sheet handover-sheet-freeform" id="handoverSheet">
+        <header class="handover-print-header">
+          <div><span class="handover-logo">OC</span></div>
+          <div><h1>PASSAGEM DE SERVIÇO</h1><p>B-Port LMP — OpsControl IA</p></div>
+          <div class="handover-print-meta"><strong>${dateOnly(s.selection.date)}</strong><span>${esc(s.window.label)}</span>${selectedHandoverApproval(s.selection)?.sequence_no?`<span>Passagem nº ${String(selectedHandoverApproval(s.selection).sequence_no).padStart(5,"0")} • ${esc(selectedHandoverApproval(s.selection).status)}</span>`:""}<small>Última edição: ${esc(editor)} • ${dateTime(s.noteUpdatedAt)}</small></div>
+        </header>
+        <section class="handover-freeform-content"><pre>${esc(s.note.full_text || "")}</pre></section>
+      </article>`;
+    }
     const operationItems = s.completedOperations.map(op => ({
       title: `${op.activity} de ${op.product}`,
       detail: `${op.client} • ${op.vessel}${op.rig ? ` • Sonda ${op.rig}` : ""}${op.well ? ` • Poço ${op.well}` : ""}${op.ticketNumber ? ` • Ticket ${op.ticketNumber}` : ""} • ${fmt.format(op.executed)} ${op.unit}${op.service_order ? ` • OS ${op.service_order}` : ""}`
@@ -5146,7 +5161,7 @@
     </article>`;
   }
 
-  function handoverText(selection = ensureHandoverSelection()) {
+  function automaticHandoverText(selection = ensureHandoverSelection()) {
     const s = handoverSnapshot(selection);
     const lines = [
       "> PASSAGEM DE SERVIÇO",
@@ -5180,6 +5195,17 @@
     return lines.join("\n");
   }
 
+
+  function handoverText(selection = ensureHandoverSelection()) {
+    const note = (state.data.handoverNotes || []).find(item => item.shift_date === selection.date && item.shift_type === selection.shift);
+    if (note && note.full_text !== null && note.full_text !== undefined) return String(note.full_text);
+    return automaticHandoverText(selection);
+  }
+
+  function currentHandoverEditorText(selection = ensureHandoverSelection()) {
+    const editor = $("#handoverFullText");
+    return editor ? editor.value : handoverText(selection);
+  }
 
 
   function currentClosing(date = state.closing.date || localDateKey(), shift = state.closing.shift || "day") {
@@ -5234,6 +5260,8 @@
   function renderReports() {
     const selection=ensureHandoverSelection(); const snapshot=handoverSnapshot(selection); const approval=selectedHandoverApproval(selection);
     const locked=approval?.status==="Aprovada"&&!hasRole(["supervisor"]);
+    const editorText = snapshot.note && snapshot.note.full_text !== null && snapshot.note.full_text !== undefined ? String(snapshot.note.full_text) : automaticHandoverText(selection);
+    const editorName = state.data.users.find(user => user.id === snapshot.noteUpdatedBy)?.name || "Ainda não salva";
     const operations = state.data.operations || [];
     const trucks = state.data.trucks || [];
     const closings = state.data.closings || [];
@@ -5249,7 +5277,7 @@
        <section class="reports-command-grid no-print"><div class="card reports-command-card"><span>${uiIcon("file")}</span><div><small>PASSAGEM DE TURNO</small><h3>Resumo operacional automático</h3><p>Consolida operações, carretas, QHSE, manutenção e pendências.</p></div><button class="btn secondary" data-action="copy-handover">Copiar</button></div><div class="card reports-command-card"><span>${uiIcon("check")}</span><div><small>FECHAMENTO</small><h3>Conciliação física e teórica</h3><p>Confere tancagem, inventário, operações e movimentações do turno.</p></div>${hasRole(["supervisor","lider"])?`<button class="btn primary" data-action="new-closing">Preparar</button>`:`<button class="btn secondary" data-page-link="reports">Consultar</button>`}</div><div class="card reports-command-card"><span>${uiIcon("download")}</span><div><small>EXPORTAÇÕES</small><h3>Dados para análise gerencial</h3><p>CSV, impressão e backup completo dos principais módulos.</p></div><button class="btn secondary" data-export="operations">Exportar</button></div></section>
        ${renderClosingPanel()}${handoverApprovalCard(selection,snapshot)}
        <div class="card handover-controls no-print"><div class="handover-control-copy"><strong>Passagem automática do turno</strong><span>Operações, eventos, movimentações, carretas, QHSE e manutenção.</span></div><div><label>Data do turno</label><input id="handoverDate" type="date" value="${esc(selection.date)}"></div><div><label>Turno</label><select id="handoverShift"><option value="day" ${selection.shift==="day"?"selected":""}>Dia — 07h às 19h</option><option value="night" ${selection.shift==="night"?"selected":""}>Noite — 19h às 07h</option></select></div><button class="btn secondary" data-action="apply-handover-filter">Atualizar período</button>${canManageHandover()&&!locked?`<button class="btn primary" data-action="new-handover-pending">+ Adicionar pendência</button>`:""}</div>
-       <div class="handover-layout"><div>${handoverSheetHtml(snapshot)}</div><aside class="handover-side no-print"><div class="card"><h3>Observações do turno</h3><p>Incluídas na impressão e na cópia para WhatsApp.</p><textarea id="handoverObservations" rows="7" ${locked?"disabled":""}>${esc(snapshot.observations)}</textarea>${canManageHandover()&&!locked?`<button class="btn primary full" data-action="save-handover-note">Salvar observações</button>`:""}</div>${shiftChecklistHtml(selection)}<div class="card"><div class="kpi-row"><div><h3>Pendências manuais</h3><span class="muted">Continuam abertas até a conclusão.</span></div>${badge(snapshot.openPendings.length)}</div><div class="handover-pending-list">${pendingCards||`<div class="empty">Nenhuma pendência manual aberta.</div>`}</div></div></aside></div>
+       <div class="handover-layout"><div>${handoverSheetHtml(snapshot)}</div><aside class="handover-side no-print"><div class="card handover-editor-card"><div class="professional-section-heading"><div><small>EDIÇÃO LIVRE</small><h3>Texto completo da passagem</h3></div>${badge(snapshot.note?.full_text !== null && snapshot.note?.full_text !== undefined ? "Editada" : "Automática")}</div><p>Escreva, altere ou apague qualquer parte. O texto salvo será usado na impressão, cópia e entrega do turno.</p><textarea id="handoverFullText" class="handover-full-editor" rows="22" ${locked?"disabled":""}>${esc(editorText)}</textarea><small class="handover-editor-meta">Última edição: ${esc(editorName)}${snapshot.noteUpdatedAt?` • ${dateTime(snapshot.noteUpdatedAt)}`:""}</small>${canManageHandover()&&!locked?`<div class="handover-editor-actions"><button class="btn secondary" data-action="restore-handover-auto">Usar resumo automático</button><button class="btn secondary" data-action="clear-handover-text">Limpar tudo</button><button class="btn primary" data-action="save-handover-note">Salvar passagem</button></div>`:""}</div>${shiftChecklistHtml(selection)}<div class="card"><div class="kpi-row"><div><h3>Pendências manuais</h3><span class="muted">Continuam abertas até a conclusão.</span></div>${badge(snapshot.openPendings.length)}</div><div class="handover-pending-list">${pendingCards||`<div class="empty">Nenhuma pendência manual aberta.</div>`}</div></div></aside></div>
        <div class="section-title no-print">Indicadores comparativos</div><div class="grid two no-print"><div class="card"><h3>Últimos 7 dias</h3><div class="metric-grid">${metricComparison("Operações",week.operations,prevWeek.operations)}${metricComparison("Volume de fluidos",week.bbl,prevWeek.bbl," bbl")}${metricComparison("Granéis",week.ton,prevWeek.ton," ton")}${metricComparison("Carretas",week.trucks,prevWeek.trucks)}</div></div><div class="card"><h3>Últimos 30 dias</h3><div class="metric-grid">${metricComparison("Operações",month.operations,prevMonth.operations)}${metricComparison("Volume de fluidos",month.bbl,prevMonth.bbl," bbl")}${metricComparison("Granéis",month.ton,prevMonth.ton," ton")}${metricComparison("Horas paradas",month.downtime,prevMonth.downtime," h")}</div></div></div>
        <div class="section-title no-print">Exportação e backup</div><div class="grid three no-print"><div class="card report-card"><h3>Backup completo</h3><p>Dados operacionais em JSON para guarda externa.</p><button class="btn primary" data-action="backup-json">Baixar backup</button></div><div class="card report-card"><h3>Auditoria</h3><p>Alterações de usuários e registros.</p><button class="btn secondary" data-page-link="audit">Abrir auditoria</button></div><div class="card report-card"><h3>Fila offline</h3><p>${offlineQueue().length} registro(s) aguardando sincronização.</p><button class="btn secondary" data-action="sync-offline">Sincronizar agora</button></div></div>
        <div class="section-title no-print">Outros relatórios</div><div class="grid two no-print">${reportCard("Relatório gerencial","KPIs, clientes, produtos, riscos e produtividade.","dashboard","operations")}${reportCard("Operações","Vazão, volume, paralisações e tancagem.","operations","operations")}${reportCard("Inventário de tancagem","Produto, lote, volume e capacidade.","tanks","tanks")}${reportCard("QHSE","Registros, severidades e itens de ação.","qhse")}${reportCard("Manutenção","Equipamentos, diesel e ordens.","maintenance","maintenance")}${reportCard("Carretas","Entradas, saídas, NF, placa e motorista.","trucks","trucks")}</div>`;
@@ -5333,9 +5361,10 @@
       ["Backup local", backupDate, latestLocalBackup()?.created_at ? "ok" : "warning"],
       ["Ambiente", environment, state.config.environment === "production" ? "ok" : "warning"]
     ].map(([label,value,status])=>`<div class="settings-health-item ${status}"><span>${label}</span><strong>${esc(value)}</strong></div>`).join("");
-    $("#page-settings").innerHTML = header("Administração do sistema","Usuários, permissões, ambientes, segurança, diagnóstico e preferências.", `<button class="btn secondary" data-action="toggle-theme">Alternar tema</button>${isAdmin() ? `<button class="btn primary" data-action="new-user">+ Novo usuário</button>` : ""}`) +
+    $("#page-settings").innerHTML = header("Administração do sistema","Usuários, permissões, ambientes, segurança, diagnóstico e preferências.", `${badge(themeLabel())}${isAdmin() ? `<button class="btn primary" data-action="new-user">+ Novo usuário</button>` : ""}`) +
       `<section class="settings-kpi-grid">${statCard("Usuários cadastrados",fmt.format(users.length),"contas no sistema",uiIcon("settings"),"Gestão centralizada","blue")}${statCard("Usuários ativos",fmt.format(activeUsers),"acesso liberado",uiIcon("check"),`${inactiveUsers} inativo(s)`,"green")}${statCard("Administradores",fmt.format(adminUsers),"acesso elevado",uiIcon("shield"),"Permissões críticas","purple")}${statCard("Liderança",fmt.format(leadershipUsers),"líderes e supervisores",uiIcon("gauge"),"Gestão operacional","orange")}</section>
        <section class="settings-command-grid"><div class="card settings-profile-panel"><div class="professional-section-heading"><div><small>MEU PERFIL</small><h3>Identidade e acesso atual</h3></div>${badge(state.data.profile.role)}</div><div class="settings-profile-card"><div class="settings-profile-avatar">${profileAvatarHtml(state.data.profile.avatarUrl, state.data.profile.name)}</div><div><strong>${esc(state.data.profile.name)}</strong><small>${esc(state.data.profile.email)}</small><span>${esc(state.data.profile.department || "Departamento não informado")}</span></div></div><div class="settings-profile-meta"><span>Função<strong>${esc(state.data.profile.role)}</strong></span><span>Ambiente<strong>${environment}</strong></span></div><div class="row-actions profile-security-actions"><button class="btn primary" data-action="change-avatar">${state.data.profile.avatarUrl ? "Trocar foto" : "Adicionar foto"}</button><button class="btn secondary" data-action="change-password">Alterar senha</button></div></div><div class="card settings-health-panel"><div class="professional-section-heading"><div><small>DIAGNÓSTICO</small><h3>Saúde do sistema</h3></div><span>${errors.length || queueCount ? "Atenção" : "Normal"}</span></div><div class="settings-health-grid">${healthItems}</div><div class="row-actions settings-health-actions"><button class="btn primary" data-action="backup-json">Backup JSON</button><button class="btn secondary" data-action="sync-offline">Sincronizar offline</button></div></div></section>
+       ${appearanceThemePanel()}
        <section class="settings-control-grid"><div><div class="section-title">Ambiente</div>${environmentPanel()}<div class="section-title">Teste seguro</div>${homologationPanel()}</div><div><div class="section-title">Distribuição da equipe</div><div class="card settings-department-panel"><div class="professional-section-heading"><div><small>DEPARTAMENTOS</small><h3>Usuários por setor</h3></div><span>${users.length} usuários</span></div><div class="settings-department-list">${departmentRows || `<div class="empty">Sem usuários cadastrados.</div>`}</div></div>${isAdmin() ? `<div class="admin-edit-notice settings-admin-notice"><strong>Edição total ativa</strong><span>Administradores podem gerenciar usuários e registros operacionais. Auditoria e históricos permanecem protegidos.</span></div>` : ""}</div></section>
        <div class="section-title professional-record-title"><span>Usuários e permissões</span><small>${users.length} usuário(s)</small></div><div class="card table-wrap desktop-record-table professional-table">${isAdmin() ? "" : `<div class="info-box" style="margin-bottom:12px">Somente o administrador pode alterar cargo, setor, status e permissões.</div>`}<table class="data-table"><thead><tr><th>Usuário</th><th>Cargo</th><th>Departamento</th><th>Status</th><th>Cadastro</th><th>Ação</th></tr></thead><tbody>${userRows || `<tr><td colspan="6" class="empty">Nenhum usuário disponível.</td></tr>`}</tbody></table></div><div class="mobile-record-list">${mobileUsers || `<div class="card empty">Nenhum usuário disponível.</div>`}</div>${hasRole(["supervisor"]) ? `<div class="section-title">Feedback da versão beta</div>${feedbackManagementPanel()}` : ""}${isAdmin() && errors.length ? `<div class="section-title">Erros recentes</div><div class="card table-wrap"><table class="data-table"><thead><tr><th>Data</th><th>Contexto</th><th>Mensagem</th></tr></thead><tbody>${errors.slice(0,20).map(e => `<tr><td>${dateTime(e.created_at)}</td><td>${esc(e.context || "-")}</td><td>${esc(e.message)}</td></tr>`).join("")}</tbody></table></div>` : ""}`;
   }
@@ -6316,9 +6345,40 @@
     }, { passive: true });
   }
 
+  function themeStorageKey() {
+    return state.user?.id ? `${THEME_KEY}:${state.user.id}` : THEME_KEY;
+  }
+
+  function storedTheme() {
+    const value = localStorage.getItem(themeStorageKey()) || localStorage.getItem(THEME_KEY) || "light";
+    return ["light", "dark", "industrial"].includes(value) ? value : "light";
+  }
+
+  function themeLabel(theme = document.documentElement.dataset.theme || "light") {
+    return ({ light: "Tema claro", dark: "Tema escuro", industrial: "Industrial IA" })[theme] || "Tema claro";
+  }
+
   function applyTheme(theme) {
-    document.documentElement.dataset.theme = theme;
-    localStorage.setItem(THEME_KEY, theme);
+    const selected = ["light", "dark", "industrial"].includes(theme) ? theme : "light";
+    document.documentElement.dataset.theme = selected;
+    localStorage.setItem(THEME_KEY, selected);
+    localStorage.setItem(themeStorageKey(), selected);
+    const themeMeta = document.querySelector('meta[name="theme-color"]');
+    if (themeMeta) themeMeta.content = selected === "industrial" ? "#07111d" : selected === "dark" ? "#0b1422" : "#0b1f3a";
+  }
+
+  function themePreview(theme) {
+    return `<span class="theme-preview theme-preview-${theme}" aria-hidden="true"><span class="theme-preview-sidebar"><i></i><i></i><i></i><i></i></span><span class="theme-preview-main"><b></b><i></i><i></i><i></i><i></i></span></span>`;
+  }
+
+  function appearanceThemePanel() {
+    const current = document.documentElement.dataset.theme || storedTheme();
+    const themes = [
+      ["light", "Claro profissional", "Visual atual claro, limpo e corporativo."],
+      ["dark", "Escuro clássico", "Versão escura tradicional do OpsControl IA."],
+      ["industrial", "Industrial IA", "Tema premium azul-marinho com verde-ciano, baseado no modelo enviado."]
+    ];
+    return `<section class="card appearance-theme-panel"><div class="appearance-theme-heading"><div><small>APARÊNCIA</small><h3>Tema da interface</h3><p>Escolha o visual do sistema. A preferência fica salva neste usuário.</p></div>${badge(themeLabel(current))}</div><div class="appearance-theme-grid">${themes.map(([id,title,description]) => `<button type="button" class="appearance-theme-card ${current===id?"active":""}" data-theme-choice="${id}" aria-pressed="${current===id}">${themePreview(id)}<span class="appearance-theme-copy"><strong>${title}</strong><span>${description}</span></span></button>`).join("")}</div></section>`;
   }
 
   function smartAnswer(question) {
@@ -6454,38 +6514,28 @@
         return;
       }
 
-      if (form.id === "clientTicketForm") {
-        const payload = Object.fromEntries(new FormData(form));
-        const requiredTypes = [...new FormData(form).getAll("required_document_types")];
-        await saveClientTicket(payload, form.dataset.id || null, requiredTypes);
-      }
-
-      if (form.id === "clientTicketDocumentForm") {
-        const ticketId = form.dataset.ticketId;
-        await uploadClientTicketDocument(form);
+      if (form.id === "clientProofForm") {
+        await createClientProof(form);
         clearFormDraft(form);
         await loadData();
         renderAll();
-        const ticket = state.data.clientTickets.find(item => item.id === ticketId);
-        if (ticket) openModal(`Ticket ${ticket.ticketNumber}`, clientTicketDetails(ticket), "DOCUMENTAÇÃO DO CLIENTE");
-        toast("Documento anexado com sucesso.", "success");
+        closeModal();
+        toast("Comprovante anexado com sucesso.", "success");
         return;
       }
 
       if (form.id === "clientTicketDocumentEditForm") {
         const payload = Object.fromEntries(new FormData(form));
         const ticketId = form.dataset.ticketId;
+        const type = String(payload.document_type || "").split(" ")[0];
         const {error} = await state.client.from("client_ticket_documents").update({
-          document_type:payload.document_type, document_number:String(payload.document_number||"").trim()||null,
-          document_date:payload.document_date||null, revision:String(payload.revision||"").trim()||null,
-          status:payload.status, notes:String(payload.notes||"").trim()||null
+          document_type:type, document_number:String(payload.document_number||"").trim()||null,
+          document_date:payload.document_date||null, status:"Anexado", notes:String(payload.notes||"").trim()||null
         }).eq("id",form.dataset.id);
         if (error) throw error;
         clearFormDraft(form);
-        await loadData(); renderAll();
-        const ticket = state.data.clientTickets.find(item => item.id === ticketId);
-        if (ticket) openModal(`Ticket ${ticket.ticketNumber}`, clientTicketDetails(ticket), "DOCUMENTAÇÃO DO CLIENTE");
-        toast("Documento atualizado.","success");
+        await loadData(); renderAll(); closeModal();
+        toast("Dados do comprovante atualizados.","success");
         return;
       }
 
@@ -6836,6 +6886,12 @@
     if (button.closest(".user-chip")) return showPage("settings");
     if (button.id === "notificationsBtn") return showPage("alerts");
     if (button.id === "globalSearchBtn") return openGlobalSearch();
+    if (button.dataset.themeChoice) {
+      applyTheme(button.dataset.themeChoice);
+      renderSettings();
+      toast(`${themeLabel()} aplicado com sucesso.`, "success");
+      return;
+    }
 
     if (button.dataset.pageLink) { showPage(button.dataset.pageLink); return; }
     if (button.dataset.alertPage) { showPage(button.dataset.alertPage); return; }
@@ -7052,22 +7108,48 @@
       if (!canManageHandover()) return toast("Seu perfil não pode adicionar pendências.", "error");
       return openModal("Nova pendência da passagem", handoverPendingForm(), "PASSAGEM");
     }
+    if (action === "restore-handover-auto") {
+      const editor = $("#handoverFullText");
+      if (!editor) return;
+      editor.value = automaticHandoverText(ensureHandoverSelection());
+      editor.focus();
+      return toast("Resumo automático carregado. Revise e salve a passagem.", "success");
+    }
+    if (action === "clear-handover-text") {
+      const editor = $("#handoverFullText");
+      if (!editor) return;
+      editor.value = "";
+      editor.focus();
+      return toast("Texto apagado no editor. Clique em Salvar passagem para confirmar.", "success");
+    }
     if (action === "save-handover-note") {
-      if (!canManageHandover()) return toast("Seu perfil não pode alterar as observações.", "error");
+      if (!canManageHandover()) return toast("Seu perfil não pode editar a passagem.", "error");
       const selection = ensureHandoverSelection();
-      const observations = $("#handoverObservations")?.value.trim() || null;
+      const fullText = $("#handoverFullText")?.value ?? "";
       const { error } = await state.client.from("shift_handover_notes").upsert({
         shift_date: selection.date,
         shift_type: selection.shift,
-        observations,
+        full_text: fullText,
         updated_by: state.user.id
       }, { onConflict: "shift_date,shift_type" });
       if (error) return toast(error.message, "error");
       await loadData();
       renderReports();
-      return toast("Observações do turno salvas.", "success");
+      return toast("Passagem de serviço salva.", "success");
     }
     if (action === "print-handover") {
+      const selection = ensureHandoverSelection();
+      const snapshot = handoverSnapshot(selection);
+      const currentText = currentHandoverEditorText(selection);
+      const currentSheet = $("#handoverSheet");
+      if (currentSheet) {
+        currentSheet.outerHTML = handoverSheetHtml({
+          ...snapshot,
+          note: { ...(snapshot.note || {}), full_text: currentText },
+          noteUpdatedAt: snapshot.noteUpdatedAt || new Date().toISOString(),
+          noteUpdatedBy: snapshot.noteUpdatedBy || state.user.id
+        });
+      }
       document.body.classList.add("print-handover");
       setTimeout(() => window.print(), 100);
       return;
@@ -7090,10 +7172,15 @@
       const selection=ensureHandoverSelection(); const snapshot=handoverSnapshot(selection);
       const checklist=checklistForShift(selection); const missing=checklist.filter(x=>!x.completed);
       if (missing.length&&!confirm(`Existem ${missing.length} itens do checklist pendentes. Entregar mesmo assim?`)) return;
+      const finalText = currentHandoverEditorText(selection);
+      const { error: noteError } = await state.client.from("shift_handover_notes").upsert({
+        shift_date: selection.date, shift_type: selection.shift, full_text: finalText, updated_by: state.user.id
+      }, { onConflict: "shift_date,shift_type" });
+      if (noteError) return toast(noteError.message,"error");
       const summary={ selection, generated_at:new Date().toISOString(), delivered_by:state.data.profile.name,
-        counts:{operations:snapshot.completedOperations.length,events:snapshot.events.length,movements:snapshot.tankMovements.length,pendings:snapshot.openPendings.length}, checklist, observations:snapshot.observations };
-      const {error}=await state.client.rpc("submit_shift_handover",{p_shift_date:selection.date,p_shift_type:selection.shift,p_snapshot_json:summary,p_snapshot_text:handoverText(selection)});
-      if(error)return toast(error.message,"error"); await loadData();renderReports();return toast("Passagem entregue e numerada.","success");
+        counts:{operations:snapshot.completedOperations.length,events:snapshot.events.length,movements:snapshot.tankMovements.length,pendings:snapshot.openPendings.length}, checklist, observations:snapshot.observations, full_text:finalText };
+      const {error}=await state.client.rpc("submit_shift_handover",{p_shift_date:selection.date,p_shift_type:selection.shift,p_snapshot_json:summary,p_snapshot_text:finalText});
+      if(error)return toast(error.message,"error"); await loadData();renderReports();return toast("Passagem salva, entregue e numerada.","success");
     }
     if (action === "approve-handover") {
       const selection=ensureHandoverSelection(); const {error}=await state.client.rpc("approve_shift_handover",{p_shift_date:selection.date,p_shift_type:selection.shift});
@@ -7184,7 +7271,7 @@
     }
     if (action === "new-chemical") { if (!canManageChemicals()) return toast("Seu perfil não pode alterar o inventário químico.", "error"); return openModal("Adicionar lote ao inventário", chemicalForm(), "INVENTÁRIO"); }
     if (action === "new-truck") return openModal("Nova movimentação de carreta", truckForm(), "CARRETA");
-    if (action === "new-client-ticket") { if (!canManageClientTickets()) return toast("Seu perfil não pode criar tickets de clientes.", "error"); return openModal("Novo ticket de cliente", clientTicketForm(), "DOCUMENTAÇÃO DO CLIENTE"); }
+    if (action === "new-client-proof" || action === "new-client-ticket") { if (!canManageClientTickets()) return toast("Seu perfil não pode anexar comprovantes.", "error"); return openModal("Adicionar comprovante do cliente", clientProofUploadForm(), "FDT • FRT • MDT • MRT"); }
     if (action === "new-qhse") return openModal("Novo registro QHSE", genericForm("qhse"), "QHSE");
     if (action === "new-equipment") return openModal("Novo equipamento", genericForm("equipment"), "EQUIPAMENTO");
     if (action === "new-certificate") { if (!canManageCertificates()) return toast("Somente Logística, Supervisor ou Administrador podem adicionar certificados.", "error"); return openModal("Adicionar certificado", genericForm("certificate"), "CERTIFICADO"); }
@@ -7212,13 +7299,15 @@
     }
 
     if (action === "copy-handover") {
-      await navigator.clipboard.writeText(handoverText());
-      return toast("Passagem de serviço copiada.");
+      await navigator.clipboard.writeText(currentHandoverEditorText());
+      return toast("Texto atual da passagem copiado.");
     }
 
     if (action === "toggle-theme") {
-      const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
-      applyTheme(next);
+      const themes = ["light", "dark", "industrial"];
+      const current = document.documentElement.dataset.theme || "light";
+      applyTheme(themes[(themes.indexOf(current) + 1) % themes.length]);
+      if (state.page === "settings") renderSettings();
       return;
     }
 
@@ -7317,10 +7406,9 @@
     }
 
     if (button.dataset.editClientTicket) {
-      if (!canManageClientTickets()) return toast("Seu perfil não pode editar tickets.","error");
       const ticket = state.data.clientTickets.find(item => item.id === button.dataset.editClientTicket);
-      if (!ticket) return toast("Ticket não localizado.","error");
-      return openModal(`Editar ${ticket.ticketNumber}`, clientTicketForm(ticket), "DOCUMENTAÇÃO DO CLIENTE");
+      if (!ticket) return toast("Comprovante não localizado.","error");
+      return openModal(`Comprovantes — ${ticket.client}`, clientTicketDetails(ticket), "DOCUMENTAÇÃO DO CLIENTE");
     }
 
     if (button.dataset.openClientTicketDocument) return openClientTicketDocument(button.dataset.openClientTicketDocument);
@@ -7341,14 +7429,12 @@
       if (storageError) return toast(storageError.message,"error");
       const {error} = await state.client.from("client_ticket_documents").delete().eq("id",document.id);
       if (error) return toast(error.message,"error");
-      await loadData(); renderAll();
-      const ticket = state.data.clientTickets.find(item => item.id === document.ticketId);
-      if (ticket) openModal(`Ticket ${ticket.ticketNumber}`, clientTicketDetails(ticket), "DOCUMENTAÇÃO DO CLIENTE");
-      return toast("Documento excluído.","success");
+      await loadData(); renderAll(); closeModal();
+      return toast("Comprovante excluído.","success");
     }
 
     if (button.dataset.action === "clear-client-ticket-filters") {
-      state.clientTicketFilters = { query:"", client:"", status:"", completeness:"" };
+      state.clientTicketFilters = { query:"", client:"", documentType:"" };
       renderClientTickets();
       return;
     }
@@ -7511,6 +7597,19 @@
       return openModal("Editar operação", operationForm(operation), "OPERAÇÃO");
     }
 
+    if (button.dataset.deleteOperation) {
+      if (!isAdmin()) return toast("Somente o administrador pode excluir operações.", "error");
+      const operation = state.data.operations.find(item => item.id === button.dataset.deleteOperation);
+      if (!operation) return toast("Operação não localizada.", "error");
+      if (!confirm(`Excluir permanentemente a operação de ${operation.client || "cliente não informado"} — ${operation.vessel || operation.activity || "operação"}?\n\nOs eventos e rateios vinculados também serão removidos. Movimentações de estoque já aplicadas serão preservadas no histórico.`)) return;
+      const {data,error} = await state.client.rpc("delete_operation_admin_v1", {p_operation_id:operation.id});
+      if (error) return toast(error.message, "error");
+      const paths = Array.isArray(data?.file_paths) ? data.file_paths : [];
+      if (paths.length) await state.client.storage.from("opscontrol-files").remove(paths);
+      await loadData(); renderAll(); showPage("operations", {history:false, scroll:false});
+      return toast("Operação excluída pelo administrador.", "success");
+    }
+
     if (button.dataset.operationTimeline) {
       const operation = state.data.operations.find(x => x.id === button.dataset.operationTimeline);
       const events = state.data.operationEvents.filter(x => x.operation_id === operation.id);
@@ -7650,14 +7749,10 @@
       renderClientTickets();
       return;
     }
-    if (event.target.closest("#clientTicketForm") && event.target.name === "operation_id") {
-      const form = event.target.closest("#clientTicketForm");
+    if (event.target.closest("#clientProofForm") && event.target.name === "operation_id") {
+      const form = event.target.closest("#clientProofForm");
       const operation = state.data.operations.find(item => item.id === event.target.value);
-      if (operation) {
-        if (!form.elements.client.value.trim()) form.elements.client.value = operation.client || "";
-        if (!form.elements.vessel.value.trim()) form.elements.vessel.value = operation.vessel || "";
-        if (!form.elements.service_order.value.trim()) form.elements.service_order.value = operation.service_order || "";
-      }
+      if (operation && !form.elements.client.value.trim()) form.elements.client.value = operation.client || "";
     }
     if (event.target.matches("[data-truck-filter]:not([data-truck-filter='query'])")) {
       state.truckFilters[event.target.dataset.truckFilter] = event.target.value;

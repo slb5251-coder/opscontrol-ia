@@ -1,11 +1,12 @@
-const CACHE="opscontrol-20260719-v33-12-14-1-client-tickets";
+const CACHE="opscontrol-20260720-v33-12-14-5-industrial-theme";
 const FILES=[
   "./",
   "./index.html",
-  "./app.css?v=20260719-v33-12-14-1-client-tickets",
-  "./v33.css?v=20260719-v33-12-14-1-client-tickets",
-  "./js/config.js?v=20260719-v33-12-14-1-client-tickets",
-  "./js/app.js?v=20260719-v33-12-14-1-client-tickets",
+  "./app.css?v=20260720-v33-12-14-5-industrial-theme",
+  "./v33.css?v=20260720-v33-12-14-5-industrial-theme",
+  "./industrial-theme.css?v=20260720-v33-12-14-5-industrial-theme",
+  "./js/config.js?v=20260720-v33-12-14-5-industrial-theme",
+  "./js/app.js?v=20260720-v33-12-14-5-industrial-theme",
   "./manifest.json",
   "./assets/icon.svg","./vendor/qrcode.js"
 ];
@@ -33,6 +34,7 @@ self.addEventListener("fetch", event => {
     url.pathname.endsWith("/index.html") ||
     url.pathname.endsWith("/app.css") ||
     url.pathname.endsWith("/v33.css") ||
+    url.pathname.endsWith("/industrial-theme.css") ||
     url.pathname.endsWith("/js/app.js") ||
     url.pathname.endsWith("/js/config.js")
   );

@@ -12,7 +12,7 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const APP_VERSION = "20260720-v33-12-14-15-vision-ui-integrated";
+  const APP_VERSION = "20260720-v33-12-14-16-homologacao-interface";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -8179,7 +8179,7 @@
   });
 
   if ("serviceWorker" in navigator) {
-    window.addEventListener("load", () => navigator.serviceWorker.register("sw.js?v=20260720-v33-12-14-15-vision-ui-integrated", { updateViaCache: "none" }).then(registration => registration.update()).catch(console.error));
+    window.addEventListener("load", () => navigator.serviceWorker.register("sw.js?v=20260720-v33-12-14-16-homologacao-interface", { updateViaCache: "none" }).then(registration => registration.update()).catch(console.error));
   }
 
   setupSidebarNavigation();

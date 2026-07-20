@@ -1,4 +1,4 @@
-const VERSION="20260720-v33-12-14-15-vision-ui-integrated";
+const VERSION="20260720-v33-12-14-16-homologacao-interface";
 const CACHE=`opscontrol-${VERSION}`;
 const FILES=[
   "./",
@@ -14,8 +14,10 @@ const FILES=[
   `./layout-stability.css?v=${VERSION}`,
   `./tank-actions-fix.css?v=${VERSION}`,
   `./vision-ui.css?v=${VERSION}`,
+  `./homologacao-ui.css?v=${VERSION}`,
   `./js/config.js?v=${VERSION}`,
   `./js/app.js?v=${VERSION}`,
+  `./js/homologacao-ui.js?v=${VERSION}`,
   `./vendor/qrcode.js?v=${VERSION}`,
   "./manifest.json",
   "./assets/icon.svg",

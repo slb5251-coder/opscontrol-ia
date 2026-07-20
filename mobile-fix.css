@@ -1,0 +1,508 @@
+/* =========================================================
+   OpsControl IA v33.12.14.6 — Correção mobile consolidada
+   Carregado por último para eliminar conflitos entre temas.
+   ========================================================= */
+
+/* Variáveis de compatibilidade usadas pelos módulos mais novos. */
+:root[data-theme="industrial"]{
+  --primary:#20d4c6;
+  --primary-soft:rgba(32,212,198,.13);
+  --soft-blue:rgba(68,153,255,.13);
+  --surface:#0c1928;
+  --surface-2:#101f30;
+  --surface-subtle:#101f30;
+  --border:#203247;
+  --text-muted:#8da1b7;
+  --shadow-sm:0 8px 24px rgba(0,0,0,.20);
+}
+
+/* A navegação móvel fica fora de #appView no HTML e não pode aparecer no login. */
+#appView.hidden ~ #mobileBottomNav,
+#appView.hidden ~ #mobileSheetBackdrop,
+#appView.hidden ~ #mobileQuickSheet,
+#appView.hidden ~ #mobileMoreSheet{
+  display:none!important;
+}
+
+@media (max-width:820px){
+  :root{
+    --mobile-topbar-height:60px;
+    --mobile-nav-height:74px;
+    --mobile-app-height:100dvh;
+  }
+
+  html{
+    width:100%;
+    max-width:100%;
+    min-height:100%;
+    overflow-x:hidden;
+    -webkit-text-size-adjust:100%;
+  }
+
+  body{
+    width:100%;
+    max-width:100%;
+    min-height:100svh;
+    min-height:var(--mobile-app-height);
+    overflow-x:hidden;
+    overscroll-behavior-x:none;
+  }
+
+  #appView,.app-view,.shell,.main-content,.page{
+    width:100%;
+    max-width:100%;
+    min-width:0;
+  }
+
+  #appView:not(.hidden){
+    min-height:100svh;
+    min-height:var(--mobile-app-height);
+  }
+
+  .shell{
+    display:block;
+    min-height:calc(var(--mobile-app-height) - var(--mobile-topbar-height) - env(safe-area-inset-top));
+    overflow:visible;
+  }
+
+  /* Cabeçalho compacto sem estouro lateral. */
+  .topbar{
+    position:sticky;
+    top:0;
+    z-index:80;
+    width:100%;
+    max-width:100%;
+    min-height:calc(var(--mobile-topbar-height) + env(safe-area-inset-top));
+    height:calc(var(--mobile-topbar-height) + env(safe-area-inset-top));
+    padding:env(safe-area-inset-top) max(8px,env(safe-area-inset-right)) 0 max(8px,env(safe-area-inset-left));
+    gap:5px;
+  }
+
+  .topbar-left{
+    flex:1 1 auto;
+    min-width:0;
+    max-width:100%;
+    gap:6px;
+    overflow:hidden;
+  }
+
+  .topbar-right{
+    flex:0 0 auto;
+    min-width:0;
+    gap:2px;
+  }
+
+  .topbar .icon-btn{
+    width:40px;
+    height:40px;
+    flex:0 0 40px;
+  }
+
+  #syncBadge{display:none!important}
+
+  .brand{
+    flex:1 1 auto;
+    min-width:0;
+    max-width:100%;
+    gap:7px;
+    overflow:hidden;
+  }
+
+  .brand-mark{
+    width:34px;
+    height:34px;
+    flex:0 0 34px;
+  }
+
+  .desktop-brand-copy{display:none!important}
+  .mobile-page-copy{
+    display:flex!important;
+    flex:1 1 auto;
+    min-width:0;
+    max-width:100%;
+    overflow:hidden;
+  }
+  .mobile-page-copy strong,
+  .mobile-page-copy small{
+    display:block;
+    max-width:100%;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+  .mobile-page-copy strong{font-size:14px;line-height:1.2}
+  .mobile-page-copy small{font-size:9px;line-height:1.2}
+
+  .user-chip{
+    width:40px;
+    height:40px;
+    flex:0 0 40px;
+    padding:2px;
+    border-radius:12px;
+  }
+  .user-chip>span{width:34px;height:34px}
+  .user-chip>div{display:none!important}
+
+  /* Menu lateral por transform: evita faixa invisível e salto da página. */
+  .sidebar{
+    position:fixed!important;
+    top:calc(var(--mobile-topbar-height) + env(safe-area-inset-top))!important;
+    bottom:0!important;
+    left:0!important;
+    z-index:95!important;
+    width:min(86vw,310px)!important;
+    height:auto!important;
+    max-height:none!important;
+    transform:translate3d(-105%,0,0);
+    transition:transform .24s cubic-bezier(.2,.75,.2,1)!important;
+    will-change:transform;
+    overflow-y:auto;
+    overflow-x:hidden;
+    padding-bottom:calc(18px + env(safe-area-inset-bottom));
+    overscroll-behavior:contain;
+  }
+  .sidebar.open{transform:translate3d(0,0,0)}
+
+  .sidebar-backdrop{
+    position:fixed!important;
+    inset:calc(var(--mobile-topbar-height) + env(safe-area-inset-top)) 0 0!important;
+    z-index:90!important;
+    width:auto!important;
+    height:auto!important;
+    background:rgba(2,9,17,.72)!important;
+    backdrop-filter:blur(3px);
+    -webkit-backdrop-filter:blur(3px);
+  }
+
+  .sidebar .nav-item{
+    width:100%;
+    min-width:0;
+    min-height:48px;
+  }
+  .sidebar .nav-label{
+    min-width:0;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+
+  /* Área principal sempre cabe entre as bordas e a navegação inferior. */
+  .main-content{
+    margin:0;
+    padding-top:12px;
+    padding-left:max(10px,env(safe-area-inset-left));
+    padding-right:max(10px,env(safe-area-inset-right));
+    padding-bottom:calc(var(--mobile-nav-height) + env(safe-area-inset-bottom) + 22px);
+    overflow-x:hidden;
+  }
+
+  .page{
+    overflow:visible;
+  }
+  .page>*{
+    min-width:0;
+    max-width:100%;
+  }
+
+  .page-header{
+    display:flex!important;
+    flex-direction:column;
+    align-items:stretch!important;
+    gap:10px;
+    width:100%;
+    margin-bottom:14px;
+  }
+  .page-header>div{min-width:0;max-width:100%}
+  .page-header h1{font-size:21px;line-height:1.15;overflow-wrap:anywhere}
+  .page-header p{font-size:12px;line-height:1.45;overflow-wrap:anywhere}
+  .page-header .actions{
+    width:100%!important;
+    max-width:100%!important;
+    margin:0!important;
+    padding:0!important;
+    display:grid!important;
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    gap:8px!important;
+    overflow:visible!important;
+  }
+  .page-header .actions .btn{
+    width:100%;
+    min-width:0;
+    max-width:100%;
+    min-height:44px;
+    padding:9px 10px;
+    white-space:normal;
+    line-height:1.2;
+    overflow-wrap:anywhere;
+  }
+  .page-header .actions .btn:only-child{grid-column:1/-1}
+
+  /* Grades, cartões e textos. */
+  .grid,.grid.two,.grid.three,.grid.four,
+  .dashboard-main-grid,.dashboard-command-bar,.dashboard-smart-query,
+  .operations-command-bar,.truck-control-grid,.chemical-control-grid,
+  .qhse-control-grid,.maintenance-control-grid,.audit-control-grid,
+  .certificate-control-grid,.alert-priority-layout,.settings-command-grid,
+  .settings-control-grid,.vessel-command-grid,.vessel-map-command,
+  .vessel-registry-hero,.tank-filter-bar,.chemical-filter-bar,
+  .dashboard-filters,.handover-controls,.handover-layout,.closing-layout,
+  .asset-qr-layout,.smart-query,.alert-center-layout,.chat-layout,
+  .client-proof-grid,.client-ticket-grid,.appearance-theme-grid{
+    width:100%;
+    min-width:0;
+    max-width:100%;
+    grid-template-columns:minmax(0,1fr)!important;
+  }
+
+  .card,.card>*,.mobile-record-card,.operation-focus-card,
+  .planning-card,.vessel-registry-card,.client-proof-card,
+  .client-ticket-card,.truck-queue-card,.chemical-fefo-row{
+    min-width:0;
+    max-width:100%;
+  }
+
+  .card h1,.card h2,.card h3,.card h4,.card p,.card strong,.card small,
+  .operation-focus-head h3,.truck-queue-main p,.truck-queue-main small{
+    max-width:100%;
+    overflow-wrap:anywhere;
+  }
+
+  .operations-kpi-grid,.operation-focus-meta,.operation-focus-kpis,
+  .truck-overview-grid,.truck-flow-stats,.truck-type-kpis,
+  .chemical-command-grid,.certificate-kpi-grid,.alert-professional-kpis,
+  .settings-kpi-grid,.vessel-kpi-grid,.tank-command-center,
+  .closing-summary-grid,.handover-summary-grid,.quality-score-bars,
+  .role-home-metrics,.vessel-registry-summary,.planning-kpis,
+  .history-summary-grid,.metric-grid,.mobile-record-grid,
+  .client-ticket-kpis,.client-proof-kpis{
+    width:100%;
+    min-width:0;
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  }
+
+  .section-heading-row,.truck-section-heading,.chemical-section-heading,
+  .professional-section-heading,.catalog-section-heading,.dashboard-section-heading,
+  .tank-section-heading,.client-ticket-filter-heading,.client-proof-filter-heading{
+    display:flex;
+    flex-direction:column;
+    align-items:stretch;
+    gap:9px;
+  }
+
+  .row-actions,.planning-card-actions,.operation-focus-actions,
+  .form-actions,.asset-qr-actions,.filter-actions{
+    width:100%;
+    min-width:0;
+    display:grid!important;
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+    gap:8px!important;
+  }
+  .row-actions .btn,.planning-card-actions .btn,.operation-focus-actions .btn,
+  .form-actions .btn,.asset-qr-actions .btn,.filter-actions .btn{
+    width:100%;
+    min-width:0;
+    max-width:100%;
+    white-space:normal;
+    line-height:1.2;
+  }
+
+  /* Os registros móveis substituem tabelas longas quando o módulo oferece cartões. */
+  .mobile-record-list{width:100%;min-width:0}
+  .mobile-record-head{min-width:0;align-items:flex-start}
+  .mobile-record-head>div{min-width:0}
+  .mobile-record-head strong,.mobile-record-head small{overflow-wrap:anywhere}
+  .mobile-record-grid span{min-width:0;overflow-wrap:anywhere}
+
+  :root[data-theme="industrial"] .mobile-record-grid span,
+  :root[data-theme="industrial"] .audit-mobile-card p{
+    color:var(--text);
+    background:#0a1725;
+    border:1px solid rgba(32,50,71,.7);
+  }
+
+  /* Tabelas rolam apenas dentro do cartão, nunca a página inteira. */
+  .table-wrap{
+    width:100%;
+    max-width:100%;
+    min-width:0;
+    margin-inline:0!important;
+    overflow-x:auto!important;
+    overflow-y:hidden;
+    -webkit-overflow-scrolling:touch;
+    overscroll-behavior-x:contain;
+    touch-action:pan-x pan-y;
+  }
+  .data-table{
+    width:max-content!important;
+    min-width:620px!important;
+    max-width:none!important;
+  }
+  .data-table th,.data-table td{white-space:nowrap}
+
+  /* Formulários e modais como folha inferior estável no Safari/iPhone. */
+  input,select,textarea{
+    width:100%;
+    min-width:0;
+    max-width:100%;
+    font-size:16px!important;
+  }
+  .modal{
+    width:100%;
+    max-width:100%;
+    padding:0!important;
+    align-items:flex-end!important;
+    overflow:hidden;
+  }
+  .modal-card{
+    width:100%!important;
+    max-width:100vw!important;
+    max-height:calc(var(--mobile-app-height) - env(safe-area-inset-top) - 8px)!important;
+    margin:0!important;
+    border-radius:22px 22px 0 0!important;
+    overflow:hidden!important;
+  }
+  .modal-header{
+    flex:0 0 auto;
+    width:100%;
+    padding:14px max(12px,env(safe-area-inset-right)) 12px max(12px,env(safe-area-inset-left));
+  }
+  .modal-body{
+    width:100%;
+    max-width:100%;
+    min-height:0;
+    padding:12px max(12px,env(safe-area-inset-right)) calc(14px + env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));
+    overflow-y:auto!important;
+    overflow-x:hidden!important;
+    -webkit-overflow-scrolling:touch;
+    overscroll-behavior:contain;
+  }
+  .form-grid{width:100%;grid-template-columns:minmax(0,1fr)!important}
+  .form-grid .wide{grid-column:auto!important}
+  .form-actions{
+    position:sticky;
+    bottom:calc(-14px - env(safe-area-inset-bottom));
+    z-index:7;
+    margin:16px -12px calc(-14px - env(safe-area-inset-bottom));
+    padding:10px 12px calc(10px + env(safe-area-inset-bottom));
+  }
+
+  /* Navegação inferior. */
+  .mobile-bottom-nav{
+    left:0!important;
+    right:0!important;
+    bottom:0!important;
+    width:100%!important;
+    max-width:100%!important;
+    height:calc(var(--mobile-nav-height) + env(safe-area-inset-bottom));
+    padding:6px max(3px,env(safe-area-inset-right)) env(safe-area-inset-bottom) max(3px,env(safe-area-inset-left));
+    grid-template-columns:repeat(5,minmax(0,1fr))!important;
+    overflow:visible;
+  }
+  .mobile-nav-item{
+    width:100%;
+    min-width:0;
+    max-width:100%;
+    padding:4px 2px;
+    overflow:hidden;
+  }
+  .mobile-nav-item>span:last-child{
+    width:100%;
+    min-width:0;
+    overflow:hidden;
+    text-overflow:ellipsis;
+    white-space:nowrap;
+  }
+
+  .mobile-sheet{
+    width:100%;
+    max-width:100%;
+    max-height:min(84dvh,720px);
+    overflow-x:hidden;
+    overflow-y:auto;
+  }
+  .mobile-quick-button,.mobile-module-button{
+    width:100%;
+    min-width:0;
+    grid-template-columns:auto minmax(0,1fr) auto;
+  }
+
+  /* Tema Industrial: contraste correto em componentes móveis. */
+  :root[data-theme="industrial"] .mobile-bottom-nav{
+    background:rgba(7,17,29,.97);
+    border-top-color:#203247;
+    box-shadow:0 -14px 34px rgba(0,0,0,.34);
+  }
+  :root[data-theme="industrial"] .mobile-nav-item.active{
+    color:var(--cyan);
+    background:rgba(32,212,198,.10);
+  }
+  :root[data-theme="industrial"] .mobile-sheet-handle{background:#36506a}
+  :root[data-theme="industrial"] .form-actions{
+    background:rgba(12,25,40,.96);
+    border-color:#203247;
+  }
+  :root[data-theme="industrial"] .table-wrap{border-color:#203247}
+  :root[data-theme="industrial"] .data-table th{background:#0a1725;color:#8da1b7}
+  :root[data-theme="industrial"] .data-table tbody tr:hover{background:#102236}
+}
+
+@media (max-width:480px){
+  :root{--mobile-nav-height:70px}
+
+  .main-content{
+    padding-left:max(8px,env(safe-area-inset-left));
+    padding-right:max(8px,env(safe-area-inset-right));
+  }
+
+  #globalSearchBtn{display:none!important}
+
+  .topbar .icon-btn{width:38px;height:38px;flex-basis:38px}
+  .user-chip{width:38px;height:38px;flex-basis:38px}
+  .user-chip>span{width:32px;height:32px}
+  .brand-mark{width:32px;height:32px;flex-basis:32px}
+
+  .page-header .actions,.row-actions,.planning-card-actions,.operation-focus-actions,
+  .form-actions,.asset-qr-actions,.filter-actions{
+    grid-template-columns:minmax(0,1fr)!important;
+  }
+
+  .operations-kpi-grid,.operation-focus-meta,.operation-focus-kpis,
+  .truck-overview-grid,.truck-flow-stats,.truck-type-kpis,
+  .chemical-command-grid,.certificate-kpi-grid,.alert-professional-kpis,
+  .settings-kpi-grid,.vessel-kpi-grid,.tank-command-center,
+  .closing-summary-grid,.handover-summary-grid,.quality-score-bars,
+  .role-home-metrics,.vessel-registry-summary,.planning-kpis,
+  .history-summary-grid,.metric-grid,.mobile-record-grid,
+  .client-ticket-kpis,.client-proof-kpis{
+    grid-template-columns:minmax(0,1fr)!important;
+  }
+
+  .card{padding:12px;border-radius:14px}
+  .appearance-theme-card{
+    grid-template-columns:minmax(0,1fr)!important;
+    gap:10px;
+  }
+  .theme-preview{width:100%;height:82px}
+  .appearance-theme-copy span{padding-right:0}
+
+  .data-table{min-width:560px!important}
+  .mobile-nav-item{font-size:8px}
+  .mobile-nav-item svg{width:21px;height:21px}
+  .mobile-nav-main .mobile-plus{width:49px;height:49px;border-radius:16px}
+}
+
+@media (max-width:350px){
+  .brand-mark{display:none!important}
+  .mobile-page-copy small{display:none}
+  .topbar{padding-inline:4px}
+  .topbar-left{gap:3px}
+  .mobile-nav-item{font-size:7px}
+}
+
+@media (orientation:landscape) and (max-height:540px) and (max-width:1000px){
+  :root{--mobile-nav-height:60px;--mobile-topbar-height:52px}
+  .mobile-nav-main{transform:none!important}
+  .mobile-nav-main .mobile-plus{width:41px;height:41px;border-radius:13px;border-width:3px}
+  .mobile-nav-item{min-height:48px}
+  .modal-card{max-height:96dvh!important}
+}

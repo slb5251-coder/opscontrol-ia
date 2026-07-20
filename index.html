@@ -7,9 +7,10 @@
   <title>OpsControl IA Pro</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="app.css?v=20260720-v33-12-14-5-industrial-theme">
-  <link rel="stylesheet" href="v33.css?v=20260720-v33-12-14-5-industrial-theme">
-  <link rel="stylesheet" href="industrial-theme.css?v=20260720-v33-12-14-5-industrial-theme">
+  <link rel="stylesheet" href="app.css?v=20260720-v33-12-14-6-mobile-fix">
+  <link rel="stylesheet" href="v33.css?v=20260720-v33-12-14-6-mobile-fix">
+  <link rel="stylesheet" href="industrial-theme.css?v=20260720-v33-12-14-6-mobile-fix">
+  <link rel="stylesheet" href="mobile-fix.css?v=20260720-v33-12-14-6-mobile-fix">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
@@ -39,7 +40,7 @@
   <section id="appView" class="app-view hidden">
     <header class="topbar">
       <div class="topbar-left">
-        <button id="menuBtn" class="icon-btn mobile-only" aria-label="Abrir menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16"></path><path d="M4 12h16"></path><path d="M4 17h16"></path></svg></button>
+        <button id="menuBtn" class="icon-btn mobile-only" aria-label="Abrir menu" aria-expanded="false" aria-controls="sidebar"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M4 7h16"></path><path d="M4 12h16"></path><path d="M4 17h16"></path></svg></button>
         <div class="brand"><span class="brand-mark">OC</span><div class="desktop-brand-copy"><strong>OpsControl IA</strong><small>PRO</small></div><div class="mobile-page-copy"><strong id="mobilePageTitle">Dashboard</strong><small id="mobilePageSubtitle">Visão geral</small></div></div>
       </div>
       <div class="topbar-right">
@@ -157,8 +158,8 @@
   </div>
 
   <div id="toastContainer" class="toast-container"></div>
-  <script src="js/config.js?v=20260720-v33-12-14-5-industrial-theme"></script>
-  <script src="vendor/qrcode.js?v=20260720-v33-12-14-5-industrial-theme"></script>
-  <script src="js/app.js?v=20260720-v33-12-14-5-industrial-theme"></script>
+  <script src="js/config.js?v=20260720-v33-12-14-6-mobile-fix"></script>
+  <script src="vendor/qrcode.js?v=20260720-v33-12-14-6-mobile-fix"></script>
+  <script src="js/app.js?v=20260720-v33-12-14-6-mobile-fix"></script>
 </body>
 </html>

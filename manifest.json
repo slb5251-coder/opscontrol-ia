@@ -5,8 +5,8 @@
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#f4f7fb",
-  "theme_color": "#0b1f3a",
+  "background_color": "#07111d",
+  "theme_color": "#07111d",
   "description": "Controle operacional profissional para a B-Port LMP.",
   "icons": [
     {
@@ -94,5 +94,5 @@
       ]
     }
   ],
-  "version": "20260720-v33-12-14-4-client-proofs-admin-delete"
+  "version": "20260720-v33-12-14-6-mobile-fix"
 }

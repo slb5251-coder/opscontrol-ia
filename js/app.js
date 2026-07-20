@@ -12,7 +12,7 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const APP_VERSION = "20260720-v33-12-14-4-client-proofs-admin-delete";
+  const APP_VERSION = "20260720-v33-12-14-6-mobile-fix";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -6287,6 +6287,7 @@
     targetPage.classList.add("active");
     $("#sidebar")?.classList.remove("open");
     $("#sidebarBackdrop")?.classList.remove("visible");
+    $("#menuBtn")?.setAttribute("aria-expanded", "false");
     closeMobileSheets();
     localStorage.setItem("opscontrol_last_page", page);
     if (options.history !== false && location.hash !== `#${page}`) {
@@ -6872,10 +6873,12 @@
       const open = !sidebar.classList.contains("open");
       sidebar.classList.toggle("open", open);
       $("#sidebarBackdrop")?.classList.toggle("visible", open);
+      button.setAttribute("aria-expanded", String(open));
       return;
     }
     if (button.id === "sidebarBackdrop") {
       $("#sidebar")?.classList.remove("open");
+      $("#menuBtn")?.setAttribute("aria-expanded", "false");
       button.classList.remove("visible");
       return;
     }
@@ -7843,6 +7846,7 @@
     if (state.mobile.moreOpen || state.mobile.quickOpen) return closeMobileSheets();
     $("#sidebar")?.classList.remove("open");
     $("#sidebarBackdrop")?.classList.remove("visible");
+    $("#menuBtn")?.setAttribute("aria-expanded", "false");
   });
 
   $("#loginPassword").addEventListener("keydown", event => {
@@ -7862,6 +7866,22 @@
     const {error}=await state.client.from("shift_checklist_items").upsert({shift_date:selection.date,shift_type:selection.shift,item_key:key,item_label:template?.[1]||key,category:template?.[2]||"Operacional",completed:current?.completed||false,notes:event.target.value||null,completed_by:current?.completed_by||null,completed_at:current?.completed_at||null,created_by:state.user.id},{onConflict:"shift_date,shift_type,item_key"});
     if(error)toast(error.message,"error"); else await loadData();
   });
+
+  function syncMobileViewportState() {
+    const viewportHeight = window.visualViewport?.height || window.innerHeight;
+    document.documentElement.style.setProperty("--mobile-app-height", `${Math.round(viewportHeight)}px`);
+    if (!isMobileViewport()) {
+      $("#sidebar")?.classList.remove("open");
+      $("#sidebarBackdrop")?.classList.remove("visible");
+      $("#menuBtn")?.setAttribute("aria-expanded", "false");
+      closeMobileSheets();
+    }
+  }
+
+  syncMobileViewportState();
+  window.addEventListener("resize", syncMobileViewportState, { passive: true });
+  window.addEventListener("orientationchange", syncMobileViewportState, { passive: true });
+  window.visualViewport?.addEventListener("resize", syncMobileViewportState, { passive: true });
 
   window.addEventListener("beforeinstallprompt", event => {
     event.preventDefault();

@@ -1,18 +1,25 @@
-const CACHE="opscontrol-20260720-v33-12-14-9-industrial-high-contrast";
+const VERSION="20260720-v33-12-14-13-layout-stability";
+const CACHE=`opscontrol-${VERSION}`;
 const FILES=[
   "./",
   "./index.html",
-  "./app.css?v=20260720-v33-12-14-9-industrial-high-contrast",
-  "./v33.css?v=20260720-v33-12-14-9-industrial-high-contrast",
-  "./industrial-theme.css?v=20260720-v33-12-14-9-industrial-high-contrast",
-  "./mobile-fix.css?v=20260720-v33-12-14-9-industrial-high-contrast",
-  "./ux-overhaul.css?v=20260720-v33-12-14-9-industrial-high-contrast",
-  "./login-fix.css?v=20260720-v33-12-14-9-industrial-high-contrast",
-  "./contrast-boost.css?v=20260720-v33-12-14-9-industrial-high-contrast",
-  "./js/config.js?v=20260720-v33-12-14-9-industrial-high-contrast",
-  "./js/app.js?v=20260720-v33-12-14-9-industrial-high-contrast",
+  `./app.css?v=${VERSION}`,
+  `./v33.css?v=${VERSION}`,
+  `./industrial-theme.css?v=${VERSION}`,
+  `./mobile-fix.css?v=${VERSION}`,
+  `./ux-overhaul.css?v=${VERSION}`,
+  `./login-fix.css?v=${VERSION}`,
+  `./contrast-boost.css?v=${VERSION}`,
+  `./tank-card-fix.css?v=${VERSION}`,
+  `./layout-stability.css?v=${VERSION}`,
+  `./js/config.js?v=${VERSION}`,
+  `./js/app.js?v=${VERSION}`,
+  `./vendor/qrcode.js?v=${VERSION}`,
   "./manifest.json",
-  "./assets/icon.svg","./vendor/qrcode.js"
+  "./assets/icon.svg",
+  "./assets/client-logos/equinor.png",
+  "./assets/client-logos/petrobras.gif",
+  "./assets/client-logos/prio.png"
 ];
 
 self.addEventListener("install", event => {
@@ -21,45 +28,44 @@ self.addEventListener("install", event => {
 });
 
 self.addEventListener("activate", event => {
-  event.waitUntil(
-    Promise.all([
-      caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key)))),
-      self.clients.claim()
-    ])
-  );
+  event.waitUntil(Promise.all([
+    caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key)))),
+    self.clients.claim()
+  ]));
 });
 
 self.addEventListener("fetch", event => {
   if (event.request.method !== "GET") return;
-
   const url = new URL(event.request.url);
-  const appFile = url.origin === self.location.origin && (
-    url.pathname.endsWith("/") ||
-    url.pathname.endsWith("/index.html") ||
-    url.pathname.endsWith("/app.css") ||
-    url.pathname.endsWith("/v33.css") ||
-    url.pathname.endsWith("/industrial-theme.css") ||
-    url.pathname.endsWith("/mobile-fix.css") ||
-    url.pathname.endsWith("/login-fix.css") ||
-    url.pathname.endsWith("/contrast-boost.css") ||
-    url.pathname.endsWith("/js/app.js") ||
-    url.pathname.endsWith("/js/config.js")
-  );
+  if (url.origin !== self.location.origin) return;
 
-  if (appFile) {
+  const isNavigation = event.request.mode === "navigate";
+  const isAppAsset = /\.(?:html|css|js|json|svg|png|gif)$/i.test(url.pathname);
+
+  if (isNavigation) {
     event.respondWith(
       fetch(event.request, { cache: "no-store" })
         .then(response => {
-          const copy = response.clone();
-          caches.open(CACHE).then(cache => cache.put(event.request, copy));
+          const copy=response.clone();
+          caches.open(CACHE).then(cache => cache.put("./index.html", copy));
           return response;
         })
-        .catch(() => caches.match(event.request).then(cached => cached || caches.match("./index.html")))
+        .catch(() => caches.match("./index.html"))
     );
     return;
   }
 
-  event.respondWith(
-    caches.match(event.request).then(cached => cached || fetch(event.request))
-  );
+  if (isAppAsset) {
+    event.respondWith(
+      fetch(event.request, { cache: "no-store" })
+        .then(response => {
+          if (response.ok) {
+            const copy=response.clone();
+            caches.open(CACHE).then(cache => cache.put(event.request, copy));
+          }
+          return response;
+        })
+        .catch(() => caches.match(event.request))
+    );
+  }
 });

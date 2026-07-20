@@ -1,0 +1,234 @@
+/* OpsControl IA v33.12.14.11 — correção de estouro nos cartões de tanques e silos */
+
+.compact-tank-card,
+.compact-tank-card *,
+.tank-card-body,
+.tank-card-details,
+.tank-heading-block,
+.tank-client-strip,
+.compact-tank-product,
+.tank-volume-summary,
+.tank-progress-caption,
+.tank-update-meta {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.compact-tank-card {
+  width: 100%;
+  overflow: hidden;
+  contain: layout paint;
+}
+
+.compact-tank-card .tank-top {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 10px;
+  width: 100%;
+}
+
+.compact-tank-card .tank-top > .badge,
+.compact-tank-card .tank-top > .status-badge {
+  justify-self: end;
+  max-width: 112px;
+  white-space: normal;
+  text-align: center;
+  overflow-wrap: anywhere;
+  line-height: 1.2;
+}
+
+.tank-heading-block,
+.tank-client-strip {
+  width: 100%;
+  overflow: hidden;
+}
+
+.tank-name-row {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.tank-name-row h3 {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tank-name-row .tag {
+  flex: 0 1 auto;
+  max-width: 100%;
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.tank-client-strip .client-identity-chip {
+  display: flex;
+  width: fit-content;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.tank-client-strip .client-identity-text {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tank-card-body {
+  width: 100%;
+  grid-template-columns: minmax(58px, 76px) minmax(0, 1fr);
+}
+
+.tank-mini-visual {
+  width: 100%;
+  max-width: 76px;
+  justify-self: center;
+}
+
+.compact-tank-product strong,
+.compact-tank-product span,
+.tank-volume-summary small,
+.tank-volume-summary strong,
+.tank-progress-caption strong,
+.tank-progress-caption span,
+.tank-update-meta span {
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  word-break: normal;
+}
+
+.compact-tank-product strong {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.compact-tank-product span {
+  display: block;
+}
+
+.tank-volume-summary {
+  width: 100%;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.tank-volume-summary > div {
+  min-width: 0;
+  overflow: hidden;
+}
+
+.tank-volume-summary strong {
+  line-height: 1.25;
+}
+
+.tank-progress-caption {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: start;
+  gap: 8px;
+  width: 100%;
+}
+
+.tank-progress-caption span {
+  text-align: right;
+  line-height: 1.35;
+}
+
+.tank-update-meta {
+  width: 100%;
+  overflow: hidden;
+}
+
+.tank-update-meta span {
+  display: block;
+}
+
+.tank-row-actions {
+  width: 100%;
+  min-width: 0;
+}
+
+.tank-row-actions > * {
+  min-width: 0;
+}
+
+@media (max-width: 760px) {
+  .compact-tank-card {
+    padding: 13px;
+  }
+
+  .compact-tank-card .tank-top {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .compact-tank-card .tank-top > .badge,
+  .compact-tank-card .tank-top > .status-badge {
+    justify-self: start;
+    max-width: 100%;
+  }
+
+  .tank-name-row h3 {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .tank-card-body {
+    grid-template-columns: 58px minmax(0, 1fr);
+    gap: 11px;
+  }
+
+  .tank-mini-visual {
+    max-width: 58px;
+  }
+
+  .tank-volume-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .tank-volume-summary > div {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .tank-volume-summary strong {
+    margin-top: 0;
+    text-align: right;
+  }
+
+  .tank-progress-caption {
+    grid-template-columns: 1fr;
+    gap: 3px;
+  }
+
+  .tank-progress-caption span {
+    text-align: left;
+  }
+}
+
+@media (max-width: 380px) {
+  .tank-card-body {
+    grid-template-columns: 50px minmax(0, 1fr);
+    gap: 9px;
+  }
+
+  .tank-mini-visual {
+    max-width: 50px;
+  }
+
+  .client-identity-logo {
+    width: 24px;
+    height: 24px;
+    flex-basis: 24px;
+  }
+
+  .client-identity-chip {
+    padding: 4px 7px;
+  }
+}

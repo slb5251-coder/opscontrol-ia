@@ -1,4 +1,4 @@
-const VERSION="20260720-v33-12-14-14-tank-actions-stable";
+const VERSION="20260720-v33-12-14-15-vision-ui-integrated";
 const CACHE=`opscontrol-${VERSION}`;
 const FILES=[
   "./",
@@ -13,6 +13,7 @@ const FILES=[
   `./tank-card-fix.css?v=${VERSION}`,
   `./layout-stability.css?v=${VERSION}`,
   `./tank-actions-fix.css?v=${VERSION}`,
+  `./vision-ui.css?v=${VERSION}`,
   `./js/config.js?v=${VERSION}`,
   `./js/app.js?v=${VERSION}`,
   `./vendor/qrcode.js?v=${VERSION}`,

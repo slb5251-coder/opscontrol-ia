@@ -12,7 +12,7 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const APP_VERSION = "20260720-v33-12-14-13-layout-stability";
+  const APP_VERSION = "20260720-v33-12-14-15-vision-ui-integrated";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -6565,16 +6565,16 @@
   }
 
   function storedTheme() {
-    const value = localStorage.getItem(themeStorageKey()) || localStorage.getItem(THEME_KEY) || "light";
-    return ["light", "dark", "industrial"].includes(value) ? value : "light";
+    const value = localStorage.getItem(themeStorageKey()) || localStorage.getItem(THEME_KEY) || "industrial";
+    return ["light", "dark", "industrial"].includes(value) ? value : "industrial";
   }
 
-  function themeLabel(theme = document.documentElement.dataset.theme || "light") {
+  function themeLabel(theme = document.documentElement.dataset.theme || "industrial") {
     return ({ light: "Tema claro", dark: "Tema escuro", industrial: "Industrial IA" })[theme] || "Tema claro";
   }
 
   function applyTheme(theme) {
-    const selected = ["light", "dark", "industrial"].includes(theme) ? theme : "light";
+    const selected = ["light", "dark", "industrial"].includes(theme) ? theme : "industrial";
     document.documentElement.dataset.theme = selected;
     localStorage.setItem(THEME_KEY, selected);
     localStorage.setItem(themeStorageKey(), selected);
@@ -8179,7 +8179,7 @@
   });
 
   if ("serviceWorker" in navigator) {
-    window.addEventListener("load", () => navigator.serviceWorker.register("sw.js?v=20260720-v33-12-14-13-layout-stability", { updateViaCache: "none" }).then(registration => registration.update()).catch(console.error));
+    window.addEventListener("load", () => navigator.serviceWorker.register("sw.js?v=20260720-v33-12-14-15-vision-ui-integrated", { updateViaCache: "none" }).then(registration => registration.update()).catch(console.error));
   }
 
   setupSidebarNavigation();

@@ -12,7 +12,7 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const APP_VERSION = "20260720-v33-12-14-16-homologacao-interface";
+  const APP_VERSION = "20260719-v33-12-14-1-client-tickets";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -32,7 +32,7 @@
     filters: { start: "", end: "", client: "", product: "" },
     truckFilters: { query: "", start: "", end: "", movement: "", type: "", status: "", client: "", product: "", stock: "", attention: "" },
     truckFilterTimer: null,
-    clientTicketFilters: { query: "", client: "", documentType: "" },
+    clientTicketFilters: { query: "", client: "", status: "", completeness: "" },
     clientTicketFilterTimer: null,
     vesselFilters: { query: "", client: "", status: "", window: "30" },
     vesselMap: { instance: null, markers: new Map(), selected: "", timer: null, filterTimer: null },
@@ -107,12 +107,6 @@
     shield: '<path d="M12 3l7 3v5c0 4.5-3 8.7-7 10-4-1.3-7-5.5-7-10V6l7-3z"></path><path d="m8.5 12 2.2 2.2 4.8-5"></path>',
     flask: '<path d="M10 2v7.5L5 18a3 3 0 0 0 2.6 4.5h8.8A3 3 0 0 0 19 18l-5-8.5V2"></path><path d="M8 2h8"></path><path d="M8.5 14h7"></path>',
     monitor: '<rect x="3" y="4" width="18" height="13" rx="2"></rect><path d="M8 21h8"></path><path d="M12 17v4"></path>',
-    calendar: '<rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4"></path><path d="M8 3v4"></path><path d="M3 10h18"></path>',
-    activity: '<path d="M3 12h4l2-6 4 12 2-6h6"></path>',
-    filter: '<path d="M4 5h16"></path><path d="M7 12h10"></path><path d="M10 19h4"></path>',
-    chart: '<path d="M4 20V10"></path><path d="M10 20V4"></path><path d="M16 20v-7"></path><path d="M22 20H2"></path>',
-    history: '<path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 4v6h6"></path><path d="M12 7v5l3 2"></path>',
-    edit: '<path d="M4 20h4l11-11-4-4L4 16z"></path><path d="m13.5 6.5 4 4"></path>',
     settings: '<circle cx="12" cy="12" r="3"></circle><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.4-2.5 1a8 8 0 0 0-1.7-1L14.4 3h-4.8l-.4 3.1a8 8 0 0 0-1.7 1L5 6.1 3 9.5 5 11a7 7 0 0 0 0 2l-2 1.5 2 3.4 2.5-1a8 8 0 0 0 1.7 1l.4 3.1h4.8l.4-3.1a8 8 0 0 0 1.7-1l2.5 1 2-3.4-2-1.5c.1-.3.1-.7.1-1z"></path>'
   };
 
@@ -211,7 +205,7 @@
     "chemical-catalog": ["Catálogo Químico", "Nomes e unidades oficiais"],
     chemicals: ["Inventário Químico", "Lotes, validade e saldo"],
     trucks: ["Carretas", "Entradas e saídas"],
-    "client-tickets": ["Tickets de Clientes", "Comprovantes FDT, FRT, MDT e MRT"],
+    "client-tickets": ["Tickets de Clientes", "FDT, FRT, MDT e MRT"],
     qhse: ["QHSE", "Segurança e ações"],
     maintenance: ["Manutenção", "Equipamentos e ordens"],
     certificates: ["Certificados", "Documentos da equipe"],
@@ -293,7 +287,7 @@
       ["reports", "Relatórios", "Passagem e indicadores"],
       ["chemicals", "Químicos", "Estoque e validade"],
       ["trucks", "Carretas", "Entradas e saídas"],
-      ["client-tickets", "Tickets de Clientes", "Comprovantes anexados por cliente"],
+      ["client-tickets", "Tickets de Clientes", "FDT, FRT, MDT e MRT por cliente"],
       ["qhse", "QHSE", "Segurança e ocorrências"],
       ["maintenance", "Manutenção", "Equipamentos e OS"],
       ["certificates", "Certificados", "Documentos"],
@@ -324,7 +318,7 @@
       quickActions.push(mobileQuickButton("new-truck", "Movimentar carreta", "Entrada, saída, NF e produto", uiIcon("truck")));
     }
     if (moduleAllowed("client-tickets") && canManageClientTickets()) {
-      quickActions.push(mobileQuickButton("new-client-proof", "Adicionar comprovante", "Anexar FDT, FRT, MDT ou MRT", uiIcon("file")));
+      quickActions.push(mobileQuickButton("new-client-ticket", "Novo ticket de cliente", "Organizar FDT, FRT, MDT e MRT", uiIcon("file")));
     }
     if (moduleAllowed("qhse") && hasRole(["supervisor", "lider", "operador", "qhse"])) {
       quickActions.push(mobileQuickButton("new-qhse", "Novo registro QHSE", "DDS, APR, risco, inspeção ou ocorrência", uiIcon("shield")));
@@ -376,97 +370,6 @@
       .trim();
   }
 
-  const NAVIGATION_GROUPS = [
-    { id:"operation", label:"Operação", pages:["dashboard","operations","vessel-registry","reports","tv"] },
-    { id:"plant", label:"Planta", pages:["tanks","fluids","chemical-catalog","chemicals"] },
-    { id:"logistics", label:"Logística", pages:["trucks","client-tickets"] },
-    { id:"management", label:"Gestão", pages:["qhse","maintenance","certificates","alerts"] },
-    { id:"administration", label:"Administração", pages:["quality","sanitation","audit","settings"] }
-  ];
-
-  function sidebarFavoritePages() {
-    try { return JSON.parse(localStorage.getItem("opscontrol_sidebar_favorites") || "[]"); }
-    catch (_) { return []; }
-  }
-
-  function setSidebarFavoritePages(pages) {
-    localStorage.setItem("opscontrol_sidebar_favorites", JSON.stringify([...new Set(pages)].slice(0,6)));
-  }
-
-  function navigationChevron() {
-    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg>`;
-  }
-
-  function refreshSidebarFavorites() {
-    const container = $("#sidebarFavoritesList");
-    const section = $("#sidebarFavoritesSection");
-    if (!container || !section) return;
-    const favorites = sidebarFavoritePages();
-    container.innerHTML = favorites.map(page => {
-      const source = $(`.nav-section:not(.nav-favorites) .nav-item[data-page="${page}"]`);
-      if (!source) return "";
-      const clone = source.cloneNode(true);
-      clone.classList.add("nav-favorite-clone");
-      clone.classList.toggle("active", state.page === page);
-      const star = clone.querySelector("[data-favorite-page]");
-      if (star) star.classList.add("selected");
-      return clone.outerHTML;
-    }).join("");
-    section.classList.toggle("hidden", !favorites.length);
-    if (state.user) {
-      container.querySelectorAll(".nav-item").forEach(item => item.classList.toggle("hidden", !moduleAllowed(item.dataset.page)));
-    }
-  }
-
-  function toggleSidebarFavorite(page) {
-    const favorites = sidebarFavoritePages();
-    const next = favorites.includes(page) ? favorites.filter(item => item !== page) : [...favorites, page];
-    setSidebarFavoritePages(next);
-    $$("[data-favorite-page]").forEach(star => star.classList.toggle("selected", next.includes(star.dataset.favoritePage)));
-    refreshSidebarFavorites();
-    toast(next.includes(page) ? "Módulo adicionado aos favoritos." : "Módulo removido dos favoritos.", "success");
-  }
-
-  function setupSidebarNavigation() {
-    const nav = $("#sidebar nav");
-    if (!nav || nav.dataset.grouped === "true") return;
-    nav.dataset.grouped = "true";
-    const items = [...nav.querySelectorAll(":scope > .nav-item")];
-    const itemMap = new Map(items.map(item => [item.dataset.page, item]));
-    items.forEach(item => {
-      const star = document.createElement("span");
-      star.className = "nav-favorite-toggle";
-      star.dataset.favoritePage = item.dataset.page;
-      star.setAttribute("role", "button");
-      star.setAttribute("aria-label", "Adicionar ou remover dos favoritos");
-      star.innerHTML = "★";
-      star.classList.toggle("selected", sidebarFavoritePages().includes(item.dataset.page));
-      item.appendChild(star);
-    });
-    nav.innerHTML = `<section id="sidebarFavoritesSection" class="nav-section nav-favorites hidden"><div class="nav-section-label"><span>Favoritos</span><small>acesso rápido</small></div><div id="sidebarFavoritesList" class="nav-section-list"></div></section>`;
-    NAVIGATION_GROUPS.forEach((group,index) => {
-      const section = document.createElement("section");
-      section.className = "nav-section";
-      section.dataset.navGroup = group.id;
-      section.innerHTML = `<button type="button" class="nav-section-toggle" data-nav-group-toggle="${group.id}" aria-expanded="${index < 2 ? "true" : "false"}"><span>${group.label}</span>${navigationChevron()}</button><div class="nav-section-list ${index < 2 ? "" : "collapsed"}" data-nav-group-list="${group.id}"></div>`;
-      const list = section.querySelector(".nav-section-list");
-      group.pages.forEach(page => { const item=itemMap.get(page); if(item) list.appendChild(item); });
-      nav.appendChild(section);
-    });
-    refreshSidebarFavorites();
-  }
-
-  function startTopbarClock() {
-    const update = () => {
-      const el = $("#topbarClock");
-      if (!el) return;
-      const now = new Date();
-      el.innerHTML = `<strong>${now.toLocaleTimeString("pt-BR", {hour:"2-digit",minute:"2-digit"})}</strong><small>${now.toLocaleDateString("pt-BR", {day:"2-digit",month:"short"})}</small>`;
-    };
-    update();
-    setInterval(update, 30000);
-  }
-
   function clientLogoConfig(client = "") {
     const normalized = normalizeSearch(client);
     if (!normalized) return null;
@@ -481,19 +384,6 @@
     const classes = ["client-logo-badge", extraClass].filter(Boolean).join(" ");
     if (logo) return `<span class="${classes}" title="${esc(logo.alt)}"><img src="${logo.src}" alt="${esc(logo.alt)}" loading="lazy"></span>`;
     return `<span class="${classes} client-logo-fallback" title="${esc(client || "Operação")}">${uiIcon(fallbackIcon)}</span>`;
-  }
-
-  function clientIdentityChip(client = "", fallbackIcon = "briefcase", extraClass = "") {
-    const label = String(client || "").trim() || "Cliente não definido";
-    return `<span class="client-identity-chip ${extraClass}">${clientLogoBadge(label, fallbackIcon, "client-identity-logo")}<span class="client-identity-text">${esc(label)}</span></span>`;
-  }
-
-  function updateTankClientPreview(form) {
-    if (!form) return;
-    const wrap = form.querySelector('[data-tank-client-preview]');
-    const field = form.elements?.client;
-    if (!wrap || !field) return;
-    wrap.innerHTML = clientIdentityChip(field.value || '', 'briefcase', 'tank-client-form-chip');
   }
 
   function searchIndex() {
@@ -1254,8 +1144,11 @@
       return downloadCsv(`carretas-${date}.csv`, ["Data","Movimento","Tipo da carreta","Origem/Destino","Cliente","Produto","Lote","Quantidade","Unidade","Item","Total de itens","Placa","Motorista","NF","Status"], rows);
     }
     if (kind === "client-tickets") {
-      const rows = filteredClientProofs().map(proof => [proof.proofDate,proof.client,proof.documentType,CLIENT_TICKET_DOCUMENT_LABELS[proof.documentType] || "",proof.documentNumber,proof.fileName,proof.vessel,proof.serviceOrder,proof.uploader,proof.notes]);
-      return downloadCsv(`comprovantes-clientes-${date}.csv`, ["Data","Cliente","Classificação","Descrição","Número","Arquivo","Embarcação","OS","Anexado por","Observações"], rows);
+      const rows = filteredClientTickets().map(ticket => {
+        const metrics = clientTicketMetrics(ticket);
+        return [ticket.ticketNumber,ticket.date,ticket.client,ticket.title,ticket.vessel,ticket.serviceOrder,ticket.responsible,ticket.status,metrics.complete,metrics.total,metrics.missing.join(" / "),clientTicketDocuments(ticket.id).map(doc => `${doc.documentType}: ${doc.fileName}`).join(" | ")];
+      });
+      return downloadCsv(`tickets-clientes-${date}.csv`, ["Ticket","Data","Cliente","Título","Embarcação","OS","Responsável","Status","Documentos anexados","Documentos exigidos","Pendentes","Arquivos"], rows);
     }
     if (kind === "maintenance") {
       const rows = state.data.equipment.map(e => [e.name, e.category, e.status, e.hourmeter, e.next_maintenance_date, e.maintenance_due_hourmeter, e.location]);
@@ -1570,33 +1463,9 @@
   }
 
   async function login() {
-    const emailInput = $("#loginEmail");
-    const passwordInput = $("#loginPassword");
-    const button = $("#loginBtn");
-    const message = $("#loginMessage");
-    const email = emailInput.value.trim();
-    const password = passwordInput.value;
-
-    if (button?.disabled) return;
-    message?.classList.add("hidden");
-
-    if (!email) {
-      showLoginMessage("Informe seu e-mail.");
-      emailInput.focus();
-      return;
-    }
-    if (!password) {
-      showLoginMessage("Informe sua senha.");
-      passwordInput.focus();
-      return;
-    }
-
-    const originalText = button?.textContent || "Entrar";
-    if (button) {
-      button.disabled = true;
-      button.setAttribute("aria-busy", "true");
-      button.textContent = "Entrando…";
-    }
+    const email = $("#loginEmail").value.trim();
+    const password = $("#loginPassword").value;
+    if (!email || !password) return showLoginMessage("Preencha e-mail e senha.");
 
     try {
       await initClient();
@@ -1611,14 +1480,6 @@
       openApp();
     } catch (error) {
       showLoginMessage(`Falha no login: ${error.message}`);
-      passwordInput.focus();
-      passwordInput.select();
-    } finally {
-      if (button) {
-        button.disabled = false;
-        button.removeAttribute("aria-busy");
-        button.textContent = originalText;
-      }
     }
   }
 
@@ -1897,8 +1758,8 @@
       })),
       handoverNotes: (results[25].data || []).map(x => ({
         id: x.id, shift_date: x.shift_date, shift_type: x.shift_type,
-        observations: x.observations || "", full_text: x.full_text,
-        updated_by: x.updated_by, created_at: x.created_at, updated_at: x.updated_at
+        observations: x.observations || "", updated_by: x.updated_by,
+        created_at: x.created_at, updated_at: x.updated_at
       })),
       alertCenter: (results[26].data || []).map(x => ({
         id: x.alert_key, title: x.title, message: x.message || "", level: x.level || "Média",
@@ -2052,9 +1913,6 @@
   function openApp() {
     $("#loginView").classList.add("hidden");
     $("#appView").classList.remove("hidden");
-    $("#mobileBottomNav")?.classList.remove("hidden");
-    document.body.classList.remove("login-active", "keyboard-open");
-    document.body.classList.add("app-active");
 
     const profile = state.data.profile;
     openAppProfileHeader();
@@ -2063,7 +1921,7 @@
       button.classList.toggle("hidden", !moduleAllowed(button.dataset.page));
     });
 
-    applyTheme(storedTheme());
+    applyTheme(localStorage.getItem(THEME_KEY) || "light");
     updateConnectionBadge();
     renderAll();
 
@@ -2603,7 +2461,7 @@
       .filter(t => productClass(t.product, t.kind, t.volume) === "generic")
       .reduce((sum, item) => sum + Number(item.volume || 0), 0);
 
-    const activeOps = operations.filter(x => ["Em andamento", "Paralisada"].includes(x.status));
+    const activeOps = operations.filter(x => !["Concluída", "Cancelada"].includes(x.status));
     const today = localDateKey();
     const todayOps = d.operations.filter(x => recordDateKey(x.start_at || x.created_at) === today).length;
     const todayTrucks = d.trucks.filter(x => recordDateKey(x.date || x.created_at) === today).length;
@@ -2625,16 +2483,6 @@
     }).length;
     const criticalAlerts = d.systemAlerts.filter(x => isCriticalAlert(x.level)).length
       + d.alerts.filter(x => !x.read && isCriticalAlert(x.level)).length;
-    const occupiedAssets = d.tanks.filter(x => Number(x.volume || 0) > 0).length;
-    const blockedAssets = d.tanks.filter(x => String(x.status || "").toLowerCase() === "bloqueado").length;
-
-    const attentionTotal = criticalAlerts + blockedAssets + pendingQhse + lowChemicals + expiring.length + expiringChemicals;
-    const upcomingOperations = operations.filter(op => op.status === "Programada")
-      .sort((a,b) => new Date(a.start_at || a.created_at || 0) - new Date(b.start_at || b.created_at || 0));
-    const nextOperation = upcomingOperations[0] || null;
-    const handoverSelection = ensureHandoverSelection();
-    const currentHandover = (d.handoverNotes || []).find(item => item.shift_date === handoverSelection.date && item.shift_type === handoverSelection.shift);
-    const handoverPreview = String(currentHandover?.full_text || currentHandover?.observations || "").trim();
 
     const byClient = aggregateOperationVolume(operations, "client").slice(0, 6);
     const products = aggregateOperationVolume(operations, "product").slice(0, 6);
@@ -2651,6 +2499,8 @@
       ...d.alerts.map(x => x.created_at)
     ]);
 
+    const occupiedAssets = d.tanks.filter(x => Number(x.volume || 0) > 0).length;
+    const blockedAssets = d.tanks.filter(x => String(x.status || "").toLowerCase() === "bloqueado").length;
     const operationCount = filtersActive ? periodOps : todayOps;
     const truckCount = filtersActive ? periodTrucks : todayTrucks;
     const periodLabel = filtersActive ? "no período selecionado" : "registradas hoje";
@@ -2734,16 +2584,7 @@
           <div><small>Ocupação da planta</small><strong>${occupiedAssets} de ${d.tanks.length} equipamentos</strong></div>
         </section>
 
-        <section class="dashboard-priority-strip" aria-label="Prioridades do turno">
-          <button class="dashboard-priority-card priority-now" data-page-link="operations"><span class="priority-icon">${uiIcon(activeOps.length ? "activity" : "check")}</span><div><small>AGORA</small><strong>${activeOps.length ? `${activeOps.length} operação(ões) em andamento` : "Sem operação em andamento"}</strong><span>${activeOps[0] ? `${esc(activeOps[0].client)} • ${esc(activeOps[0].vessel)}` : "Planta disponível para a próxima programação"}</span></div><b>${activeOps.length}</b></button>
-          <button class="dashboard-priority-card priority-next" data-page-link="operations"><span class="priority-icon">${uiIcon("calendar")}</span><div><small>A SEGUIR</small><strong>${nextOperation ? esc(nextOperation.vessel || "Operação programada") : "Nenhuma operação programada"}</strong><span>${nextOperation ? `${esc(nextOperation.client || "Cliente")} • ${nextOperation.start_at ? dateTime(nextOperation.start_at) : "horário a definir"}` : "Cadastre a próxima operação"}</span></div>${nextOperation ? badge(nextOperation.status) : ""}</button>
-          <button class="dashboard-priority-card priority-attention ${attentionTotal ? "has-alert" : "is-ok"}" data-page-link="alerts"><span class="priority-icon">${uiIcon(attentionTotal ? "alert" : "shield")}</span><div><small>ATENÇÃO</small><strong>${attentionTotal ? `${attentionTotal} ponto(s) para acompanhar` : "Controles dentro dos limites"}</strong><span>${criticalAlerts ? `${criticalAlerts} alerta(s) crítico(s)` : "Sem alertas críticos"}</span></div><b>${attentionTotal}</b></button>
-          <button class="dashboard-priority-card priority-handover" data-page-link="reports"><span class="priority-icon">${uiIcon("file")}</span><div><small>PASSAGEM</small><strong>${handoverPreview ? "Passagem atualizada" : "Passagem ainda não preenchida"}</strong><span>${handoverPreview ? esc(handoverPreview.slice(0,90)) : "Registre pendências e informações do turno"}</span></div><span class="priority-arrow">→</span></button>
-        </section>
-
-        <details class="dashboard-expandable no-print">
-          <summary><span>${uiIcon("filter")}</span><div><strong>Filtros do dashboard</strong><small>Período, cliente e produto</small></div><b>${filtersActive ? "Ativo" : "Abrir"}</b></summary>
-        <section class="card dashboard-filter-panel">
+        <section class="card dashboard-filter-panel no-print">
           <div class="dashboard-filter-heading"><div><small>PERÍODO E ESCOPO</small><h3>Filtros do dashboard</h3><p>Operações, carretas, rankings e tempo parado seguem o período selecionado.</p></div>${filtersActive ? `<span class="dashboard-filter-active">Filtro ativo</span>` : ""}</div>
           <div class="dashboard-filter-grid">
             <div><label>Data inicial</label><input id="filterStart" type="date" value="${esc(state.filters.start)}"></div>
@@ -2754,13 +2595,14 @@
           </div>
         </section>
         ${filtersActive ? `<div class="dashboard-filter-notice">A tancagem continua exibindo o saldo atual da planta. Os demais indicadores seguem o filtro aplicado.</div>` : ""}
-        </details>
 
         <section class="dashboard-kpi-grid" aria-label="Indicadores principais">
-          ${statCard("Operações ativas", fmt.format(activeOps.length), "em acompanhamento", uiIcon("gauge"), activeOps.length ? "Monitorar execução e vazão" : "Planta sem operação ativa", "blue")}
-          ${statCard("Próxima operação", fmt.format(upcomingOperations.length), "programada(s)", uiIcon("calendar"), nextOperation ? `${esc(nextOperation.client || "Cliente")} • ${esc(nextOperation.vessel || "Embarcação")}` : "Nenhuma programação", "cyan")}
-          ${statCard("Ocupação da planta", fmt.format(occupiedAssets), `de ${d.tanks.length} equipamentos`, uiIcon("layers"), `${blockedAssets} bloqueado(s)`, "green")}
-          ${statCard("Pendências prioritárias", fmt.format(attentionTotal), "controles para acompanhar", uiIcon("alert"), criticalAlerts ? `${criticalAlerts} crítico(s)` : "Sem criticidade", attentionTotal ? "amber" : "green")}
+          ${statCard(filtersActive ? "Operações no filtro" : "Operações hoje", fmt.format(operationCount), periodLabel, uiIcon("anchor"), activeOps.length ? `${activeOps.length} em andamento` : "Nenhuma em andamento", "blue")}
+          ${statCard("Operações ativas", fmt.format(activeOps.length), "em acompanhamento", uiIcon("gauge"), activeOps.length ? "Monitorar execução e vazão" : "Planta sem operação ativa", "indigo")}
+          ${statCard(filtersActive ? "Carretas no filtro" : "Carretas hoje", fmt.format(truckCount), periodLabel, uiIcon("truck"), "Entradas e saídas registradas", "green")}
+          ${statCard("Equipamentos ocupados", fmt.format(occupiedAssets), `de ${d.tanks.length} tanques e silos`, uiIcon("layers"), `${blockedAssets} bloqueado(s)`, "cyan")}
+          ${statCard("Manutenções abertas", fmt.format(openMaintenance), "ordens pendentes", uiIcon("wrench"), "Corretivas e preventivas", "amber")}
+          ${statCard("Alertas críticos", fmt.format(criticalAlerts), "automáticos e não lidos", uiIcon("alert"), criticalAlerts ? "Requerem atenção" : "Nenhuma criticidade", "red")}
         </section>
 
         <div class="dashboard-main-grid">
@@ -2796,8 +2638,6 @@
           </aside>
         </div>
 
-        <details class="dashboard-manager-view">
-          <summary><span>${uiIcon("chart")}</span><div><strong>Visão gerencial e análises</strong><small>Tancagem, rankings, atividades recentes e consulta inteligente</small></div><b>Abrir</b></summary>
         <section class="card dashboard-storage-overview">
           <div class="dashboard-section-heading"><div><small>SALDO ATUAL DA PLANTA</small><h3>Tancagem por família de produto</h3><p>Volumes atuais, capacidade utilizada e espaço livre.</p></div><button class="btn small secondary" data-page-link="tanks">Abrir inventário</button></div>
           <div class="dashboard-storage-grid">
@@ -2828,7 +2668,6 @@
         </div>
 
         <section class="card smart-query dashboard-smart-query"><div><small>ASSISTENTE OPERACIONAL</small><h3>Consulta inteligente</h3><p>Pergunte sobre volumes, clientes, carretas, tanques, químicos, certificados ou diesel.</p></div><div class="smart-input"><input id="smartQuestion" placeholder="Ex.: Quantos bbl de Brine temos?"><button class="btn primary" data-action="smart-query">Perguntar</button></div><div id="smartAnswer" class="smart-answer hidden"></div></section>
-        </details>
       </div>`;
   }
 
@@ -3071,13 +2910,11 @@
         ${badge(op.status)}
       </div>
       <div class="operation-focus-service"><strong>${esc(op.activity)}</strong><span>${esc(op.product || "Produto não informado")}</span></div>
-      ${(op.rig || op.well || op.ticketNumber || op.service_order || op.lot) ? `<details class="operation-extra-details"><summary>Mais detalhes <span>+</span></summary><div class="operation-focus-meta">
+      <div class="operation-focus-meta">
         ${op.rig ? `<span>Sonda<strong>${esc(op.rig)}</strong></span>` : ""}
         ${op.well ? `<span>Poço<strong>${esc(op.well)}</strong></span>` : ""}
         ${op.ticketNumber ? `<span>Ticket<strong>${esc(op.ticketNumber)}</strong></span>` : ""}
-        ${op.service_order ? `<span>OS<strong>${esc(op.service_order)}</strong></span>` : ""}
-        ${op.lot ? `<span>Lote<strong>${esc(op.lot)}</strong></span>` : ""}
-      </div></details>` : ""}
+      </div>
       <div class="operation-focus-progress"><div><span>Progresso</span><strong>${pct}%</strong></div><div class="progress"><span style="width:${pct}%"></span></div></div>
       <div class="operation-focus-kpis">
         <span>Executado<strong>${fmt.format(op.executed)} ${esc(op.unit)}</strong></span>
@@ -3086,11 +2923,8 @@
       </div>
       <div class="operation-focus-actions">
         ${op.status === "Programada" ? marineTrafficOperationButton(op) : ""}
+        <button class="btn small secondary" data-operation-timeline="${op.id}">${uiIcon("history", "ui-icon btn-icon")} Timeline</button>
         <button class="btn small primary" data-edit-operation="${op.id}">${uiIcon("edit", "ui-icon btn-icon")} Abrir operação</button>
-        <details class="action-menu"><summary class="btn small secondary" aria-label="Mais ações">•••</summary><div class="action-menu-popover">
-          <button class="btn small secondary" data-operation-timeline="${op.id}">${uiIcon("history", "ui-icon btn-icon")} Timeline</button>
-          ${isAdmin() ? `<button class="btn small danger outline" data-delete-operation="${op.id}">Excluir operação</button>` : ""}
-        </div></details>
       </div>
     </article>`;
   }
@@ -3118,25 +2952,22 @@
         <td>${operationAllocationHtml(op)}<div style="margin-top:6px">${badge(tankStatus)}</div></td>
         <td>${badge(op.status)}${op.locked ? `<br><span class="tag">${uiIcon("lock", "ui-icon ui-icon-inline")} Encerrada</span>` : ""}</td>
         <td>${dateTime(op.start_at)}<br><small>${op.end_at ? `Fim: ${dateTime(op.end_at)}` : "Sem término"}</small></td>
-        <td><div class="row-actions operation-row-actions">
-          ${canEdit ? `<button class="btn small primary" data-edit-operation="${op.id}">Abrir</button>` : ""}
-          <details class="action-menu"><summary class="btn small secondary" aria-label="Mais ações">•••</summary><div class="action-menu-popover">
-            <button class="btn small secondary" data-operation-timeline="${op.id}">Timeline</button>
-            ${op.status === "Programada" ? marineTrafficOperationButton(op, true) : ""}
-            <button class="btn small secondary" data-attachments="operation:${op.id}" data-attachment-title="${esc(op.vessel)}">${uiIcon("paperclip", "ui-icon btn-icon")} Anexos (${attachmentCount("operation", op.id)})</button>
-            ${hasRole(["supervisor", "lider", "operador"]) && op.status === "Concluída" && !op.tank_movement_applied && tankMovementMode(op.activity) !== "none" ? `<button class="btn small soft" data-apply-operation-tank="${op.id}">Aplicar na tancagem</button>` : ""}
-            ${isAdmin() ? `<button class="btn small danger outline" data-delete-operation="${op.id}">Excluir operação</button>` : ""}
-          </div></details>
+        <td><div class="row-actions">
+          <button class="btn small secondary" data-operation-timeline="${op.id}">Timeline</button>
+          ${op.status === "Programada" ? marineTrafficOperationButton(op, true) : ""}
+          <button class="btn small secondary" data-attachments="operation:${op.id}" data-attachment-title="${esc(op.vessel)}">${uiIcon("paperclip", "ui-icon btn-icon")} ${attachmentCount("operation", op.id)}</button>
+          ${hasRole(["supervisor", "lider", "operador"]) && op.status === "Concluída" && !op.tank_movement_applied && tankMovementMode(op.activity) !== "none" ? `<button class="btn small soft" data-apply-operation-tank="${op.id}">Aplicar na tancagem</button>` : ""}
+          ${canEdit ? `<button class="btn small primary" data-edit-operation="${op.id}">Editar</button>` : ""}
         </div></td>
       </tr>`;
     }).join("");
 
     const mobile = operations.map(op => `<div class="card mobile-record-card operation-mobile-card">
       <div class="mobile-record-head operation-mobile-head"><div class="operation-mobile-title">${clientLogoBadge(op.client, "calendar", "operation-mobile-logo")}<div><strong>${esc(op.client)}</strong><small>${esc(op.vessel)} • ${esc(op.activity)}</small></div></div>${badge(op.status)}</div>
-      ${(op.rig || op.well || op.ticketNumber) ? `<details class="operation-extra-details mobile-operation-extra"><summary>Mais detalhes <span>+</span></summary><div class="operation-mobile-meta">${op.rig ? `<span>Sonda <strong>${esc(op.rig)}</strong></span>` : ""}${op.well ? `<span>Poço <strong>${esc(op.well)}</strong></span>` : ""}${op.ticketNumber ? `<span>Ticket <strong>${esc(op.ticketNumber)}</strong></span>` : ""}</div></details>` : ""}
+      <div class="operation-mobile-meta">${op.rig ? `<span>Sonda <strong>${esc(op.rig)}</strong></span>` : ""}${op.well ? `<span>Poço <strong>${esc(op.well)}</strong></span>` : ""}${op.ticketNumber ? `<span>Ticket <strong>${esc(op.ticketNumber)}</strong></span>` : ""}</div>
       <div class="mobile-record-grid"><span>Produto<strong>${esc(op.product)}</strong></span><span>Executado<strong>${fmt.format(op.executed)} ${esc(op.unit)}</strong></span><span>Vazão<strong>${fmt.format(operationFlow(op))} ${esc(op.unit)}/h</strong></span><span>Tancagem<strong>${normalizedOperationAllocations(op).length} equipamento(s)</strong></span></div>
       <div class="mobile-allocation-summary">${operationAllocationHtml(op)}</div>
-      <div class="row-actions operation-mobile-actions">${isAdmin() || !op.locked || hasRole(["supervisor"]) ? `<button class="btn small primary" data-edit-operation="${op.id}">Abrir</button>` : ""}${op.status === "Programada" ? marineTrafficOperationButton(op, true) : ""}<details class="action-menu"><summary class="btn small secondary" aria-label="Mais ações">•••</summary><div class="action-menu-popover"><button class="btn small secondary" data-operation-timeline="${op.id}">Timeline</button>${isAdmin() ? `<button class="btn small danger outline" data-delete-operation="${op.id}">Excluir operação</button>` : ""}</div></details></div>
+      <div class="row-actions">${op.status === "Programada" ? marineTrafficOperationButton(op, true) : ""}<button class="btn small secondary" data-operation-timeline="${op.id}">Timeline</button>${isAdmin() || !op.locked || hasRole(["supervisor"]) ? `<button class="btn small primary" data-edit-operation="${op.id}">Editar</button>` : ""}</div>
     </div>`).join("");
 
     const priority = [...active, ...programmed].slice(0, 6);
@@ -3824,76 +3655,58 @@
     const silo = isSiloAsset(tank);
     const physicalCapacity = silo ? defaultSiloPhysicalCapacity(tank) : null;
     const pct = capacity > 0 ? Math.max(0, Math.min(100, (volume / capacity) * 100)) : 0;
+    // Um saldo positivo muito pequeno ainda precisa ficar visível na faixa.
     const visualPct = volume > 0 ? Math.max(1.5, pct) : 0;
     const updater = state.data.users.find(user => user.id === tank.updated_by)?.name || "Não informado";
     const productType = productClass(tank.product, tank.kind, volume);
     const volumeState = volume > 0 ? "has-volume" : "no-volume";
-    const occupancyClass = pct >= 90 ? "tank-health-critical" : (pct >= 75 ? "tank-health-warning" : (volume > 0 ? "tank-health-active" : "tank-health-empty"));
-    const free = Math.max(0, capacity - volume);
 
-    return `<div class="card tank-card compact-tank-card tank-card-horizontal ${silo ? "silo-card" : "fluid-tank-card"} tank-bg-${productType} ${volumeState} ${occupancyClass}" data-tank-search="${esc(`${tank.name} ${tank.product||""} ${tank.lot||""} ${tank.client||""}`.toLowerCase())}" data-tank-phase="${esc(String(tank.phase||"").toLowerCase())}" data-tank-kind="${silo?"silo":"tank"}" data-tank-product="${esc(String(tank.product||"").toLowerCase())}" data-tank-status="${esc(String(tank.status||"").toLowerCase())}">
+    return `<div class="card tank-card compact-tank-card ${silo ? "silo-card" : "fluid-tank-card"} tank-bg-${productType} ${volumeState}" data-tank-search="${esc(`${tank.name} ${tank.product||""} ${tank.lot||""} ${tank.client||""}`.toLowerCase())}" data-tank-phase="${esc(String(tank.phase||"").toLowerCase())}" data-tank-kind="${silo?"silo":"tank"}" data-tank-product="${esc(String(tank.product||"").toLowerCase())}" data-tank-status="${esc(String(tank.status||"").toLowerCase())}">
       <div class="tank-top">
-        <div class="tank-heading-block">
-          <div class="tank-name-row"><h3>${esc(tank.name)}</h3><span class="tag">${esc(tank.kind)}</span></div>
-          <div class="tank-client-strip">${clientIdentityChip(tank.client || '', silo ? 'package' : 'droplet', 'tank-client-card-chip')}</div>
+        <div>
+          <h3>${esc(tank.name)}</h3>
+          <span class="tag">${esc(tank.kind)}</span>
         </div>
         ${badge(tank.status)}
       </div>
 
-      <div class="tank-card-body tank-card-body-horizontal">
-        <div class="tank-card-details">
-          <div class="compact-tank-product">
-            <strong>${esc(tank.product || (volume > 0 ? "Produto não informado" : "Sem produto"))}</strong>
-            <span>Lote: ${esc(tank.lot || "-")}${volume > 0 && !tank.product ? ` • volume registrado` : ""}</span>
-            <span>Densidade: ${tank.density !== null && tank.density !== undefined ? `${fmt.format(tank.density)} ${esc(tank.densityUnit || (silo ? "t/m³" : "ppg"))}` : "não informada"}</span>
-            ${silo ? `<span>Volume físico: ${fmt.format(physicalCapacity)} m³</span>` : ""}
-          </div>
-
-          <div class="tank-volume-summary">
-            <div><small>Saldo atual</small><strong>${fmt.format(volume)} ${esc(tank.unit)}</strong></div>
-            <div><small>${silo ? "Cap. operacional" : "Capacidade"}</small><strong>${fmt.format(capacity)} ${esc(tank.unit)}</strong></div>
-            <div><small>Disponível</small><strong>${fmt.format(free)} ${esc(tank.unit)}</strong></div>
-          </div>
-
-          <div class="tank-progress ${productType} ${volumeState}" data-volume="${volume}" data-kind="${esc(tank.kind)}" role="progressbar" aria-label="Ocupação de ${esc(tank.name)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct.toFixed(1)}">
-            <span style="width:${visualPct.toFixed(2)}%" title="${fmt.format(pct)}% ocupado"></span>
-          </div>
-
-          <div class="tank-progress-caption">
-            <strong>${fmt.format(pct)}%</strong>
-            <span>${silo ? 'ocupação operacional' : `${fmt.format(free)} ${esc(tank.unit)} livres`}</span>
-          </div>
-        </div>
+      <div class="tank-card-body"><div class="tank-mini-visual ${silo ? "is-silo" : "is-tank"}"><span style="height:${visualPct.toFixed(2)}%"></span><b>${fmt.format(pct)}%</b></div><div class="tank-card-details"><div class="compact-tank-product">
+        <strong>${esc(tank.product || (volume > 0 ? "Produto não informado" : "Sem produto"))}</strong>
+        <span>Cliente: ${esc(tank.client || "A definir")}</span>
+        <span>Lote: ${esc(tank.lot || "-")}${volume > 0 && !tank.product ? ` • volume registrado` : ""}</span>
+        <span>Densidade: ${tank.density !== null && tank.density !== undefined ? `${fmt.format(tank.density)} ${esc(tank.densityUnit || (silo ? "t/m³" : "ppg"))}` : "não informada"}</span>
+        ${silo ? `<span>Volume físico: ${fmt.format(physicalCapacity)} m³</span>` : ""}
+      </div>
+      <div class="tank-volume-line">
+        <strong>${fmt.format(volume)} ${esc(tank.unit)}</strong>
+        <span>${silo ? "capacidade operacional" : "de"} ${fmt.format(capacity)} ${esc(tank.unit)}</span>
       </div>
 
-      <div class="tank-update-meta">
+      <div class="tank-progress ${productType} ${volumeState}" data-volume="${volume}" data-kind="${esc(tank.kind)}" role="progressbar"
+        aria-label="Ocupação de ${esc(tank.name)}"
+        aria-valuemin="0"
+        aria-valuemax="100"
+        aria-valuenow="${pct.toFixed(1)}">
+        <span style="width:${visualPct.toFixed(2)}%" title="${fmt.format(pct)}% ocupado"></span>
+      </div>
+
+      <div class="tank-progress-caption">
+        <strong>${fmt.format(pct)}%</strong>
+        <span>${fmt.format(Math.max(0, capacity - volume))} ${esc(tank.unit)} livres</span>
+      </div>
+
+      </div></div><div class="tank-update-meta">
         <span>Atualizado por: ${esc(updater)}</span>
         <span>${dateTime(tank.updated_at)}</span>
       </div>
 
-      <div class="row-actions tank-row-actions">
-        ${hasRole(["supervisor", "lider", "operador", "logistica"]) ? `<button class="btn small primary" data-edit-tank="${tank.id}">Atualizar</button>` : ""}
-        <button type="button" class="btn small secondary tank-more-actions-btn" data-tank-actions="${tank.id}" aria-label="Abrir ações de ${esc(tank.name)}" title="Mais ações"><span aria-hidden="true">•••</span></button>
+      <div class="row-actions">
+        ${hasRole(["supervisor", "lider", "operador", "logistica"]) ? `<button class="btn small primary" data-edit-tank="${tank.id}">Atualizar conteúdo</button>` : ""}
+        ${isAdmin() ? `<button class="btn small secondary admin-structure-btn" data-edit-tank-structure="${tank.id}">Editar estrutura</button>` : ""}
+        <button class="btn small secondary" data-tank-history="${tank.id}">Histórico</button>
+        <button class="btn small secondary" data-tank-movements="${tank.id}">Movimentações</button>
+        <button class="btn small secondary" data-asset-qr="tank:${tank.id}">QR Code</button>
       </div>
-    </div>`;
-  }
-
-
-  function tankActionsPanel(tank) {
-    if (!tank) return `<div class="empty">Equipamento não localizado.</div>`;
-    return `<div class="tank-actions-sheet">
-      <div class="tank-actions-summary">
-        <div><small>Equipamento</small><strong>${esc(tank.name)}</strong></div>
-        <div><small>Produto</small><strong>${esc(tank.product || "Sem produto")}</strong></div>
-        <div><small>Cliente</small><strong>${esc(tank.client || "A definir")}</strong></div>
-      </div>
-      <div class="tank-actions-list">
-        ${isAdmin() ? `<button type="button" class="btn secondary" data-edit-tank-structure="${tank.id}">Editar estrutura</button>` : ""}
-        <button type="button" class="btn secondary" data-tank-history="${tank.id}">Ver histórico</button>
-        <button type="button" class="btn secondary" data-tank-movements="${tank.id}">Ver movimentações</button>
-        <button type="button" class="btn secondary" data-asset-qr="tank:${tank.id}">Abrir QR Code</button>
-      </div>
-      <button type="button" class="btn secondary full tank-actions-close" data-close-modal>Fechar</button>
     </div>`;
   }
 
@@ -4194,7 +4007,6 @@
           <label>Cliente *</label>
           <input name="client" required maxlength="100" list="tankClientSuggestions" value="${esc(tank.client || "A definir")}" placeholder="Selecione ou digite o cliente">
           <datalist id="tankClientSuggestions">${tankClientSuggestions(tank.client).map(value => `<option value="${esc(value)}"></option>`).join("")}</datalist>
-          <div class="tank-client-preview" data-tank-client-preview>${clientIdentityChip(tank.client || '', 'briefcase', 'tank-client-form-chip')}</div>
           <small class="field-help">O cliente ficará vinculado ao conteúdo atual deste equipamento.</small>
         </div>
         <div><label>Status</label><select name="status">${["Disponível", "Liberado", "Em uso", "Bloqueado", "Limpeza", "Manutenção"].map(x => `<option ${tank.status === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
@@ -4789,46 +4601,34 @@
 
 
   const CLIENT_TICKET_DOCUMENT_TYPES = ["FDT", "FRT", "MDT", "MRT"];
-  const CLIENT_TICKET_DOCUMENT_LABELS = {
-    FDT: "Fluid Delivery Ticket",
-    FRT: "Fluid Return Ticket",
-    MDT: "Material Delivery Ticket",
-    MRT: "Material Return Ticket"
-  };
 
   function clientTicketDocuments(ticketId) {
     return (state.data?.clientTicketDocuments || []).filter(item => item.ticketId === ticketId);
   }
 
-  function clientProofRows() {
-    const tickets = new Map((state.data?.clientTickets || []).map(item => [item.id, item]));
-    const operations = new Map((state.data?.operations || []).map(item => [item.id, item]));
-    return (state.data?.clientTicketDocuments || []).map(document => {
-      const ticket = tickets.get(document.ticketId) || {};
-      const operation = ticket.operationId ? operations.get(ticket.operationId) : null;
-      const uploader = (state.data?.users || []).find(user => user.id === document.uploadedBy)?.name || "Usuário";
-      return {
-        ...document,
-        ticket,
-        operation,
-        client: ticket.client || operation?.client || "Cliente não informado",
-        vessel: ticket.vessel || operation?.vessel || "",
-        serviceOrder: ticket.serviceOrder || operation?.service_order || "",
-        responsible: ticket.responsible || uploader,
-        uploader,
-        proofDate: document.documentDate || ticket.date || document.createdAt
-      };
-    }).sort((a,b) => new Date(b.proofDate || b.createdAt) - new Date(a.proofDate || a.createdAt));
+  function clientTicketMetrics(ticket) {
+    const required = [...new Set((ticket.requiredTypes || CLIENT_TICKET_DOCUMENT_TYPES).filter(type => CLIENT_TICKET_DOCUMENT_TYPES.includes(type)))];
+    const documents = clientTicketDocuments(ticket.id).filter(item => item.status !== "Substituído");
+    const present = new Set(documents.map(item => item.documentType));
+    const complete = required.filter(type => present.has(type)).length;
+    const missing = required.filter(type => !present.has(type));
+    const total = required.length;
+    const percent = total ? Math.round(complete / total * 100) : 100;
+    return { required, documents, present, complete, missing, total, percent, ready: missing.length === 0 };
   }
 
-  function filteredClientProofs() {
+  function filteredClientTickets() {
     const filters = state.clientTicketFilters || {};
     const query = normalizeSearch(filters.query || "");
-    return clientProofRows().filter(proof => {
-      const search = normalizeSearch(`${proof.client} ${proof.documentType} ${CLIENT_TICKET_DOCUMENT_LABELS[proof.documentType] || ""} ${proof.documentNumber} ${proof.fileName} ${proof.vessel} ${proof.serviceOrder} ${proof.notes} ${proof.uploader}`);
+    return (state.data?.clientTickets || []).filter(ticket => {
+      const metrics = clientTicketMetrics(ticket);
+      const docs = metrics.documents.map(item => `${item.documentType} ${item.documentNumber} ${item.fileName}`).join(" ");
+      const search = normalizeSearch(`${ticket.ticketNumber} ${ticket.client} ${ticket.title} ${ticket.vessel} ${ticket.serviceOrder} ${ticket.responsible} ${ticket.status} ${ticket.notes} ${docs}`);
       if (query && !search.includes(query)) return false;
-      if (filters.client && proof.client !== filters.client) return false;
-      if (filters.documentType && proof.documentType !== filters.documentType) return false;
+      if (filters.client && ticket.client !== filters.client) return false;
+      if (filters.status && ticket.status !== filters.status) return false;
+      if (filters.completeness === "complete" && !metrics.ready) return false;
+      if (filters.completeness === "pending" && metrics.ready) return false;
       return true;
     });
   }
@@ -4851,157 +4651,164 @@
     }, 180);
   }
 
-  function clientProofTypeCard(type, proofs) {
-    const count = proofs.filter(item => item.documentType === type).length;
-    return statCard(type, fmt.format(count), CLIENT_TICKET_DOCUMENT_LABELS[type], uiIcon("file"), "Comprovantes anexados", type === "FDT" ? "blue" : type === "FRT" ? "purple" : type === "MDT" ? "green" : "orange");
+  function clientTicketDocumentChip(ticket, type) {
+    const docs = clientTicketDocuments(ticket.id).filter(item => item.documentType === type && item.status !== "Substituído");
+    const required = (ticket.requiredTypes || []).includes(type);
+    const present = docs.length > 0;
+    const className = present ? "present" : required ? "missing" : "optional";
+    const label = present ? `${type} • ${docs.length}` : required ? `${type} pendente` : `${type} opcional`;
+    return `<span class="client-ticket-doc-chip ${className}">${present ? uiIcon("check") : uiIcon("file")} ${esc(label)}</span>`;
+  }
+
+  function clientTicketStatusTone(ticket) {
+    const metrics = clientTicketMetrics(ticket);
+    if (["Cancelado", "Arquivado"].includes(ticket.status)) return "neutral";
+    if (["Concluído", "Enviado"].includes(ticket.status) || metrics.ready) return "green";
+    if (ticket.status === "Em revisão") return "blue";
+    return "amber";
   }
 
   function renderClientTickets() {
-    const allProofs = clientProofRows();
-    const proofs = filteredClientProofs();
-    const clients = [...new Set(allProofs.map(item => item.client).filter(Boolean))].sort((a,b) => a.localeCompare(b, "pt-BR"));
-    const actions = `<button class="btn secondary" data-export="client-tickets">Exportar CSV</button>${canManageClientTickets() ? `<button class="btn primary" data-action="new-client-proof">+ Adicionar comprovante</button>` : ""}`;
+    const all = state.data?.clientTickets || [];
+    const tickets = filteredClientTickets();
+    const clients = [...new Set(all.map(item => item.client).filter(Boolean))].sort((a,b) => a.localeCompare(b));
+    const statuses = [...new Set(all.map(item => item.status).filter(Boolean))].sort((a,b) => a.localeCompare(b));
+    const totalDocs = (state.data?.clientTicketDocuments || []).length;
+    const ready = all.filter(ticket => clientTicketMetrics(ticket).ready).length;
+    const pending = all.length - ready;
+    const sent = all.filter(ticket => ["Enviado","Arquivado"].includes(ticket.status)).length;
+    const actions = `<button class="btn secondary" data-export="client-tickets">Exportar CSV</button>${canManageClientTickets() ? `<button class="btn primary" data-action="new-client-ticket">+ Novo ticket</button>` : ""}`;
 
-    const cards = proofs.map(proof => {
-      const canDelete = canDeleteClientTickets() || proof.uploadedBy === state.user.id;
-      const operationLabel = proof.vessel || proof.serviceOrder ? `${proof.vessel || "Sem embarcação"}${proof.serviceOrder ? ` • OS ${proof.serviceOrder}` : ""}` : "Sem vínculo com operação";
-      return `<article class="card client-proof-card">
-        <div class="client-proof-head">
-          ${clientLogoBadge(proof.client, "file", "client-proof-logo")}
-          <div><small>${esc(proof.documentType)} — ${esc(CLIENT_TICKET_DOCUMENT_LABELS[proof.documentType] || "Comprovante")}</small><h3>${esc(proof.client)}</h3><p>${esc(proof.fileName)}</p></div>
-          <span class="client-proof-type type-${normalizeSearch(proof.documentType)}">${esc(proof.documentType)}</span>
-        </div>
-        <div class="client-proof-context">
-          <span>Data<strong>${dateOnly(proof.proofDate)}</strong></span>
-          <span>Documento<strong>${esc(proof.documentNumber || "Não informado")}</strong></span>
-          <span>Operação<strong>${esc(operationLabel)}</strong></span>
-          <span>Anexado por<strong>${esc(proof.uploader)}</strong></span>
-        </div>
-        ${proof.notes ? `<div class="client-proof-notes">${esc(proof.notes)}</div>` : ""}
-        <div class="row-actions">
-          <button class="btn small secondary" data-open-client-ticket-document="${proof.id}">Visualizar</button>
-          ${canManageClientTickets() ? `<button class="btn small secondary" data-edit-client-ticket-document="${proof.id}">Editar dados</button>` : ""}
-          ${canDelete ? `<button class="btn small danger outline" data-delete-client-ticket-document="${proof.id}">Excluir</button>` : ""}
-        </div>
+    const cards = tickets.map(ticket => {
+      const metrics = clientTicketMetrics(ticket);
+      return `<article class="card client-ticket-card tone-${clientTicketStatusTone(ticket)}">
+        <div class="client-ticket-card-head"><div><small>${esc(ticket.ticketNumber)}</small><h3>${esc(ticket.client)}</h3><p>${esc(ticket.title)}</p></div>${badge(ticket.status)}</div>
+        <div class="client-ticket-context"><span>Data<strong>${dateOnly(ticket.date)}</strong></span><span>Embarcação<strong>${esc(ticket.vessel || "-")}</strong></span><span>OS<strong>${esc(ticket.serviceOrder || "-")}</strong></span><span>Responsável<strong>${esc(ticket.responsible || "-")}</strong></span></div>
+        <div class="client-ticket-progress"><div><span>Documentação</span><strong>${metrics.complete}/${metrics.total}</strong></div><div class="client-ticket-progress-bar"><i style="width:${metrics.percent}%"></i></div><small>${metrics.ready ? "Pacote documental completo" : `Pendentes: ${esc(metrics.missing.join(", "))}`}</small></div>
+        <div class="client-ticket-doc-chips">${CLIENT_TICKET_DOCUMENT_TYPES.map(type => clientTicketDocumentChip(ticket,type)).join("")}</div>
+        <div class="row-actions"><button class="btn small secondary" data-view-client-ticket="${ticket.id}">Abrir documentos</button>${canManageClientTickets() ? `<button class="btn small primary" data-edit-client-ticket="${ticket.id}">Editar ticket</button>` : ""}</div>
       </article>`;
     }).join("");
 
-    $("#page-client-tickets").innerHTML = header("Tickets de Clientes", "Anexe os comprovantes enviados ao cliente e classifique cada arquivo como FDT, FRT, MDT ou MRT.", actions) +
-      `<section class="client-ticket-kpis">${CLIENT_TICKET_DOCUMENT_TYPES.map(type => clientProofTypeCard(type, allProofs)).join("")}</section>
-      <section class="card client-ticket-filter-panel"><div class="client-ticket-filter-heading"><div><small>COMPROVANTES</small><h3>Localizar anexos</h3><p>Pesquise por cliente, tipo, nome do arquivo, número, embarcação ou OS.</p></div>${clientTicketFilterActiveCount() ? `<span>${clientTicketFilterActiveCount()} filtro(s)</span>` : ""}</div><div class="client-ticket-filter-grid client-proof-filter-grid">
-        <div class="wide"><label>Busca geral</label><input data-client-ticket-filter="query" value="${esc(state.clientTicketFilters.query || "")}" placeholder="Ex.: Equinor, FDT, nome do arquivo ou OS"></div>
+    $("#page-client-tickets").innerHTML = header("Tickets de Clientes", "Organize FDT, FRT, MDT e MRT por cliente, operação ou embarcação.", actions) +
+      `<section class="client-ticket-kpis">${statCard("Tickets", fmt.format(all.length), "pacotes documentais", uiIcon("file"), "Todos os clientes", "blue")}${statCard("Completos", fmt.format(ready), "sem documentos pendentes", uiIcon("check"), "Prontos para revisão/envio", "green")}${statCard("Pendentes", fmt.format(pending), "com documento faltando", uiIcon("alert"), "Exigem acompanhamento", "orange")}${statCard("Arquivos", fmt.format(totalDocs), "FDT, FRT, MDT e MRT", uiIcon("paperclip"), `${sent} ticket(s) enviados`, "purple")}</section>
+      <section class="card client-ticket-filter-panel"><div class="client-ticket-filter-heading"><div><small>LOCALIZAÇÃO</small><h3>Pesquisar tickets e documentos</h3><p>Busque por cliente, ticket, embarcação, OS, tipo ou nome do arquivo.</p></div>${clientTicketFilterActiveCount() ? `<span>${clientTicketFilterActiveCount()} filtro(s)</span>` : ""}</div><div class="client-ticket-filter-grid">
+        <div class="wide"><label>Busca geral</label><input data-client-ticket-filter="query" value="${esc(state.clientTicketFilters.query || "")}" placeholder="Ex.: Equinor, FDT, embarcação ou número do ticket"></div>
         <div><label>Cliente</label><select data-client-ticket-filter="client"><option value="">Todos</option>${clients.map(value => `<option value="${esc(value)}" ${state.clientTicketFilters.client===value?"selected":""}>${esc(value)}</option>`).join("")}</select></div>
-        <div><label>Classificação</label><select data-client-ticket-filter="documentType"><option value="">Todas</option>${CLIENT_TICKET_DOCUMENT_TYPES.map(type => `<option value="${type}" ${state.clientTicketFilters.documentType===type?"selected":""}>${type} — ${CLIENT_TICKET_DOCUMENT_LABELS[type]}</option>`).join("")}</select></div>
+        <div><label>Status</label><select data-client-ticket-filter="status"><option value="">Todos</option>${statuses.map(value => `<option value="${esc(value)}" ${state.clientTicketFilters.status===value?"selected":""}>${esc(value)}</option>`).join("")}</select></div>
+        <div><label>Documentação</label><select data-client-ticket-filter="completeness"><option value="">Todos</option><option value="complete" ${state.clientTicketFilters.completeness==="complete"?"selected":""}>Completa</option><option value="pending" ${state.clientTicketFilters.completeness==="pending"?"selected":""}>Pendente</option></select></div>
         <div class="client-ticket-filter-action"><button class="btn secondary full" data-action="clear-client-ticket-filters">Limpar filtros</button></div>
       </div></section>
-      <div class="section-title professional-record-title"><span>Comprovantes anexados</span><small>${proofs.length} arquivo(s) no filtro</small></div>
-      <section class="client-proof-grid">${cards || `<div class="card empty">Nenhum comprovante anexado.</div>`}</section>`;
+      <div class="section-title professional-record-title"><span>Pacotes documentais</span><small>${tickets.length} ticket(s) no filtro</small></div>
+      <section class="client-ticket-grid">${cards || `<div class="card empty">Nenhum ticket de cliente encontrado.</div>`}</section>`;
   }
 
-  function clientProofUploadForm() {
-    const clientNames = [...new Set([...(state.data.operations || []).map(item => item.client), ...(state.data.trucks || []).map(item => item.client), ...(state.data.clientTickets || []).map(item => item.client)].filter(Boolean))].sort((a,b)=>a.localeCompare(b,"pt-BR"));
-    const operationOptions = (state.data.operations || []).map(op => `<option value="${op.id}">${esc(op.client)} • ${esc(op.vessel || "Operação")} • ${esc(op.service_order || op.activity || "Sem OS")}</option>`).join("");
-    return `<form id="clientProofForm"><div class="form-grid">
-      <div class="wide"><label>Cliente *</label><input name="client" list="clientProofClientList" required placeholder="Ex.: Equinor"><datalist id="clientProofClientList">${clientNames.map(name => `<option value="${esc(name)}"></option>`).join("")}</datalist></div>
-      <div class="wide"><label>Vincular a uma operação</label><select name="operation_id" data-client-proof-operation><option value="">Sem vínculo direto</option>${operationOptions}</select></div>
-      <div><label>Classificação *</label><select name="document_type" required>${CLIENT_TICKET_DOCUMENT_TYPES.map(type => `<option value="${type}">${type} — ${CLIENT_TICKET_DOCUMENT_LABELS[type]}</option>`).join("")}</select></div>
-      <div><label>Data do comprovante *</label><input name="document_date" type="date" required value="${localDateKey()}"></div>
-      <div class="wide"><label>Número do comprovante</label><input name="document_number" placeholder="Ex.: FDT-00125"></div>
+  function clientTicketForm(ticket = {}) {
+    const required = ticket.requiredTypes || CLIENT_TICKET_DOCUMENT_TYPES;
+    const clientNames = [...new Set([...(state.data.operations || []).map(item => item.client), ...(state.data.trucks || []).map(item => item.client), ticket.client].filter(Boolean))].sort((a,b)=>a.localeCompare(b));
+    const operationOptions = (state.data.operations || []).map(op => `<option value="${op.id}" ${ticket.operationId===op.id?"selected":""}>${esc(op.client)} • ${esc(op.vessel)} • ${esc(op.service_order || op.activity)}</option>`).join("");
+    return `<form id="clientTicketForm" data-id="${ticket.id || ""}"><div class="form-grid">
+      ${ticket.ticketNumber ? `<div><label>Número do ticket</label><input value="${esc(ticket.ticketNumber)}" disabled></div>` : ""}
+      <div><label>Data *</label><input name="ticket_date" type="date" required value="${String(ticket.date || localDateKey()).slice(0,10)}"></div>
+      <div class="wide"><label>Cliente *</label><input name="client" list="clientTicketClientList" required value="${esc(ticket.client || "")}" placeholder="Ex.: Equinor"><datalist id="clientTicketClientList">${clientNames.map(name => `<option value="${esc(name)}"></option>`).join("")}</datalist></div>
+      <div class="wide"><label>Título *</label><input name="title" required value="${esc(ticket.title || "Documentação operacional")}" placeholder="Ex.: Bombeio de Barita — campanha Wahoo"></div>
+      <div class="wide"><label>Vincular a uma operação</label><select name="operation_id" data-client-ticket-operation><option value="">Sem vínculo direto</option>${operationOptions}</select></div>
+      <div><label>Embarcação</label><input name="vessel" value="${esc(ticket.vessel || "")}"></div>
+      <div><label>OS</label><input name="service_order" value="${esc(ticket.serviceOrder || "")}"></div>
+      <div><label>Responsável</label><input name="responsible" value="${esc(ticket.responsible || state.data.profile.name || "")}"></div>
+      <div><label>Status</label><select name="status">${["Aberto","Em montagem","Em revisão","Concluído","Enviado","Arquivado","Cancelado"].map(value => `<option ${String(ticket.status || "Em montagem")===value?"selected":""}>${value}</option>`).join("")}</select></div>
+      <div class="wide"><label>Documentos obrigatórios *</label><div class="client-ticket-required-grid">${CLIENT_TICKET_DOCUMENT_TYPES.map(type => `<label><input type="checkbox" name="required_document_types" value="${type}" ${required.includes(type)?"checked":""}><span><strong>${type}</strong><small>${({FDT:"Fluid Delivery Ticket",FRT:"Fluid Return Ticket",MDT:"Material Delivery Ticket",MRT:"Material Return Ticket"})[type]}</small></span></label>`).join("")}</div></div>
+      <div class="wide"><label>Observações</label><textarea name="notes" placeholder="Campanha, poço, sonda, orientação do cliente ou pendências.">${esc(ticket.notes || "")}</textarea></div>
+    </div>${formActions(ticket.id ? "Salvar alterações" : "Criar ticket")}</form>`;
+  }
+
+  function clientTicketDocumentUploadForm(ticket, preferredType = "") {
+    const missing = clientTicketMetrics(ticket).missing;
+    const selected = preferredType || missing[0] || ticket.requiredTypes?.[0] || "FDT";
+    return `<form id="clientTicketDocumentForm" data-ticket-id="${ticket.id}"><div class="form-grid">
+      <div><label>Tipo do documento *</label><select name="document_type" required>${CLIENT_TICKET_DOCUMENT_TYPES.map(type => `<option ${type===selected?"selected":""}>${type}</option>`).join("")}</select></div>
+      <div><label>Status</label><select name="status">${["Anexado","Em revisão","Aprovado"].map(value => `<option>${value}</option>`).join("")}</select></div>
+      <div><label>Número do documento</label><input name="document_number" placeholder="Ex.: FDT-00125"></div>
+      <div><label>Data do documento</label><input name="document_date" type="date" value="${localDateKey()}"></div>
+      <div><label>Revisão</label><input name="revision" placeholder="Ex.: Rev. 0"></div>
       <div class="wide"><label>Arquivo *</label><input name="document_file" type="file" accept=".pdf,image/jpeg,image/png,image/webp,image/heic,image/heif" required><small class="field-help">PDF ou imagem, com no máximo 20 MB.</small></div>
-      <div class="wide"><label>Observações</label><textarea name="notes" placeholder="Operação, campanha, produto, volume ou informação adicional."></textarea></div>
-    </div>
-    <div class="client-proof-type-help">${CLIENT_TICKET_DOCUMENT_TYPES.map(type => `<span><strong>${type}</strong>${CLIENT_TICKET_DOCUMENT_LABELS[type]}</span>`).join("")}</div>
-    ${formActions("Anexar comprovante")}</form>`;
+      <div class="wide"><label>Observações</label><textarea name="notes"></textarea></div>
+    </div>${formActions("Anexar documento")}</form>`;
   }
 
   function clientTicketDocumentEditForm(document) {
     return `<form id="clientTicketDocumentEditForm" data-id="${document.id}" data-ticket-id="${document.ticketId}"><div class="form-grid">
-      <div><label>Classificação *</label><select name="document_type">${CLIENT_TICKET_DOCUMENT_TYPES.map(type => `<option value="${type}" ${type===document.documentType?"selected":""}>${type} — ${CLIENT_TICKET_DOCUMENT_LABELS[type]}</option>`).join("")}</select></div>
+      <div><label>Tipo *</label><select name="document_type">${CLIENT_TICKET_DOCUMENT_TYPES.map(type => `<option ${type===document.documentType?"selected":""}>${type}</option>`).join("")}</select></div>
+      <div><label>Status</label><select name="status">${["Anexado","Em revisão","Aprovado","Substituído"].map(value => `<option ${value===document.status?"selected":""}>${value}</option>`).join("")}</select></div>
+      <div><label>Número</label><input name="document_number" value="${esc(document.documentNumber || "")}"></div>
       <div><label>Data</label><input name="document_date" type="date" value="${String(document.documentDate || "").slice(0,10)}"></div>
-      <div class="wide"><label>Número do comprovante</label><input name="document_number" value="${esc(document.documentNumber || "")}"></div>
+      <div><label>Revisão</label><input name="revision" value="${esc(document.revision || "")}"></div>
       <div class="wide"><label>Arquivo</label><input value="${esc(document.fileName)}" disabled></div>
       <div class="wide"><label>Observações</label><textarea name="notes">${esc(document.notes || "")}</textarea></div>
-    </div>${formActions("Salvar alterações")}</form>`;
+    </div>${formActions("Salvar documento")}</form>`;
   }
 
   function clientTicketDetails(ticket) {
+    const metrics = clientTicketMetrics(ticket);
     const documents = clientTicketDocuments(ticket.id);
     const rows = documents.map(document => {
       const uploader = state.data.users.find(user => user.id === document.uploadedBy)?.name || "Usuário";
       const canDelete = canDeleteClientTickets() || document.uploadedBy === state.user.id;
-      return `<article class="client-ticket-document-row"><span class="client-ticket-document-type">${esc(document.documentType)}</span><div class="client-ticket-document-info"><strong>${esc(document.fileName)}</strong><small>${document.documentNumber ? `Nº ${esc(document.documentNumber)} • ` : ""}${document.documentDate ? `${dateOnly(document.documentDate)} • ` : ""}${esc(CLIENT_TICKET_DOCUMENT_LABELS[document.documentType] || "Comprovante")}</small><small>Anexado por ${esc(uploader)} em ${dateTime(document.createdAt)}</small>${document.notes ? `<p>${esc(document.notes)}</p>` : ""}</div><div class="row-actions"><button class="btn small secondary" data-open-client-ticket-document="${document.id}">Visualizar</button>${canManageClientTickets()?`<button class="btn small secondary" data-edit-client-ticket-document="${document.id}">Editar dados</button>`:""}${canDelete?`<button class="btn small danger outline" data-delete-client-ticket-document="${document.id}">Excluir</button>`:""}</div></article>`;
+      return `<article class="client-ticket-document-row status-${normalizeSearch(document.status)}"><span class="client-ticket-document-type">${esc(document.documentType)}</span><div class="client-ticket-document-info"><strong>${esc(document.fileName)}</strong><small>${document.documentNumber ? `Nº ${esc(document.documentNumber)} • ` : ""}${document.documentDate ? `${dateOnly(document.documentDate)} • ` : ""}${document.revision ? `${esc(document.revision)} • ` : ""}${esc(document.status)}</small><small>Enviado por ${esc(uploader)} em ${dateTime(document.createdAt)}</small>${document.notes ? `<p>${esc(document.notes)}</p>` : ""}</div><div class="row-actions"><button class="btn small secondary" data-open-client-ticket-document="${document.id}">Visualizar</button>${canManageClientTickets()?`<button class="btn small secondary" data-edit-client-ticket-document="${document.id}">Editar</button>`:""}${canDelete?`<button class="btn small danger outline" data-delete-client-ticket-document="${document.id}">Excluir</button>`:""}</div></article>`;
     }).join("");
-    return `<div class="client-ticket-detail-head"><div><small>COMPROVANTES DO CLIENTE</small><h3>${esc(ticket.client)}</h3><p>${dateOnly(ticket.date)}${ticket.vessel?` • ${esc(ticket.vessel)}`:""}${ticket.serviceOrder?` • OS ${esc(ticket.serviceOrder)}`:""}</p></div></div>
-      <div class="client-ticket-document-list">${rows || `<div class="empty">Nenhum comprovante anexado.</div>`}</div>`;
+    return `<div class="client-ticket-detail-head"><div><small>${esc(ticket.ticketNumber)}</small><h3>${esc(ticket.client)} — ${esc(ticket.title)}</h3><p>${dateOnly(ticket.date)}${ticket.vessel?` • ${esc(ticket.vessel)}`:""}${ticket.serviceOrder?` • OS ${esc(ticket.serviceOrder)}`:""}</p></div>${badge(ticket.status)}</div>
+      <div class="client-ticket-detail-progress"><div><strong>${metrics.complete}/${metrics.total} documentos obrigatórios</strong><span>${metrics.percent}%</span></div><div class="client-ticket-progress-bar"><i style="width:${metrics.percent}%"></i></div><div class="client-ticket-doc-chips">${CLIENT_TICKET_DOCUMENT_TYPES.map(type => clientTicketDocumentChip(ticket,type)).join("")}</div></div>
+      ${ticket.notes ? `<div class="info-box">${esc(ticket.notes)}</div>` : ""}
+      ${canManageClientTickets() ? `<div class="client-ticket-upload-panel"><div class="professional-section-heading"><div><small>NOVO ARQUIVO</small><h3>Anexar FDT, FRT, MDT ou MRT</h3></div></div>${clientTicketDocumentUploadForm(ticket)}</div>` : ""}
+      <div class="section-title"><span>Documentos anexados</span><small>${documents.length} arquivo(s)</small></div><div class="client-ticket-document-list">${rows || `<div class="empty">Nenhum documento anexado.</div>`}</div>`;
   }
 
-  async function createClientProof(form) {
-    if (!canManageClientTickets()) throw new Error("Seu perfil não pode anexar comprovantes.");
+  async function saveClientTicket(payload, id = null, requiredTypes = []) {
+    if (!canManageClientTickets()) throw new Error("Seu perfil não pode alterar tickets de clientes.");
+    if (!requiredTypes.length) throw new Error("Selecione pelo menos um documento obrigatório.");
+    const row = {
+      client:String(payload.client || "").trim(), title:String(payload.title || "").trim(),
+      ticket_date:payload.ticket_date, operation_id:payload.operation_id || null,
+      vessel:String(payload.vessel || "").trim() || null, service_order:String(payload.service_order || "").trim() || null,
+      responsible:String(payload.responsible || "").trim() || null, status:payload.status || "Em montagem",
+      required_document_types:requiredTypes, notes:String(payload.notes || "").trim() || null
+    };
+    if (!row.client) throw new Error("Informe o cliente.");
+    const query = id
+      ? state.client.from("client_document_tickets").update(row).eq("id",id).select("id,ticket_number").single()
+      : state.client.from("client_document_tickets").insert({...row,created_by:state.user.id}).select("id,ticket_number").single();
+    const {data,error} = await query;
+    if (error) throw error;
+    return data;
+  }
+
+  async function uploadClientTicketDocument(form) {
+    if (!canManageClientTickets()) throw new Error("Seu perfil não pode anexar documentos.");
     const payload = Object.fromEntries(new FormData(form));
     const file = form.elements.document_file?.files?.[0];
-    if (!file) throw new Error("Selecione o arquivo do comprovante.");
+    if (!file) throw new Error("Selecione o arquivo.");
     const allowed = ["application/pdf","image/jpeg","image/png","image/webp","image/heic","image/heif"];
     if (!allowed.includes(file.type)) throw new Error("Formato não permitido. Use PDF ou imagem.");
     if (file.size > 20 * 1024 * 1024) throw new Error("O arquivo ultrapassa 20 MB.");
-
-    const documentType = String(payload.document_type || "").trim();
-    const documentDate = payload.document_date || localDateKey();
-    const operationId = payload.operation_id || null;
-    const operation = operationId ? state.data.operations.find(item => item.id === operationId) : null;
-    const client = String(payload.client || operation?.client || "").trim();
-    if (!client) throw new Error("Informe o cliente.");
-
-    const path = `client-tickets/proofs/${state.user.id}/${documentType}/${Date.now()}-${uid("proof")}-${safeFileName(file.name)}`;
+    const ticketId = form.dataset.ticketId;
+    const path = `client-tickets/${ticketId}/${payload.document_type}/${Date.now()}-${uid("document")}-${safeFileName(file.name)}`;
     const {error:uploadError} = await state.client.storage.from("opscontrol-files").upload(path,file,{contentType:file.type,upsert:false});
     if (uploadError) throw uploadError;
-
-    let ticket = (state.data.clientTickets || []).find(item =>
-      normalizeSearch(item.client) === normalizeSearch(client) &&
-      String(item.date || "").slice(0,10) === String(documentDate).slice(0,10) &&
-      (operationId ? item.operationId === operationId : !item.operationId) &&
-      item.title === "Comprovantes operacionais"
-    );
-
-    try {
-      if (!ticket) {
-        const {data,error} = await state.client.from("client_document_tickets").insert({
-          client,
-          title:"Comprovantes operacionais",
-          ticket_date:documentDate,
-          operation_id:operationId,
-          vessel:operation?.vessel || null,
-          service_order:operation?.service_order || null,
-          responsible:state.data.profile.name || null,
-          status:"Concluído",
-          required_document_types:[documentType],
-          notes:null,
-          created_by:state.user.id
-        }).select("id,ticket_number,client,ticket_date,operation_id,vessel,service_order,responsible,status,required_document_types,title").single();
-        if (error) throw error;
-        ticket = { id:data.id, ticketNumber:data.ticket_number, client:data.client, date:data.ticket_date, operationId:data.operation_id, vessel:data.vessel || "", serviceOrder:data.service_order || "", responsible:data.responsible || "", status:data.status, requiredTypes:data.required_document_types || [documentType], title:data.title };
-      } else if (!(ticket.requiredTypes || []).includes(documentType)) {
-        const requiredTypes = [...new Set([...(ticket.requiredTypes || []),documentType])];
-        await state.client.from("client_document_tickets").update({required_document_types:requiredTypes}).eq("id",ticket.id);
-      }
-
-      const {error:metaError} = await state.client.from("client_ticket_documents").insert({
-        ticket_id:ticket.id,
-        document_type:documentType,
-        document_number:String(payload.document_number||"").trim()||null,
-        document_date:documentDate,
-        revision:null,
-        status:"Anexado",
-        file_name:file.name,
-        file_path:path,
-        mime_type:file.type,
-        file_size:file.size,
-        notes:String(payload.notes||"").trim()||null,
-        uploaded_by:state.user.id
-      });
-      if (metaError) throw metaError;
-    } catch (error) {
+    const {error:metaError} = await state.client.from("client_ticket_documents").insert({
+      ticket_id:ticketId, document_type:payload.document_type, document_number:String(payload.document_number||"").trim()||null,
+      document_date:payload.document_date||null, revision:String(payload.revision||"").trim()||null,
+      status:payload.status||"Anexado", file_name:file.name, file_path:path, mime_type:file.type,
+      file_size:file.size, notes:String(payload.notes||"").trim()||null, uploaded_by:state.user.id
+    });
+    if (metaError) {
       await state.client.storage.from("opscontrol-files").remove([path]);
-      throw error;
+      throw metaError;
+    }
+    const ticket = state.data.clientTickets.find(item => item.id === ticketId);
+    if (ticket && ["Aberto","Em montagem"].includes(ticket.status)) {
+      const futurePresent = new Set([...clientTicketDocuments(ticketId).filter(item=>item.status!=="Substituído").map(item=>item.documentType),payload.document_type]);
+      const complete = (ticket.requiredTypes || []).every(type => futurePresent.has(type));
+      if (complete) await state.client.from("client_document_tickets").update({status:"Em revisão"}).eq("id",ticketId);
     }
   }
 
@@ -5112,21 +4919,6 @@
     const grouped = [...new Set(all.map(x=>x.category||"Sistema"))];
     const recent = all.filter(item => { const age=Date.now()-new Date(item.created_at||0).getTime(); return Number.isFinite(age) && age <= 24*60*60*1000; });
     const automaticCount = all.filter(item=>item.automatic).length;
-    const alertLane = item => {
-      const terms = normalizeSearch(`${item.category || ""} ${item.title || ""} ${item.message || ""} ${item.action_page || ""}`);
-      if (isCriticalAlert(item.level)) return "critical";
-      if (/manut|equipamento|motor|bomba|compressor/.test(terms)) return "maintenance";
-      if (/document|certific|ticket|fdt|frt|mdt|mrt|qualidade/.test(terms)) return "documental";
-      if (/oper|tanque|silo|carreta|embarc|qhse|estoque|planta/.test(terms)) return "operational";
-      return "informational";
-    };
-    const alertLanes = [
-      { id:"critical", label:"Críticos", detail:"Ação imediata", icon:"alert", tone:"red" },
-      { id:"operational", label:"Operacionais", detail:"Rotina da planta", icon:"activity", tone:"blue" },
-      { id:"documental", label:"Documentais", detail:"Tickets e validade", icon:"file", tone:"purple" },
-      { id:"maintenance", label:"Manutenção", detail:"Equipamentos e OS", icon:"wrench", tone:"amber" },
-      { id:"informational", label:"Informativos", detail:"Avisos gerais", icon:"bell", tone:"green" }
-    ].map(lane => ({ ...lane, count: all.filter(item => alertLane(item) === lane.id).length }));
     const adminAlertActions = item => isAdmin() && item.deleteKey
       ? `<button class="btn small danger outline" data-delete-alert="${esc(item.deleteKey)}" data-alert-automatic="${item.automatic ? "true" : "false"}" data-alert-title="${esc(item.title || "Alerta")}" data-alert-category="${esc(item.category || "Sistema")}">Excluir</button>`
       : "";
@@ -5135,7 +4927,6 @@
     const chatMessages=messages.slice(-100).map(item=>`<div class="chat-message"><div class="chat-avatar">${esc(String(item.sender_name||"U").trim().slice(0,1).toUpperCase())}</div><div><strong>${esc(item.sender_name)}</strong><p>${esc(item.message)}</p><small>${dateTime(item.created_at)}</small></div></div>`).join("");
     $("#page-alerts").innerHTML=header("Alertas e comunicação", "Prioridades operacionais, avisos automáticos e comunicação da equipe.", hasRole(["supervisor","lider","qhse","logistica"])?`<button class="btn primary" data-action="new-alert">+ Criar comunicado</button>`:"")+
       `<section class="alert-professional-kpis">${statCard("Alertas ativos", fmt.format(all.length), "avisos disponíveis", uiIcon("bell"), `${recent.length} nas últimas 24h`, "blue")}${statCard("Críticos e altos", fmt.format(critical.length), "exigem acompanhamento", uiIcon("alert"), critical.length ? "Prioridade operacional" : "Sem criticidade", "red")}${statCard("Automáticos", fmt.format(automaticCount), "gerados pelo sistema", uiIcon("settings"), `${grouped.length} categoria(s)`, "purple")}${statCard("Mensagens", fmt.format(messages.length), "no chat da equipe", uiIcon("users"), `${offlineQueue().length} pendente(s) offline`, "green")}</section>
-      <section class="alert-workflow-lanes">${alertLanes.map(lane => `<article class="alert-workflow-lane tone-${lane.tone}"><span>${uiIcon(lane.icon)}</span><div><strong>${lane.label}</strong><small>${lane.detail}</small></div><b>${lane.count}</b></article>`).join("")}</section>
       ${isAdmin() ? `<div class="admin-edit-notice alert-admin-notice"><strong>Exclusão administrativa ativa</strong><span>Comunicados são apagados definitivamente. Alertas automáticos são removidos da central sem apagar o dado operacional de origem.</span></div>` : ""}
       <section class="alert-priority-layout"><div class="card alert-priority-panel"><div class="professional-section-heading"><div><small>PRIORIDADE</small><h3>Pontos que exigem atenção</h3></div><span>${critical.length} crítico(s)</span></div><div class="alert-priority-list">${priorityCards || `<div class="empty">Nenhum alerta crítico ou alto.</div>`}</div></div><div class="card alert-category-panel"><div class="professional-section-heading"><div><small>DISTRIBUIÇÃO</small><h3>Alertas por categoria</h3></div></div><div class="alert-category-list">${grouped.map(category=>{ const count=all.filter(x=>(x.category||"Sistema")===category).length; const pct=all.length?Math.round(count/all.length*100):0; return `<div><span><strong>${esc(category)}</strong><small>${count} alerta(s)</small></span><div class="mini-progress"><i style="width:${pct}%"></i></div><b>${pct}%</b></div>`; }).join("") || `<div class="empty">Nenhuma categoria disponível.</div>`}</div></div></section>
       <section class="alert-center-layout professional-alert-layout"><div><div class="professional-section-heading alert-section-heading"><div><small>CENTRAL</small><h3>Todos os alertas</h3></div><span>${all.length} registro(s)</span></div><div class="alert-filter-row">${grouped.map(category=>`<span>${esc(category)} <strong>${all.filter(x=>(x.category||"Sistema")===category).length}</strong></span>`).join("")}</div><div class="alert-center-grid">${cards||`<div class="empty">Nenhum alerta ativo.</div>`}</div></div>
@@ -5218,8 +5009,7 @@
       selection, window, completedOperations, activeOperations, events,
       tankMovements, trucks, qhse, maintenanceOpened, maintenanceClosed,
       pendingCompleted, openPendings, openQhseActions, openMaintenance,
-      observations: note?.observations || "", fullText: note?.full_text,
-      noteUpdatedAt: note?.updated_at || null, noteUpdatedBy: note?.updated_by || null, note
+      observations: note?.observations || "", note
     };
   }
 
@@ -5292,18 +5082,6 @@
   function handoverSheetHtml(snapshot) {
     const s = snapshot;
     const generated = new Date();
-    const hasSavedFullText = s.note && s.note.full_text !== null && s.note.full_text !== undefined;
-    if (hasSavedFullText) {
-      const editor = state.data.users.find(user => user.id === s.noteUpdatedBy)?.name || state.data.profile.name || "-";
-      return `<article class="handover-sheet handover-sheet-freeform" id="handoverSheet">
-        <header class="handover-print-header">
-          <div><span class="handover-logo">OC</span></div>
-          <div><h1>PASSAGEM DE SERVIÇO</h1><p>B-Port LMP — OpsControl IA</p></div>
-          <div class="handover-print-meta"><strong>${dateOnly(s.selection.date)}</strong><span>${esc(s.window.label)}</span>${selectedHandoverApproval(s.selection)?.sequence_no?`<span>Passagem nº ${String(selectedHandoverApproval(s.selection).sequence_no).padStart(5,"0")} • ${esc(selectedHandoverApproval(s.selection).status)}</span>`:""}<small>Última edição: ${esc(editor)} • ${dateTime(s.noteUpdatedAt)}</small></div>
-        </header>
-        <section class="handover-freeform-content"><pre>${esc(s.note.full_text || "")}</pre></section>
-      </article>`;
-    }
     const operationItems = s.completedOperations.map(op => ({
       title: `${op.activity} de ${op.product}`,
       detail: `${op.client} • ${op.vessel}${op.rig ? ` • Sonda ${op.rig}` : ""}${op.well ? ` • Poço ${op.well}` : ""}${op.ticketNumber ? ` • Ticket ${op.ticketNumber}` : ""} • ${fmt.format(op.executed)} ${op.unit}${op.service_order ? ` • OS ${op.service_order}` : ""}`
@@ -5368,7 +5146,7 @@
     </article>`;
   }
 
-  function automaticHandoverText(selection = ensureHandoverSelection()) {
+  function handoverText(selection = ensureHandoverSelection()) {
     const s = handoverSnapshot(selection);
     const lines = [
       "> PASSAGEM DE SERVIÇO",
@@ -5402,17 +5180,6 @@
     return lines.join("\n");
   }
 
-
-  function handoverText(selection = ensureHandoverSelection()) {
-    const note = (state.data.handoverNotes || []).find(item => item.shift_date === selection.date && item.shift_type === selection.shift);
-    if (note && note.full_text !== null && note.full_text !== undefined) return String(note.full_text);
-    return automaticHandoverText(selection);
-  }
-
-  function currentHandoverEditorText(selection = ensureHandoverSelection()) {
-    const editor = $("#handoverFullText");
-    return editor ? editor.value : handoverText(selection);
-  }
 
 
   function currentClosing(date = state.closing.date || localDateKey(), shift = state.closing.shift || "day") {
@@ -5467,8 +5234,6 @@
   function renderReports() {
     const selection=ensureHandoverSelection(); const snapshot=handoverSnapshot(selection); const approval=selectedHandoverApproval(selection);
     const locked=approval?.status==="Aprovada"&&!hasRole(["supervisor"]);
-    const editorText = snapshot.note && snapshot.note.full_text !== null && snapshot.note.full_text !== undefined ? String(snapshot.note.full_text) : automaticHandoverText(selection);
-    const editorName = state.data.users.find(user => user.id === snapshot.noteUpdatedBy)?.name || "Ainda não salva";
     const operations = state.data.operations || [];
     const trucks = state.data.trucks || [];
     const closings = state.data.closings || [];
@@ -5484,7 +5249,7 @@
        <section class="reports-command-grid no-print"><div class="card reports-command-card"><span>${uiIcon("file")}</span><div><small>PASSAGEM DE TURNO</small><h3>Resumo operacional automático</h3><p>Consolida operações, carretas, QHSE, manutenção e pendências.</p></div><button class="btn secondary" data-action="copy-handover">Copiar</button></div><div class="card reports-command-card"><span>${uiIcon("check")}</span><div><small>FECHAMENTO</small><h3>Conciliação física e teórica</h3><p>Confere tancagem, inventário, operações e movimentações do turno.</p></div>${hasRole(["supervisor","lider"])?`<button class="btn primary" data-action="new-closing">Preparar</button>`:`<button class="btn secondary" data-page-link="reports">Consultar</button>`}</div><div class="card reports-command-card"><span>${uiIcon("download")}</span><div><small>EXPORTAÇÕES</small><h3>Dados para análise gerencial</h3><p>CSV, impressão e backup completo dos principais módulos.</p></div><button class="btn secondary" data-export="operations">Exportar</button></div></section>
        ${renderClosingPanel()}${handoverApprovalCard(selection,snapshot)}
        <div class="card handover-controls no-print"><div class="handover-control-copy"><strong>Passagem automática do turno</strong><span>Operações, eventos, movimentações, carretas, QHSE e manutenção.</span></div><div><label>Data do turno</label><input id="handoverDate" type="date" value="${esc(selection.date)}"></div><div><label>Turno</label><select id="handoverShift"><option value="day" ${selection.shift==="day"?"selected":""}>Dia — 07h às 19h</option><option value="night" ${selection.shift==="night"?"selected":""}>Noite — 19h às 07h</option></select></div><button class="btn secondary" data-action="apply-handover-filter">Atualizar período</button>${canManageHandover()&&!locked?`<button class="btn primary" data-action="new-handover-pending">+ Adicionar pendência</button>`:""}</div>
-       <div class="handover-layout"><div>${handoverSheetHtml(snapshot)}</div><aside class="handover-side no-print"><div class="card handover-editor-card"><div class="professional-section-heading"><div><small>EDIÇÃO LIVRE</small><h3>Texto completo da passagem</h3></div>${badge(snapshot.note?.full_text !== null && snapshot.note?.full_text !== undefined ? "Editada" : "Automática")}</div><p>Escreva, altere ou apague qualquer parte. O texto salvo será usado na impressão, cópia e entrega do turno.</p><textarea id="handoverFullText" class="handover-full-editor" rows="22" ${locked?"disabled":""}>${esc(editorText)}</textarea><small class="handover-editor-meta">Última edição: ${esc(editorName)}${snapshot.noteUpdatedAt?` • ${dateTime(snapshot.noteUpdatedAt)}`:""}</small>${canManageHandover()&&!locked?`<div class="handover-editor-actions"><button class="btn secondary" data-action="restore-handover-auto">Usar resumo automático</button><button class="btn secondary" data-action="clear-handover-text">Limpar tudo</button><button class="btn primary" data-action="save-handover-note">Salvar passagem</button></div>`:""}</div>${shiftChecklistHtml(selection)}<div class="card"><div class="kpi-row"><div><h3>Pendências manuais</h3><span class="muted">Continuam abertas até a conclusão.</span></div>${badge(snapshot.openPendings.length)}</div><div class="handover-pending-list">${pendingCards||`<div class="empty">Nenhuma pendência manual aberta.</div>`}</div></div></aside></div>
+       <div class="handover-layout"><div>${handoverSheetHtml(snapshot)}</div><aside class="handover-side no-print"><div class="card"><h3>Observações do turno</h3><p>Incluídas na impressão e na cópia para WhatsApp.</p><textarea id="handoverObservations" rows="7" ${locked?"disabled":""}>${esc(snapshot.observations)}</textarea>${canManageHandover()&&!locked?`<button class="btn primary full" data-action="save-handover-note">Salvar observações</button>`:""}</div>${shiftChecklistHtml(selection)}<div class="card"><div class="kpi-row"><div><h3>Pendências manuais</h3><span class="muted">Continuam abertas até a conclusão.</span></div>${badge(snapshot.openPendings.length)}</div><div class="handover-pending-list">${pendingCards||`<div class="empty">Nenhuma pendência manual aberta.</div>`}</div></div></aside></div>
        <div class="section-title no-print">Indicadores comparativos</div><div class="grid two no-print"><div class="card"><h3>Últimos 7 dias</h3><div class="metric-grid">${metricComparison("Operações",week.operations,prevWeek.operations)}${metricComparison("Volume de fluidos",week.bbl,prevWeek.bbl," bbl")}${metricComparison("Granéis",week.ton,prevWeek.ton," ton")}${metricComparison("Carretas",week.trucks,prevWeek.trucks)}</div></div><div class="card"><h3>Últimos 30 dias</h3><div class="metric-grid">${metricComparison("Operações",month.operations,prevMonth.operations)}${metricComparison("Volume de fluidos",month.bbl,prevMonth.bbl," bbl")}${metricComparison("Granéis",month.ton,prevMonth.ton," ton")}${metricComparison("Horas paradas",month.downtime,prevMonth.downtime," h")}</div></div></div>
        <div class="section-title no-print">Exportação e backup</div><div class="grid three no-print"><div class="card report-card"><h3>Backup completo</h3><p>Dados operacionais em JSON para guarda externa.</p><button class="btn primary" data-action="backup-json">Baixar backup</button></div><div class="card report-card"><h3>Auditoria</h3><p>Alterações de usuários e registros.</p><button class="btn secondary" data-page-link="audit">Abrir auditoria</button></div><div class="card report-card"><h3>Fila offline</h3><p>${offlineQueue().length} registro(s) aguardando sincronização.</p><button class="btn secondary" data-action="sync-offline">Sincronizar agora</button></div></div>
        <div class="section-title no-print">Outros relatórios</div><div class="grid two no-print">${reportCard("Relatório gerencial","KPIs, clientes, produtos, riscos e produtividade.","dashboard","operations")}${reportCard("Operações","Vazão, volume, paralisações e tancagem.","operations","operations")}${reportCard("Inventário de tancagem","Produto, lote, volume e capacidade.","tanks","tanks")}${reportCard("QHSE","Registros, severidades e itens de ação.","qhse")}${reportCard("Manutenção","Equipamentos, diesel e ordens.","maintenance","maintenance")}${reportCard("Carretas","Entradas, saídas, NF, placa e motorista.","trucks","trucks")}</div>`;
@@ -5568,10 +5333,9 @@
       ["Backup local", backupDate, latestLocalBackup()?.created_at ? "ok" : "warning"],
       ["Ambiente", environment, state.config.environment === "production" ? "ok" : "warning"]
     ].map(([label,value,status])=>`<div class="settings-health-item ${status}"><span>${label}</span><strong>${esc(value)}</strong></div>`).join("");
-    $("#page-settings").innerHTML = header("Administração do sistema","Usuários, permissões, ambientes, segurança, diagnóstico e preferências.", `${badge(themeLabel())}${isAdmin() ? `<button class="btn primary" data-action="new-user">+ Novo usuário</button>` : ""}`) +
+    $("#page-settings").innerHTML = header("Administração do sistema","Usuários, permissões, ambientes, segurança, diagnóstico e preferências.", `<button class="btn secondary" data-action="toggle-theme">Alternar tema</button>${isAdmin() ? `<button class="btn primary" data-action="new-user">+ Novo usuário</button>` : ""}`) +
       `<section class="settings-kpi-grid">${statCard("Usuários cadastrados",fmt.format(users.length),"contas no sistema",uiIcon("settings"),"Gestão centralizada","blue")}${statCard("Usuários ativos",fmt.format(activeUsers),"acesso liberado",uiIcon("check"),`${inactiveUsers} inativo(s)`,"green")}${statCard("Administradores",fmt.format(adminUsers),"acesso elevado",uiIcon("shield"),"Permissões críticas","purple")}${statCard("Liderança",fmt.format(leadershipUsers),"líderes e supervisores",uiIcon("gauge"),"Gestão operacional","orange")}</section>
        <section class="settings-command-grid"><div class="card settings-profile-panel"><div class="professional-section-heading"><div><small>MEU PERFIL</small><h3>Identidade e acesso atual</h3></div>${badge(state.data.profile.role)}</div><div class="settings-profile-card"><div class="settings-profile-avatar">${profileAvatarHtml(state.data.profile.avatarUrl, state.data.profile.name)}</div><div><strong>${esc(state.data.profile.name)}</strong><small>${esc(state.data.profile.email)}</small><span>${esc(state.data.profile.department || "Departamento não informado")}</span></div></div><div class="settings-profile-meta"><span>Função<strong>${esc(state.data.profile.role)}</strong></span><span>Ambiente<strong>${environment}</strong></span></div><div class="row-actions profile-security-actions"><button class="btn primary" data-action="change-avatar">${state.data.profile.avatarUrl ? "Trocar foto" : "Adicionar foto"}</button><button class="btn secondary" data-action="change-password">Alterar senha</button></div></div><div class="card settings-health-panel"><div class="professional-section-heading"><div><small>DIAGNÓSTICO</small><h3>Saúde do sistema</h3></div><span>${errors.length || queueCount ? "Atenção" : "Normal"}</span></div><div class="settings-health-grid">${healthItems}</div><div class="row-actions settings-health-actions"><button class="btn primary" data-action="backup-json">Backup JSON</button><button class="btn secondary" data-action="sync-offline">Sincronizar offline</button></div></div></section>
-       ${appearanceThemePanel()}
        <section class="settings-control-grid"><div><div class="section-title">Ambiente</div>${environmentPanel()}<div class="section-title">Teste seguro</div>${homologationPanel()}</div><div><div class="section-title">Distribuição da equipe</div><div class="card settings-department-panel"><div class="professional-section-heading"><div><small>DEPARTAMENTOS</small><h3>Usuários por setor</h3></div><span>${users.length} usuários</span></div><div class="settings-department-list">${departmentRows || `<div class="empty">Sem usuários cadastrados.</div>`}</div></div>${isAdmin() ? `<div class="admin-edit-notice settings-admin-notice"><strong>Edição total ativa</strong><span>Administradores podem gerenciar usuários e registros operacionais. Auditoria e históricos permanecem protegidos.</span></div>` : ""}</div></section>
        <div class="section-title professional-record-title"><span>Usuários e permissões</span><small>${users.length} usuário(s)</small></div><div class="card table-wrap desktop-record-table professional-table">${isAdmin() ? "" : `<div class="info-box" style="margin-bottom:12px">Somente o administrador pode alterar cargo, setor, status e permissões.</div>`}<table class="data-table"><thead><tr><th>Usuário</th><th>Cargo</th><th>Departamento</th><th>Status</th><th>Cadastro</th><th>Ação</th></tr></thead><tbody>${userRows || `<tr><td colspan="6" class="empty">Nenhum usuário disponível.</td></tr>`}</tbody></table></div><div class="mobile-record-list">${mobileUsers || `<div class="card empty">Nenhum usuário disponível.</div>`}</div>${hasRole(["supervisor"]) ? `<div class="section-title">Feedback da versão beta</div>${feedbackManagementPanel()}` : ""}${isAdmin() && errors.length ? `<div class="section-title">Erros recentes</div><div class="card table-wrap"><table class="data-table"><thead><tr><th>Data</th><th>Contexto</th><th>Mensagem</th></tr></thead><tbody>${errors.slice(0,20).map(e => `<tr><td>${dateTime(e.created_at)}</td><td>${esc(e.context || "-")}</td><td>${esc(e.message)}</td></tr>`).join("")}</tbody></table></div>` : ""}`;
   }
@@ -6092,7 +5856,6 @@
       if (exists) refreshed.elements.fluid_type_id.value = currentSelection;
     }
     syncTankCatalogFields(refreshed);
-    updateTankClientPreview(refreshed);
     toast("Lista de produtos atualizada.", "success");
   }
 
@@ -6492,16 +6255,9 @@
     if (!targetPage) return toast("A página solicitada não está disponível.", "error");
     $$(".page").forEach(item => item.classList.remove("active"));
     $$(".nav-item").forEach(item => item.classList.toggle("active", item.dataset.page === page));
-    refreshSidebarFavorites();
-    const activeGroup = $(`.nav-section .nav-item[data-page="${page}"]`)?.closest(".nav-section");
-    if (activeGroup && !activeGroup.classList.contains("nav-favorites")) {
-      activeGroup.querySelector(".nav-section-toggle")?.setAttribute("aria-expanded", "true");
-      activeGroup.querySelector(".nav-section-list")?.classList.remove("collapsed");
-    }
     targetPage.classList.add("active");
     $("#sidebar")?.classList.remove("open");
     $("#sidebarBackdrop")?.classList.remove("visible");
-    $("#menuBtn")?.setAttribute("aria-expanded", "false");
     closeMobileSheets();
     localStorage.setItem("opscontrol_last_page", page);
     if (options.history !== false && location.hash !== `#${page}`) {
@@ -6560,40 +6316,9 @@
     }, { passive: true });
   }
 
-  function themeStorageKey() {
-    return state.user?.id ? `${THEME_KEY}:${state.user.id}` : THEME_KEY;
-  }
-
-  function storedTheme() {
-    const value = localStorage.getItem(themeStorageKey()) || localStorage.getItem(THEME_KEY) || "industrial";
-    return ["light", "dark", "industrial"].includes(value) ? value : "industrial";
-  }
-
-  function themeLabel(theme = document.documentElement.dataset.theme || "industrial") {
-    return ({ light: "Tema claro", dark: "Tema escuro", industrial: "Industrial IA" })[theme] || "Tema claro";
-  }
-
   function applyTheme(theme) {
-    const selected = ["light", "dark", "industrial"].includes(theme) ? theme : "industrial";
-    document.documentElement.dataset.theme = selected;
-    localStorage.setItem(THEME_KEY, selected);
-    localStorage.setItem(themeStorageKey(), selected);
-    const themeMeta = document.querySelector('meta[name="theme-color"]');
-    if (themeMeta) themeMeta.content = selected === "industrial" ? "#030a13" : selected === "dark" ? "#0b1422" : "#0b1f3a";
-  }
-
-  function themePreview(theme) {
-    return `<span class="theme-preview theme-preview-${theme}" aria-hidden="true"><span class="theme-preview-sidebar"><i></i><i></i><i></i><i></i></span><span class="theme-preview-main"><b></b><i></i><i></i><i></i><i></i></span></span>`;
-  }
-
-  function appearanceThemePanel() {
-    const current = document.documentElement.dataset.theme || storedTheme();
-    const themes = [
-      ["light", "Claro profissional", "Visual atual claro, limpo e corporativo."],
-      ["dark", "Escuro clássico", "Versão escura tradicional do OpsControl IA."],
-      ["industrial", "Industrial IA", "Tema industrial de alto contraste, com fundo profundo, cartões definidos e destaque verde-ciano."]
-    ];
-    return `<section class="card appearance-theme-panel"><div class="appearance-theme-heading"><div><small>APARÊNCIA</small><h3>Tema da interface</h3><p>Escolha o visual do sistema. A preferência fica salva neste usuário.</p></div>${badge(themeLabel(current))}</div><div class="appearance-theme-grid">${themes.map(([id,title,description]) => `<button type="button" class="appearance-theme-card ${current===id?"active":""}" data-theme-choice="${id}" aria-pressed="${current===id}">${themePreview(id)}<span class="appearance-theme-copy"><strong>${title}</strong><span>${description}</span></span></button>`).join("")}</div></section>`;
+    document.documentElement.dataset.theme = theme;
+    localStorage.setItem(THEME_KEY, theme);
   }
 
   function smartAnswer(question) {
@@ -6729,28 +6454,38 @@
         return;
       }
 
-      if (form.id === "clientProofForm") {
-        await createClientProof(form);
+      if (form.id === "clientTicketForm") {
+        const payload = Object.fromEntries(new FormData(form));
+        const requiredTypes = [...new FormData(form).getAll("required_document_types")];
+        await saveClientTicket(payload, form.dataset.id || null, requiredTypes);
+      }
+
+      if (form.id === "clientTicketDocumentForm") {
+        const ticketId = form.dataset.ticketId;
+        await uploadClientTicketDocument(form);
         clearFormDraft(form);
         await loadData();
         renderAll();
-        closeModal();
-        toast("Comprovante anexado com sucesso.", "success");
+        const ticket = state.data.clientTickets.find(item => item.id === ticketId);
+        if (ticket) openModal(`Ticket ${ticket.ticketNumber}`, clientTicketDetails(ticket), "DOCUMENTAÇÃO DO CLIENTE");
+        toast("Documento anexado com sucesso.", "success");
         return;
       }
 
       if (form.id === "clientTicketDocumentEditForm") {
         const payload = Object.fromEntries(new FormData(form));
         const ticketId = form.dataset.ticketId;
-        const type = String(payload.document_type || "").split(" ")[0];
         const {error} = await state.client.from("client_ticket_documents").update({
-          document_type:type, document_number:String(payload.document_number||"").trim()||null,
-          document_date:payload.document_date||null, status:"Anexado", notes:String(payload.notes||"").trim()||null
+          document_type:payload.document_type, document_number:String(payload.document_number||"").trim()||null,
+          document_date:payload.document_date||null, revision:String(payload.revision||"").trim()||null,
+          status:payload.status, notes:String(payload.notes||"").trim()||null
         }).eq("id",form.dataset.id);
         if (error) throw error;
         clearFormDraft(form);
-        await loadData(); renderAll(); closeModal();
-        toast("Dados do comprovante atualizados.","success");
+        await loadData(); renderAll();
+        const ticket = state.data.clientTickets.find(item => item.id === ticketId);
+        if (ticket) openModal(`Ticket ${ticket.ticketNumber}`, clientTicketDetails(ticket), "DOCUMENTAÇÃO DO CLIENTE");
+        toast("Documento atualizado.","success");
         return;
       }
 
@@ -7080,44 +6815,27 @@
     const button = event.target.closest("button");
     if (!button) return;
 
-    if (button.id === "loginBtn") return;
+    if (button.id === "loginBtn") return login();
     if (button.id === "logoutBtn") return logout();
     if (button.id === "menuBtn") {
       const sidebar = $("#sidebar");
       const open = !sidebar.classList.contains("open");
       sidebar.classList.toggle("open", open);
       $("#sidebarBackdrop")?.classList.toggle("visible", open);
-      button.setAttribute("aria-expanded", String(open));
       return;
     }
     if (button.id === "sidebarBackdrop") {
       $("#sidebar")?.classList.remove("open");
-      $("#menuBtn")?.setAttribute("aria-expanded", "false");
       button.classList.remove("visible");
       return;
     }
     if (button.id === "mobileSheetBackdrop") return closeMobileSheets();
     if (button.id === "modalClose" || button.hasAttribute("data-close-modal")) return closeModal();
-    const favoriteToggle = event.target.closest("[data-favorite-page]");
-    if (favoriteToggle) { event.preventDefault(); event.stopPropagation(); return toggleSidebarFavorite(favoriteToggle.dataset.favoritePage); }
-    if (button.dataset.navGroupToggle) {
-      const list = $(`[data-nav-group-list="${button.dataset.navGroupToggle}"]`);
-      const expanded = button.getAttribute("aria-expanded") === "true";
-      button.setAttribute("aria-expanded", String(!expanded));
-      list?.classList.toggle("collapsed", expanded);
-      return;
-    }
     if (button.dataset.mobilePage) return showPage(button.dataset.mobilePage);
     if (button.classList.contains("nav-item")) return showPage(button.dataset.page);
     if (button.closest(".user-chip")) return showPage("settings");
     if (button.id === "notificationsBtn") return showPage("alerts");
     if (button.id === "globalSearchBtn") return openGlobalSearch();
-    if (button.dataset.themeChoice) {
-      applyTheme(button.dataset.themeChoice);
-      renderSettings();
-      toast(`${themeLabel()} aplicado com sucesso.`, "success");
-      return;
-    }
 
     if (button.dataset.pageLink) { showPage(button.dataset.pageLink); return; }
     if (button.dataset.alertPage) { showPage(button.dataset.alertPage); return; }
@@ -7334,48 +7052,22 @@
       if (!canManageHandover()) return toast("Seu perfil não pode adicionar pendências.", "error");
       return openModal("Nova pendência da passagem", handoverPendingForm(), "PASSAGEM");
     }
-    if (action === "restore-handover-auto") {
-      const editor = $("#handoverFullText");
-      if (!editor) return;
-      editor.value = automaticHandoverText(ensureHandoverSelection());
-      editor.focus();
-      return toast("Resumo automático carregado. Revise e salve a passagem.", "success");
-    }
-    if (action === "clear-handover-text") {
-      const editor = $("#handoverFullText");
-      if (!editor) return;
-      editor.value = "";
-      editor.focus();
-      return toast("Texto apagado no editor. Clique em Salvar passagem para confirmar.", "success");
-    }
     if (action === "save-handover-note") {
-      if (!canManageHandover()) return toast("Seu perfil não pode editar a passagem.", "error");
+      if (!canManageHandover()) return toast("Seu perfil não pode alterar as observações.", "error");
       const selection = ensureHandoverSelection();
-      const fullText = $("#handoverFullText")?.value ?? "";
+      const observations = $("#handoverObservations")?.value.trim() || null;
       const { error } = await state.client.from("shift_handover_notes").upsert({
         shift_date: selection.date,
         shift_type: selection.shift,
-        full_text: fullText,
+        observations,
         updated_by: state.user.id
       }, { onConflict: "shift_date,shift_type" });
       if (error) return toast(error.message, "error");
       await loadData();
       renderReports();
-      return toast("Passagem de serviço salva.", "success");
+      return toast("Observações do turno salvas.", "success");
     }
     if (action === "print-handover") {
-      const selection = ensureHandoverSelection();
-      const snapshot = handoverSnapshot(selection);
-      const currentText = currentHandoverEditorText(selection);
-      const currentSheet = $("#handoverSheet");
-      if (currentSheet) {
-        currentSheet.outerHTML = handoverSheetHtml({
-          ...snapshot,
-          note: { ...(snapshot.note || {}), full_text: currentText },
-          noteUpdatedAt: snapshot.noteUpdatedAt || new Date().toISOString(),
-          noteUpdatedBy: snapshot.noteUpdatedBy || state.user.id
-        });
-      }
       document.body.classList.add("print-handover");
       setTimeout(() => window.print(), 100);
       return;
@@ -7398,15 +7090,10 @@
       const selection=ensureHandoverSelection(); const snapshot=handoverSnapshot(selection);
       const checklist=checklistForShift(selection); const missing=checklist.filter(x=>!x.completed);
       if (missing.length&&!confirm(`Existem ${missing.length} itens do checklist pendentes. Entregar mesmo assim?`)) return;
-      const finalText = currentHandoverEditorText(selection);
-      const { error: noteError } = await state.client.from("shift_handover_notes").upsert({
-        shift_date: selection.date, shift_type: selection.shift, full_text: finalText, updated_by: state.user.id
-      }, { onConflict: "shift_date,shift_type" });
-      if (noteError) return toast(noteError.message,"error");
       const summary={ selection, generated_at:new Date().toISOString(), delivered_by:state.data.profile.name,
-        counts:{operations:snapshot.completedOperations.length,events:snapshot.events.length,movements:snapshot.tankMovements.length,pendings:snapshot.openPendings.length}, checklist, observations:snapshot.observations, full_text:finalText };
-      const {error}=await state.client.rpc("submit_shift_handover",{p_shift_date:selection.date,p_shift_type:selection.shift,p_snapshot_json:summary,p_snapshot_text:finalText});
-      if(error)return toast(error.message,"error"); await loadData();renderReports();return toast("Passagem salva, entregue e numerada.","success");
+        counts:{operations:snapshot.completedOperations.length,events:snapshot.events.length,movements:snapshot.tankMovements.length,pendings:snapshot.openPendings.length}, checklist, observations:snapshot.observations };
+      const {error}=await state.client.rpc("submit_shift_handover",{p_shift_date:selection.date,p_shift_type:selection.shift,p_snapshot_json:summary,p_snapshot_text:handoverText(selection)});
+      if(error)return toast(error.message,"error"); await loadData();renderReports();return toast("Passagem entregue e numerada.","success");
     }
     if (action === "approve-handover") {
       const selection=ensureHandoverSelection(); const {error}=await state.client.rpc("approve_shift_handover",{p_shift_date:selection.date,p_shift_type:selection.shift});
@@ -7497,7 +7184,7 @@
     }
     if (action === "new-chemical") { if (!canManageChemicals()) return toast("Seu perfil não pode alterar o inventário químico.", "error"); return openModal("Adicionar lote ao inventário", chemicalForm(), "INVENTÁRIO"); }
     if (action === "new-truck") return openModal("Nova movimentação de carreta", truckForm(), "CARRETA");
-    if (action === "new-client-proof" || action === "new-client-ticket") { if (!canManageClientTickets()) return toast("Seu perfil não pode anexar comprovantes.", "error"); return openModal("Adicionar comprovante do cliente", clientProofUploadForm(), "FDT • FRT • MDT • MRT"); }
+    if (action === "new-client-ticket") { if (!canManageClientTickets()) return toast("Seu perfil não pode criar tickets de clientes.", "error"); return openModal("Novo ticket de cliente", clientTicketForm(), "DOCUMENTAÇÃO DO CLIENTE"); }
     if (action === "new-qhse") return openModal("Novo registro QHSE", genericForm("qhse"), "QHSE");
     if (action === "new-equipment") return openModal("Novo equipamento", genericForm("equipment"), "EQUIPAMENTO");
     if (action === "new-certificate") { if (!canManageCertificates()) return toast("Somente Logística, Supervisor ou Administrador podem adicionar certificados.", "error"); return openModal("Adicionar certificado", genericForm("certificate"), "CERTIFICADO"); }
@@ -7525,15 +7212,13 @@
     }
 
     if (action === "copy-handover") {
-      await navigator.clipboard.writeText(currentHandoverEditorText());
-      return toast("Texto atual da passagem copiado.");
+      await navigator.clipboard.writeText(handoverText());
+      return toast("Passagem de serviço copiada.");
     }
 
     if (action === "toggle-theme") {
-      const themes = ["light", "dark", "industrial"];
-      const current = document.documentElement.dataset.theme || "light";
-      applyTheme(themes[(themes.indexOf(current) + 1) % themes.length]);
-      if (state.page === "settings") renderSettings();
+      const next = document.documentElement.dataset.theme === "dark" ? "light" : "dark";
+      applyTheme(next);
       return;
     }
 
@@ -7632,9 +7317,10 @@
     }
 
     if (button.dataset.editClientTicket) {
+      if (!canManageClientTickets()) return toast("Seu perfil não pode editar tickets.","error");
       const ticket = state.data.clientTickets.find(item => item.id === button.dataset.editClientTicket);
-      if (!ticket) return toast("Comprovante não localizado.","error");
-      return openModal(`Comprovantes — ${ticket.client}`, clientTicketDetails(ticket), "DOCUMENTAÇÃO DO CLIENTE");
+      if (!ticket) return toast("Ticket não localizado.","error");
+      return openModal(`Editar ${ticket.ticketNumber}`, clientTicketForm(ticket), "DOCUMENTAÇÃO DO CLIENTE");
     }
 
     if (button.dataset.openClientTicketDocument) return openClientTicketDocument(button.dataset.openClientTicketDocument);
@@ -7655,12 +7341,14 @@
       if (storageError) return toast(storageError.message,"error");
       const {error} = await state.client.from("client_ticket_documents").delete().eq("id",document.id);
       if (error) return toast(error.message,"error");
-      await loadData(); renderAll(); closeModal();
-      return toast("Comprovante excluído.","success");
+      await loadData(); renderAll();
+      const ticket = state.data.clientTickets.find(item => item.id === document.ticketId);
+      if (ticket) openModal(`Ticket ${ticket.ticketNumber}`, clientTicketDetails(ticket), "DOCUMENTAÇÃO DO CLIENTE");
+      return toast("Documento excluído.","success");
     }
 
     if (button.dataset.action === "clear-client-ticket-filters") {
-      state.clientTicketFilters = { query:"", client:"", documentType:"" };
+      state.clientTicketFilters = { query:"", client:"", status:"", completeness:"" };
       renderClientTickets();
       return;
     }
@@ -7823,19 +7511,6 @@
       return openModal("Editar operação", operationForm(operation), "OPERAÇÃO");
     }
 
-    if (button.dataset.deleteOperation) {
-      if (!isAdmin()) return toast("Somente o administrador pode excluir operações.", "error");
-      const operation = state.data.operations.find(item => item.id === button.dataset.deleteOperation);
-      if (!operation) return toast("Operação não localizada.", "error");
-      if (!confirm(`Excluir permanentemente a operação de ${operation.client || "cliente não informado"} — ${operation.vessel || operation.activity || "operação"}?\n\nOs eventos e rateios vinculados também serão removidos. Movimentações de estoque já aplicadas serão preservadas no histórico.`)) return;
-      const {data,error} = await state.client.rpc("delete_operation_admin_v1", {p_operation_id:operation.id});
-      if (error) return toast(error.message, "error");
-      const paths = Array.isArray(data?.file_paths) ? data.file_paths : [];
-      if (paths.length) await state.client.storage.from("opscontrol-files").remove(paths);
-      await loadData(); renderAll(); showPage("operations", {history:false, scroll:false});
-      return toast("Operação excluída pelo administrador.", "success");
-    }
-
     if (button.dataset.operationTimeline) {
       const operation = state.data.operations.find(x => x.id === button.dataset.operationTimeline);
       const events = state.data.operationEvents.filter(x => x.operation_id === operation.id);
@@ -7848,27 +7523,17 @@
 
     if (button.dataset.addEvent) return openModal("Adicionar evento", eventForm(button.dataset.addEvent), "TIMELINE");
 
-    if (button.dataset.tankActions) {
-      const tank = state.data.tanks.find(x => x.id === button.dataset.tankActions);
-      if (!tank) return toast("O tanque ou silo não foi encontrado. Atualize a página.", "error");
-      return openModal(`Ações — ${tank.name}`, tankActionsPanel(tank), "TANCAGEM");
-    }
-
     if (button.dataset.editTank) {
       const tank = state.data.tanks.find(x => x.id === button.dataset.editTank);
       if (!tank) return toast("O tanque selecionado não foi encontrado. Atualize a página.", "error");
-      openModal(`Atualizar conteúdo — ${tank.name}`, tankForm(tank, false), "TANCAGEM");
-      updateTankClientPreview($("#tankForm"));
-      return;
+      return openModal(`Atualizar conteúdo — ${tank.name}`, tankForm(tank, false), "TANCAGEM");
     }
 
     if (button.dataset.editTankStructure) {
       if (!isAdmin()) return toast("Somente o administrador pode editar a estrutura.", "error");
       const tank = state.data.tanks.find(x => x.id === button.dataset.editTankStructure);
       if (!tank) return toast("O equipamento selecionado não foi encontrado. Atualize a página.", "error");
-      openModal(`Editar estrutura — ${tank.name}`, tankForm(tank, true), "ADMINISTRAÇÃO");
-      updateTankClientPreview($("#tankForm"));
-      return;
+      return openModal(`Editar estrutura — ${tank.name}`, tankForm(tank, true), "ADMINISTRAÇÃO");
     }
 
     if (button.dataset.tankHistory) {
@@ -7985,10 +7650,14 @@
       renderClientTickets();
       return;
     }
-    if (event.target.closest("#clientProofForm") && event.target.name === "operation_id") {
-      const form = event.target.closest("#clientProofForm");
+    if (event.target.closest("#clientTicketForm") && event.target.name === "operation_id") {
+      const form = event.target.closest("#clientTicketForm");
       const operation = state.data.operations.find(item => item.id === event.target.value);
-      if (operation && !form.elements.client.value.trim()) form.elements.client.value = operation.client || "";
+      if (operation) {
+        if (!form.elements.client.value.trim()) form.elements.client.value = operation.client || "";
+        if (!form.elements.vessel.value.trim()) form.elements.vessel.value = operation.vessel || "";
+        if (!form.elements.service_order.value.trim()) form.elements.service_order.value = operation.service_order || "";
+      }
     }
     if (event.target.matches("[data-truck-filter]:not([data-truck-filter='query'])")) {
       state.truckFilters[event.target.dataset.truckFilter] = event.target.value;
@@ -8016,7 +7685,6 @@
     if (event.target.closest("#tankTransferForm")) updateTransferPreview(event.target.closest("#tankTransferForm"));
     if (event.target.closest("#tankForm") && event.target.name === "fluid_type_id") syncTankCatalogFields(event.target.closest("#tankForm"));
     if (event.target.closest("#tankForm") && event.target.name === "kind") syncSiloCapacityPreview(event.target.closest("#tankForm"));
-    if (event.target.closest("#tankForm") && event.target.name === "client") updateTankClientPreview(event.target.closest("#tankForm"));
     if (event.target.closest('#genericForm[data-kind="fluid"]') && event.target.name === "type") syncFluidDensityUnit(event.target.closest("form"));
     if (event.target.closest('#genericForm[data-kind="certificate"]') && event.target.name === "user_id") {
       const form = event.target.closest("form");
@@ -8068,7 +7736,6 @@
     if (event.target.closest("#tankForm") && ["density","physical_capacity_m3","volume"].includes(event.target.name)) {
       syncSiloCapacityPreview(event.target.closest("#tankForm"));
     }
-    if (event.target.closest("#tankForm") && event.target.name === "client") updateTankClientPreview(event.target.closest("#tankForm"));
   });
 
   $("#modal").addEventListener("click", event => {
@@ -8081,31 +7748,10 @@
     if (state.mobile.moreOpen || state.mobile.quickOpen) return closeMobileSheets();
     $("#sidebar")?.classList.remove("open");
     $("#sidebarBackdrop")?.classList.remove("visible");
-    $("#menuBtn")?.setAttribute("aria-expanded", "false");
   });
 
-  $("#loginForm")?.addEventListener("submit", event => {
-    event.preventDefault();
-    login();
-  });
-
-  $("#toggleLoginPassword")?.addEventListener("click", () => {
-    const input = $("#loginPassword");
-    const button = $("#toggleLoginPassword");
-    const visible = input.type === "text";
-    input.type = visible ? "password" : "text";
-    button.textContent = visible ? "Mostrar" : "Ocultar";
-    button.setAttribute("aria-label", visible ? "Mostrar senha" : "Ocultar senha");
-    button.setAttribute("aria-pressed", String(!visible));
-    input.focus({ preventScroll: true });
-    const end = input.value.length;
-    input.setSelectionRange?.(end, end);
-  });
-
-  [$("#loginEmail"), $("#loginPassword")].filter(Boolean).forEach(input => {
-    input.addEventListener("focus", () => {
-      setTimeout(() => input.scrollIntoView({ block: "center", behavior: "smooth" }), 180);
-    });
+  $("#loginPassword").addEventListener("keydown", event => {
+    if (event.key === "Enter") login();
   });
 
 
@@ -8121,24 +7767,6 @@
     const {error}=await state.client.from("shift_checklist_items").upsert({shift_date:selection.date,shift_type:selection.shift,item_key:key,item_label:template?.[1]||key,category:template?.[2]||"Operacional",completed:current?.completed||false,notes:event.target.value||null,completed_by:current?.completed_by||null,completed_at:current?.completed_at||null,created_by:state.user.id},{onConflict:"shift_date,shift_type,item_key"});
     if(error)toast(error.message,"error"); else await loadData();
   });
-
-  function syncMobileViewportState() {
-    const viewportHeight = window.visualViewport?.height || window.innerHeight;
-    const keyboardGap = Math.max(0, window.innerHeight - viewportHeight);
-    document.documentElement.style.setProperty("--mobile-app-height", `${Math.round(viewportHeight)}px`);
-    document.body.classList.toggle("keyboard-open", document.body.classList.contains("login-active") && isMobileViewport() && keyboardGap > 110);
-    if (!isMobileViewport()) {
-      $("#sidebar")?.classList.remove("open");
-      $("#sidebarBackdrop")?.classList.remove("visible");
-      $("#menuBtn")?.setAttribute("aria-expanded", "false");
-      closeMobileSheets();
-    }
-  }
-
-  syncMobileViewportState();
-  window.addEventListener("resize", syncMobileViewportState, { passive: true });
-  window.addEventListener("orientationchange", syncMobileViewportState, { passive: true });
-  window.visualViewport?.addEventListener("resize", syncMobileViewportState, { passive: true });
 
   window.addEventListener("beforeinstallprompt", event => {
     event.preventDefault();
@@ -8179,12 +7807,9 @@
   });
 
   if ("serviceWorker" in navigator) {
-    window.addEventListener("load", () => navigator.serviceWorker.register("sw.js?v=20260720-v33-12-14-16-homologacao-interface", { updateViaCache: "none" }).then(registration => registration.update()).catch(console.error));
+    window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(console.error));
   }
 
-  setupSidebarNavigation();
-  startTopbarClock();
   $("#connectionHint").textContent = "Acesse com seu e-mail e senha cadastrados.";
-  applyTheme(storedTheme());
   restoreSession();
 })();

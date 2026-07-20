@@ -5,8 +5,8 @@
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#030a13",
-  "theme_color": "#030a13",
+  "background_color": "#f4f7fb",
+  "theme_color": "#0b1f3a",
   "description": "Controle operacional profissional para a B-Port LMP.",
   "icons": [
     {
@@ -94,5 +94,5 @@
       ]
     }
   ],
-  "version": "33.12.14.13"
+  "version": "20260719-v33-12-14-1-client-tickets"
 }

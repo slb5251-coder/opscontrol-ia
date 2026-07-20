@@ -458,3 +458,35 @@
 .theme-preview-industrial .theme-preview-sidebar i:first-child{background:#20d4c6}
 .theme-preview-industrial .theme-preview-main b{background:linear-gradient(90deg,#20d4c6,#4499ff)}
 .theme-preview-industrial .theme-preview-main i{background:#0b1928;border-color:#36536d}
+
+/* v33.12.14.10 — tanques/silos com leitura operacional e cliente com logo */
+.tank-heading-block{display:flex;flex-direction:column;gap:8px;min-width:0}
+.tank-name-row{display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0}
+.tank-name-row h3{margin:0}
+.tank-client-strip{display:flex;align-items:center;min-height:30px}
+.client-identity-chip{display:inline-flex;align-items:center;gap:8px;min-width:0;max-width:100%;padding:5px 10px;border-radius:999px;background:rgba(68,153,255,.08);border:1px solid rgba(68,153,255,.14)}
+.client-identity-logo{width:26px;height:26px;border-radius:8px;flex:0 0 26px;overflow:hidden}
+.client-identity-logo img{padding:3px}
+.client-identity-text{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-size:12px;font-weight:700;color:var(--text)}
+.tank-client-card-chip{max-width:100%}
+.tank-client-preview{margin-top:8px}
+.tank-client-form-chip{background:rgba(11,25,40,.72);border-color:rgba(32,212,198,.18)}
+.tank-volume-summary{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:8px;margin:10px 0 8px}
+.tank-volume-summary div{padding:9px 10px;border-radius:14px;background:rgba(255,255,255,.55);border:1px solid rgba(148,163,184,.18)}
+.tank-volume-summary small{display:block;font-size:10px;letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.tank-volume-summary strong{display:block;margin-top:4px;font-size:13px;color:var(--text)}
+.compact-tank-card.tank-health-active:before{background:#20d4c6}
+.compact-tank-card.tank-health-warning:before{background:#f7c75f}
+.compact-tank-card.tank-health-critical:before{background:#ff6b75}
+.compact-tank-card.tank-health-empty:before{background:#7c8ca1}
+.compact-tank-card.tank-health-critical{box-shadow:0 0 0 1px rgba(255,107,117,.12),0 14px 28px rgba(255,107,117,.08)}
+.compact-tank-card.tank-health-warning{box-shadow:0 0 0 1px rgba(247,199,95,.12),0 14px 28px rgba(247,199,95,.06)}
+:root[data-theme="industrial"] .tank-client-form-chip,:root[data-theme="industrial"] .tank-client-card-chip{background:#0d1c2a;border-color:#294158}
+:root[data-theme="industrial"] .tank-volume-summary div{background:#0d1927;border-color:#23384e}
+:root[data-theme="industrial"] .tank-mini-visual{border-color:#3a536b;background:linear-gradient(180deg,#132536,#0e1d2d 52%,#132536)}
+:root[data-theme="industrial"] .tank-mini-visual b{background:rgba(7,17,29,.88);color:#f5f8fc;border:1px solid #24384d}
+:root[data-theme="industrial"] .compact-tank-card .tag{background:#13273a;border-color:#294158;color:#9bc8ff}
+:root[data-theme="industrial"] .tank-progress-caption span{color:#9db3c8}
+:root[data-theme="industrial"] .tank-volume-summary small{color:#8da1b7}
+:root[data-theme="industrial"] .client-identity-chip .client-identity-text{color:#f5f8fc}
+@media (max-width:760px){.tank-volume-summary{grid-template-columns:1fr}.tank-client-form-chip{width:100%;justify-content:flex-start}}

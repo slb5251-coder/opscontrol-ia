@@ -483,6 +483,19 @@
     return `<span class="${classes} client-logo-fallback" title="${esc(client || "Operação")}">${uiIcon(fallbackIcon)}</span>`;
   }
 
+  function clientIdentityChip(client = "", fallbackIcon = "briefcase", extraClass = "") {
+    const label = String(client || "").trim() || "Cliente não definido";
+    return `<span class="client-identity-chip ${extraClass}">${clientLogoBadge(label, fallbackIcon, "client-identity-logo")}<span class="client-identity-text">${esc(label)}</span></span>`;
+  }
+
+  function updateTankClientPreview(form) {
+    if (!form) return;
+    const wrap = form.querySelector('[data-tank-client-preview]');
+    const field = form.elements?.client;
+    if (!wrap || !field) return;
+    wrap.innerHTML = clientIdentityChip(field.value || '', 'briefcase', 'tank-client-form-chip');
+  }
+
   function searchIndex() {
     const d = state.data || {};
     const rows = [];
@@ -3811,31 +3824,33 @@
     const silo = isSiloAsset(tank);
     const physicalCapacity = silo ? defaultSiloPhysicalCapacity(tank) : null;
     const pct = capacity > 0 ? Math.max(0, Math.min(100, (volume / capacity) * 100)) : 0;
-    // Um saldo positivo muito pequeno ainda precisa ficar visível na faixa.
     const visualPct = volume > 0 ? Math.max(1.5, pct) : 0;
     const updater = state.data.users.find(user => user.id === tank.updated_by)?.name || "Não informado";
     const productType = productClass(tank.product, tank.kind, volume);
     const volumeState = volume > 0 ? "has-volume" : "no-volume";
+    const occupancyClass = pct >= 90 ? "tank-health-critical" : (pct >= 75 ? "tank-health-warning" : (volume > 0 ? "tank-health-active" : "tank-health-empty"));
+    const free = Math.max(0, capacity - volume);
 
-    return `<div class="card tank-card compact-tank-card ${silo ? "silo-card" : "fluid-tank-card"} tank-bg-${productType} ${volumeState}" data-tank-search="${esc(`${tank.name} ${tank.product||""} ${tank.lot||""} ${tank.client||""}`.toLowerCase())}" data-tank-phase="${esc(String(tank.phase||"").toLowerCase())}" data-tank-kind="${silo?"silo":"tank"}" data-tank-product="${esc(String(tank.product||"").toLowerCase())}" data-tank-status="${esc(String(tank.status||"").toLowerCase())}">
+    return `<div class="card tank-card compact-tank-card ${silo ? "silo-card" : "fluid-tank-card"} tank-bg-${productType} ${volumeState} ${occupancyClass}" data-tank-search="${esc(`${tank.name} ${tank.product||""} ${tank.lot||""} ${tank.client||""}`.toLowerCase())}" data-tank-phase="${esc(String(tank.phase||"").toLowerCase())}" data-tank-kind="${silo?"silo":"tank"}" data-tank-product="${esc(String(tank.product||"").toLowerCase())}" data-tank-status="${esc(String(tank.status||"").toLowerCase())}">
       <div class="tank-top">
-        <div>
-          <h3>${esc(tank.name)}</h3>
-          <span class="tag">${esc(tank.kind)}</span>
+        <div class="tank-heading-block">
+          <div class="tank-name-row"><h3>${esc(tank.name)}</h3><span class="tag">${esc(tank.kind)}</span></div>
+          <div class="tank-client-strip">${clientIdentityChip(tank.client || '', silo ? 'package' : 'droplet', 'tank-client-card-chip')}</div>
         </div>
         ${badge(tank.status)}
       </div>
 
       <div class="tank-card-body"><div class="tank-mini-visual ${silo ? "is-silo" : "is-tank"}"><span style="height:${visualPct.toFixed(2)}%"></span><b>${fmt.format(pct)}%</b></div><div class="tank-card-details"><div class="compact-tank-product">
         <strong>${esc(tank.product || (volume > 0 ? "Produto não informado" : "Sem produto"))}</strong>
-        <span>Cliente: ${esc(tank.client || "A definir")}</span>
         <span>Lote: ${esc(tank.lot || "-")}${volume > 0 && !tank.product ? ` • volume registrado` : ""}</span>
         <span>Densidade: ${tank.density !== null && tank.density !== undefined ? `${fmt.format(tank.density)} ${esc(tank.densityUnit || (silo ? "t/m³" : "ppg"))}` : "não informada"}</span>
         ${silo ? `<span>Volume físico: ${fmt.format(physicalCapacity)} m³</span>` : ""}
       </div>
-      <div class="tank-volume-line">
-        <strong>${fmt.format(volume)} ${esc(tank.unit)}</strong>
-        <span>${silo ? "capacidade operacional" : "de"} ${fmt.format(capacity)} ${esc(tank.unit)}</span>
+
+      <div class="tank-volume-summary">
+        <div><small>Saldo atual</small><strong>${fmt.format(volume)} ${esc(tank.unit)}</strong></div>
+        <div><small>${silo ? "Cap. operacional" : "Capacidade"}</small><strong>${fmt.format(capacity)} ${esc(tank.unit)}</strong></div>
+        <div><small>Disponível</small><strong>${fmt.format(free)} ${esc(tank.unit)}</strong></div>
       </div>
 
       <div class="tank-progress ${productType} ${volumeState}" data-volume="${volume}" data-kind="${esc(tank.kind)}" role="progressbar"
@@ -3848,7 +3863,7 @@
 
       <div class="tank-progress-caption">
         <strong>${fmt.format(pct)}%</strong>
-        <span>${fmt.format(Math.max(0, capacity - volume))} ${esc(tank.unit)} livres</span>
+        <span>${silo ? 'ocupação operacional' : `${fmt.format(free)} ${esc(tank.unit)} livres`}</span>
       </div>
 
       </div></div><div class="tank-update-meta">
@@ -3867,6 +3882,7 @@
       </div>
     </div>`;
   }
+
 
 
   function tankHistoryVisual(tank, history) {
@@ -4165,6 +4181,7 @@
           <label>Cliente *</label>
           <input name="client" required maxlength="100" list="tankClientSuggestions" value="${esc(tank.client || "A definir")}" placeholder="Selecione ou digite o cliente">
           <datalist id="tankClientSuggestions">${tankClientSuggestions(tank.client).map(value => `<option value="${esc(value)}"></option>`).join("")}</datalist>
+          <div class="tank-client-preview" data-tank-client-preview>${clientIdentityChip(tank.client || '', 'briefcase', 'tank-client-form-chip')}</div>
           <small class="field-help">O cliente ficará vinculado ao conteúdo atual deste equipamento.</small>
         </div>
         <div><label>Status</label><select name="status">${["Disponível", "Liberado", "Em uso", "Bloqueado", "Limpeza", "Manutenção"].map(x => `<option ${tank.status === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
@@ -6062,6 +6079,7 @@
       if (exists) refreshed.elements.fluid_type_id.value = currentSelection;
     }
     syncTankCatalogFields(refreshed);
+    updateTankClientPreview(refreshed);
     toast("Lista de produtos atualizada.", "success");
   }
 
@@ -7820,14 +7838,18 @@
     if (button.dataset.editTank) {
       const tank = state.data.tanks.find(x => x.id === button.dataset.editTank);
       if (!tank) return toast("O tanque selecionado não foi encontrado. Atualize a página.", "error");
-      return openModal(`Atualizar conteúdo — ${tank.name}`, tankForm(tank, false), "TANCAGEM");
+      openModal(`Atualizar conteúdo — ${tank.name}`, tankForm(tank, false), "TANCAGEM");
+      updateTankClientPreview($("#tankForm"));
+      return;
     }
 
     if (button.dataset.editTankStructure) {
       if (!isAdmin()) return toast("Somente o administrador pode editar a estrutura.", "error");
       const tank = state.data.tanks.find(x => x.id === button.dataset.editTankStructure);
       if (!tank) return toast("O equipamento selecionado não foi encontrado. Atualize a página.", "error");
-      return openModal(`Editar estrutura — ${tank.name}`, tankForm(tank, true), "ADMINISTRAÇÃO");
+      openModal(`Editar estrutura — ${tank.name}`, tankForm(tank, true), "ADMINISTRAÇÃO");
+      updateTankClientPreview($("#tankForm"));
+      return;
     }
 
     if (button.dataset.tankHistory) {
@@ -7975,6 +7997,7 @@
     if (event.target.closest("#tankTransferForm")) updateTransferPreview(event.target.closest("#tankTransferForm"));
     if (event.target.closest("#tankForm") && event.target.name === "fluid_type_id") syncTankCatalogFields(event.target.closest("#tankForm"));
     if (event.target.closest("#tankForm") && event.target.name === "kind") syncSiloCapacityPreview(event.target.closest("#tankForm"));
+    if (event.target.closest("#tankForm") && event.target.name === "client") updateTankClientPreview(event.target.closest("#tankForm"));
     if (event.target.closest('#genericForm[data-kind="fluid"]') && event.target.name === "type") syncFluidDensityUnit(event.target.closest("form"));
     if (event.target.closest('#genericForm[data-kind="certificate"]') && event.target.name === "user_id") {
       const form = event.target.closest("form");
@@ -8026,6 +8049,7 @@
     if (event.target.closest("#tankForm") && ["density","physical_capacity_m3","volume"].includes(event.target.name)) {
       syncSiloCapacityPreview(event.target.closest("#tankForm"));
     }
+    if (event.target.closest("#tankForm") && event.target.name === "client") updateTankClientPreview(event.target.closest("#tankForm"));
   });
 
   $("#modal").addEventListener("click", event => {

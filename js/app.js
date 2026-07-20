@@ -3831,7 +3831,7 @@
     const occupancyClass = pct >= 90 ? "tank-health-critical" : (pct >= 75 ? "tank-health-warning" : (volume > 0 ? "tank-health-active" : "tank-health-empty"));
     const free = Math.max(0, capacity - volume);
 
-    return `<div class="card tank-card compact-tank-card ${silo ? "silo-card" : "fluid-tank-card"} tank-bg-${productType} ${volumeState} ${occupancyClass}" data-tank-search="${esc(`${tank.name} ${tank.product||""} ${tank.lot||""} ${tank.client||""}`.toLowerCase())}" data-tank-phase="${esc(String(tank.phase||"").toLowerCase())}" data-tank-kind="${silo?"silo":"tank"}" data-tank-product="${esc(String(tank.product||"").toLowerCase())}" data-tank-status="${esc(String(tank.status||"").toLowerCase())}">
+    return `<div class="card tank-card compact-tank-card tank-card-horizontal ${silo ? "silo-card" : "fluid-tank-card"} tank-bg-${productType} ${volumeState} ${occupancyClass}" data-tank-search="${esc(`${tank.name} ${tank.product||""} ${tank.lot||""} ${tank.client||""}`.toLowerCase())}" data-tank-phase="${esc(String(tank.phase||"").toLowerCase())}" data-tank-kind="${silo?"silo":"tank"}" data-tank-product="${esc(String(tank.product||"").toLowerCase())}" data-tank-status="${esc(String(tank.status||"").toLowerCase())}">
       <div class="tank-top">
         <div class="tank-heading-block">
           <div class="tank-name-row"><h3>${esc(tank.name)}</h3><span class="tag">${esc(tank.kind)}</span></div>
@@ -3840,33 +3840,33 @@
         ${badge(tank.status)}
       </div>
 
-      <div class="tank-card-body"><div class="tank-mini-visual ${silo ? "is-silo" : "is-tank"}"><span style="height:${visualPct.toFixed(2)}%"></span><b>${fmt.format(pct)}%</b></div><div class="tank-card-details"><div class="compact-tank-product">
-        <strong>${esc(tank.product || (volume > 0 ? "Produto não informado" : "Sem produto"))}</strong>
-        <span>Lote: ${esc(tank.lot || "-")}${volume > 0 && !tank.product ? ` • volume registrado` : ""}</span>
-        <span>Densidade: ${tank.density !== null && tank.density !== undefined ? `${fmt.format(tank.density)} ${esc(tank.densityUnit || (silo ? "t/m³" : "ppg"))}` : "não informada"}</span>
-        ${silo ? `<span>Volume físico: ${fmt.format(physicalCapacity)} m³</span>` : ""}
+      <div class="tank-card-body tank-card-body-horizontal">
+        <div class="tank-card-details">
+          <div class="compact-tank-product">
+            <strong>${esc(tank.product || (volume > 0 ? "Produto não informado" : "Sem produto"))}</strong>
+            <span>Lote: ${esc(tank.lot || "-")}${volume > 0 && !tank.product ? ` • volume registrado` : ""}</span>
+            <span>Densidade: ${tank.density !== null && tank.density !== undefined ? `${fmt.format(tank.density)} ${esc(tank.densityUnit || (silo ? "t/m³" : "ppg"))}` : "não informada"}</span>
+            ${silo ? `<span>Volume físico: ${fmt.format(physicalCapacity)} m³</span>` : ""}
+          </div>
+
+          <div class="tank-volume-summary">
+            <div><small>Saldo atual</small><strong>${fmt.format(volume)} ${esc(tank.unit)}</strong></div>
+            <div><small>${silo ? "Cap. operacional" : "Capacidade"}</small><strong>${fmt.format(capacity)} ${esc(tank.unit)}</strong></div>
+            <div><small>Disponível</small><strong>${fmt.format(free)} ${esc(tank.unit)}</strong></div>
+          </div>
+
+          <div class="tank-progress ${productType} ${volumeState}" data-volume="${volume}" data-kind="${esc(tank.kind)}" role="progressbar" aria-label="Ocupação de ${esc(tank.name)}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${pct.toFixed(1)}">
+            <span style="width:${visualPct.toFixed(2)}%" title="${fmt.format(pct)}% ocupado"></span>
+          </div>
+
+          <div class="tank-progress-caption">
+            <strong>${fmt.format(pct)}%</strong>
+            <span>${silo ? 'ocupação operacional' : `${fmt.format(free)} ${esc(tank.unit)} livres`}</span>
+          </div>
+        </div>
       </div>
 
-      <div class="tank-volume-summary">
-        <div><small>Saldo atual</small><strong>${fmt.format(volume)} ${esc(tank.unit)}</strong></div>
-        <div><small>${silo ? "Cap. operacional" : "Capacidade"}</small><strong>${fmt.format(capacity)} ${esc(tank.unit)}</strong></div>
-        <div><small>Disponível</small><strong>${fmt.format(free)} ${esc(tank.unit)}</strong></div>
-      </div>
-
-      <div class="tank-progress ${productType} ${volumeState}" data-volume="${volume}" data-kind="${esc(tank.kind)}" role="progressbar"
-        aria-label="Ocupação de ${esc(tank.name)}"
-        aria-valuemin="0"
-        aria-valuemax="100"
-        aria-valuenow="${pct.toFixed(1)}">
-        <span style="width:${visualPct.toFixed(2)}%" title="${fmt.format(pct)}% ocupado"></span>
-      </div>
-
-      <div class="tank-progress-caption">
-        <strong>${fmt.format(pct)}%</strong>
-        <span>${silo ? 'ocupação operacional' : `${fmt.format(free)} ${esc(tank.unit)} livres`}</span>
-      </div>
-
-      </div></div><div class="tank-update-meta">
+      <div class="tank-update-meta">
         <span>Atualizado por: ${esc(updater)}</span>
         <span>${dateTime(tank.updated_at)}</span>
       </div>

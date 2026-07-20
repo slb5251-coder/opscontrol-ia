@@ -232,3 +232,24 @@
     padding: 4px 7px;
   }
 }
+
+/* v33.12.14.12 — retorno dos cards horizontais de tanques e silos */
+.tank-card-horizontal .tank-mini-visual{display:none!important}
+.tank-card-horizontal .tank-card-body,
+.tank-card-horizontal .tank-card-body-horizontal{display:block!important;grid-template-columns:1fr!important;gap:0!important}
+.tank-card-horizontal .tank-card-details{display:flex;flex-direction:column;gap:10px;min-width:0}
+.tank-card-horizontal .compact-tank-product{display:grid;gap:4px;min-width:0}
+.tank-card-horizontal .tank-progress{margin-top:2px}
+.tank-card-horizontal .tank-progress-caption{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.tank-card-horizontal .tank-progress-caption span{text-align:right}
+.tank-card-horizontal .tank-volume-summary{margin:10px 0 2px}
+.tank-card-horizontal .tank-top{align-items:flex-start}
+.tank-card-horizontal .tank-client-strip{min-height:auto}
+.tank-card-horizontal .client-identity-chip{max-width:100%}
+.tank-card-horizontal .tank-update-meta{display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.tank-card-horizontal .tank-update-meta span{flex:1 1 180px}
+@media (max-width:760px){
+  .tank-card-horizontal .tank-progress-caption{display:grid;grid-template-columns:1fr;gap:3px}
+  .tank-card-horizontal .tank-progress-caption span{text-align:left}
+  .tank-card-horizontal .tank-update-meta{display:grid;grid-template-columns:1fr;gap:4px}
+}

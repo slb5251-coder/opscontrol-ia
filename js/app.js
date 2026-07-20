@@ -12,7 +12,7 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const APP_VERSION = "20260720-v33-12-14-6-mobile-fix";
+  const APP_VERSION = "20260720-v33-12-14-7-operational-ux";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -107,6 +107,12 @@
     shield: '<path d="M12 3l7 3v5c0 4.5-3 8.7-7 10-4-1.3-7-5.5-7-10V6l7-3z"></path><path d="m8.5 12 2.2 2.2 4.8-5"></path>',
     flask: '<path d="M10 2v7.5L5 18a3 3 0 0 0 2.6 4.5h8.8A3 3 0 0 0 19 18l-5-8.5V2"></path><path d="M8 2h8"></path><path d="M8.5 14h7"></path>',
     monitor: '<rect x="3" y="4" width="18" height="13" rx="2"></rect><path d="M8 21h8"></path><path d="M12 17v4"></path>',
+    calendar: '<rect x="3" y="5" width="18" height="16" rx="2"></rect><path d="M16 3v4"></path><path d="M8 3v4"></path><path d="M3 10h18"></path>',
+    activity: '<path d="M3 12h4l2-6 4 12 2-6h6"></path>',
+    filter: '<path d="M4 5h16"></path><path d="M7 12h10"></path><path d="M10 19h4"></path>',
+    chart: '<path d="M4 20V10"></path><path d="M10 20V4"></path><path d="M16 20v-7"></path><path d="M22 20H2"></path>',
+    history: '<path d="M3 12a9 9 0 1 0 3-6.7"></path><path d="M3 4v6h6"></path><path d="M12 7v5l3 2"></path>',
+    edit: '<path d="M4 20h4l11-11-4-4L4 16z"></path><path d="m13.5 6.5 4 4"></path>',
     settings: '<circle cx="12" cy="12" r="3"></circle><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.4-2.5 1a8 8 0 0 0-1.7-1L14.4 3h-4.8l-.4 3.1a8 8 0 0 0-1.7 1L5 6.1 3 9.5 5 11a7 7 0 0 0 0 2l-2 1.5 2 3.4 2.5-1a8 8 0 0 0 1.7 1l.4 3.1h4.8l.4-3.1a8 8 0 0 0 1.7-1l2.5 1 2-3.4-2-1.5c.1-.3.1-.7.1-1z"></path>'
   };
 
@@ -368,6 +374,97 @@
       .replace(/[\u0300-\u036f]/g, "")
       .toLowerCase()
       .trim();
+  }
+
+  const NAVIGATION_GROUPS = [
+    { id:"operation", label:"Operação", pages:["dashboard","operations","vessel-registry","reports","tv"] },
+    { id:"plant", label:"Planta", pages:["tanks","fluids","chemical-catalog","chemicals"] },
+    { id:"logistics", label:"Logística", pages:["trucks","client-tickets"] },
+    { id:"management", label:"Gestão", pages:["qhse","maintenance","certificates","alerts"] },
+    { id:"administration", label:"Administração", pages:["quality","sanitation","audit","settings"] }
+  ];
+
+  function sidebarFavoritePages() {
+    try { return JSON.parse(localStorage.getItem("opscontrol_sidebar_favorites") || "[]"); }
+    catch (_) { return []; }
+  }
+
+  function setSidebarFavoritePages(pages) {
+    localStorage.setItem("opscontrol_sidebar_favorites", JSON.stringify([...new Set(pages)].slice(0,6)));
+  }
+
+  function navigationChevron() {
+    return `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 6 6 6-6 6"></path></svg>`;
+  }
+
+  function refreshSidebarFavorites() {
+    const container = $("#sidebarFavoritesList");
+    const section = $("#sidebarFavoritesSection");
+    if (!container || !section) return;
+    const favorites = sidebarFavoritePages();
+    container.innerHTML = favorites.map(page => {
+      const source = $(`.nav-section:not(.nav-favorites) .nav-item[data-page="${page}"]`);
+      if (!source) return "";
+      const clone = source.cloneNode(true);
+      clone.classList.add("nav-favorite-clone");
+      clone.classList.toggle("active", state.page === page);
+      const star = clone.querySelector("[data-favorite-page]");
+      if (star) star.classList.add("selected");
+      return clone.outerHTML;
+    }).join("");
+    section.classList.toggle("hidden", !favorites.length);
+    if (state.user) {
+      container.querySelectorAll(".nav-item").forEach(item => item.classList.toggle("hidden", !moduleAllowed(item.dataset.page)));
+    }
+  }
+
+  function toggleSidebarFavorite(page) {
+    const favorites = sidebarFavoritePages();
+    const next = favorites.includes(page) ? favorites.filter(item => item !== page) : [...favorites, page];
+    setSidebarFavoritePages(next);
+    $$("[data-favorite-page]").forEach(star => star.classList.toggle("selected", next.includes(star.dataset.favoritePage)));
+    refreshSidebarFavorites();
+    toast(next.includes(page) ? "Módulo adicionado aos favoritos." : "Módulo removido dos favoritos.", "success");
+  }
+
+  function setupSidebarNavigation() {
+    const nav = $("#sidebar nav");
+    if (!nav || nav.dataset.grouped === "true") return;
+    nav.dataset.grouped = "true";
+    const items = [...nav.querySelectorAll(":scope > .nav-item")];
+    const itemMap = new Map(items.map(item => [item.dataset.page, item]));
+    items.forEach(item => {
+      const star = document.createElement("span");
+      star.className = "nav-favorite-toggle";
+      star.dataset.favoritePage = item.dataset.page;
+      star.setAttribute("role", "button");
+      star.setAttribute("aria-label", "Adicionar ou remover dos favoritos");
+      star.innerHTML = "★";
+      star.classList.toggle("selected", sidebarFavoritePages().includes(item.dataset.page));
+      item.appendChild(star);
+    });
+    nav.innerHTML = `<section id="sidebarFavoritesSection" class="nav-section nav-favorites hidden"><div class="nav-section-label"><span>Favoritos</span><small>acesso rápido</small></div><div id="sidebarFavoritesList" class="nav-section-list"></div></section>`;
+    NAVIGATION_GROUPS.forEach((group,index) => {
+      const section = document.createElement("section");
+      section.className = "nav-section";
+      section.dataset.navGroup = group.id;
+      section.innerHTML = `<button type="button" class="nav-section-toggle" data-nav-group-toggle="${group.id}" aria-expanded="${index < 2 ? "true" : "false"}"><span>${group.label}</span>${navigationChevron()}</button><div class="nav-section-list ${index < 2 ? "" : "collapsed"}" data-nav-group-list="${group.id}"></div>`;
+      const list = section.querySelector(".nav-section-list");
+      group.pages.forEach(page => { const item=itemMap.get(page); if(item) list.appendChild(item); });
+      nav.appendChild(section);
+    });
+    refreshSidebarFavorites();
+  }
+
+  function startTopbarClock() {
+    const update = () => {
+      const el = $("#topbarClock");
+      if (!el) return;
+      const now = new Date();
+      el.innerHTML = `<strong>${now.toLocaleTimeString("pt-BR", {hour:"2-digit",minute:"2-digit"})}</strong><small>${now.toLocaleDateString("pt-BR", {day:"2-digit",month:"short"})}</small>`;
+    };
+    update();
+    setInterval(update, 30000);
   }
 
   function clientLogoConfig(client = "") {
@@ -2458,7 +2555,7 @@
       .filter(t => productClass(t.product, t.kind, t.volume) === "generic")
       .reduce((sum, item) => sum + Number(item.volume || 0), 0);
 
-    const activeOps = operations.filter(x => !["Concluída", "Cancelada"].includes(x.status));
+    const activeOps = operations.filter(x => ["Em andamento", "Paralisada"].includes(x.status));
     const today = localDateKey();
     const todayOps = d.operations.filter(x => recordDateKey(x.start_at || x.created_at) === today).length;
     const todayTrucks = d.trucks.filter(x => recordDateKey(x.date || x.created_at) === today).length;
@@ -2480,6 +2577,16 @@
     }).length;
     const criticalAlerts = d.systemAlerts.filter(x => isCriticalAlert(x.level)).length
       + d.alerts.filter(x => !x.read && isCriticalAlert(x.level)).length;
+    const occupiedAssets = d.tanks.filter(x => Number(x.volume || 0) > 0).length;
+    const blockedAssets = d.tanks.filter(x => String(x.status || "").toLowerCase() === "bloqueado").length;
+
+    const attentionTotal = criticalAlerts + blockedAssets + pendingQhse + lowChemicals + expiring.length + expiringChemicals;
+    const upcomingOperations = operations.filter(op => op.status === "Programada")
+      .sort((a,b) => new Date(a.start_at || a.created_at || 0) - new Date(b.start_at || b.created_at || 0));
+    const nextOperation = upcomingOperations[0] || null;
+    const handoverSelection = ensureHandoverSelection();
+    const currentHandover = (d.handoverNotes || []).find(item => item.shift_date === handoverSelection.date && item.shift_type === handoverSelection.shift);
+    const handoverPreview = String(currentHandover?.full_text || currentHandover?.observations || "").trim();
 
     const byClient = aggregateOperationVolume(operations, "client").slice(0, 6);
     const products = aggregateOperationVolume(operations, "product").slice(0, 6);
@@ -2496,8 +2603,6 @@
       ...d.alerts.map(x => x.created_at)
     ]);
 
-    const occupiedAssets = d.tanks.filter(x => Number(x.volume || 0) > 0).length;
-    const blockedAssets = d.tanks.filter(x => String(x.status || "").toLowerCase() === "bloqueado").length;
     const operationCount = filtersActive ? periodOps : todayOps;
     const truckCount = filtersActive ? periodTrucks : todayTrucks;
     const periodLabel = filtersActive ? "no período selecionado" : "registradas hoje";
@@ -2581,7 +2686,16 @@
           <div><small>Ocupação da planta</small><strong>${occupiedAssets} de ${d.tanks.length} equipamentos</strong></div>
         </section>
 
-        <section class="card dashboard-filter-panel no-print">
+        <section class="dashboard-priority-strip" aria-label="Prioridades do turno">
+          <button class="dashboard-priority-card priority-now" data-page-link="operations"><span class="priority-icon">${uiIcon(activeOps.length ? "activity" : "check")}</span><div><small>AGORA</small><strong>${activeOps.length ? `${activeOps.length} operação(ões) em andamento` : "Sem operação em andamento"}</strong><span>${activeOps[0] ? `${esc(activeOps[0].client)} • ${esc(activeOps[0].vessel)}` : "Planta disponível para a próxima programação"}</span></div><b>${activeOps.length}</b></button>
+          <button class="dashboard-priority-card priority-next" data-page-link="operations"><span class="priority-icon">${uiIcon("calendar")}</span><div><small>A SEGUIR</small><strong>${nextOperation ? esc(nextOperation.vessel || "Operação programada") : "Nenhuma operação programada"}</strong><span>${nextOperation ? `${esc(nextOperation.client || "Cliente")} • ${nextOperation.start_at ? dateTime(nextOperation.start_at) : "horário a definir"}` : "Cadastre a próxima operação"}</span></div>${nextOperation ? badge(nextOperation.status) : ""}</button>
+          <button class="dashboard-priority-card priority-attention ${attentionTotal ? "has-alert" : "is-ok"}" data-page-link="alerts"><span class="priority-icon">${uiIcon(attentionTotal ? "alert" : "shield")}</span><div><small>ATENÇÃO</small><strong>${attentionTotal ? `${attentionTotal} ponto(s) para acompanhar` : "Controles dentro dos limites"}</strong><span>${criticalAlerts ? `${criticalAlerts} alerta(s) crítico(s)` : "Sem alertas críticos"}</span></div><b>${attentionTotal}</b></button>
+          <button class="dashboard-priority-card priority-handover" data-page-link="reports"><span class="priority-icon">${uiIcon("file")}</span><div><small>PASSAGEM</small><strong>${handoverPreview ? "Passagem atualizada" : "Passagem ainda não preenchida"}</strong><span>${handoverPreview ? esc(handoverPreview.slice(0,90)) : "Registre pendências e informações do turno"}</span></div><span class="priority-arrow">→</span></button>
+        </section>
+
+        <details class="dashboard-expandable no-print">
+          <summary><span>${uiIcon("filter")}</span><div><strong>Filtros do dashboard</strong><small>Período, cliente e produto</small></div><b>${filtersActive ? "Ativo" : "Abrir"}</b></summary>
+        <section class="card dashboard-filter-panel">
           <div class="dashboard-filter-heading"><div><small>PERÍODO E ESCOPO</small><h3>Filtros do dashboard</h3><p>Operações, carretas, rankings e tempo parado seguem o período selecionado.</p></div>${filtersActive ? `<span class="dashboard-filter-active">Filtro ativo</span>` : ""}</div>
           <div class="dashboard-filter-grid">
             <div><label>Data inicial</label><input id="filterStart" type="date" value="${esc(state.filters.start)}"></div>
@@ -2592,14 +2706,13 @@
           </div>
         </section>
         ${filtersActive ? `<div class="dashboard-filter-notice">A tancagem continua exibindo o saldo atual da planta. Os demais indicadores seguem o filtro aplicado.</div>` : ""}
+        </details>
 
         <section class="dashboard-kpi-grid" aria-label="Indicadores principais">
-          ${statCard(filtersActive ? "Operações no filtro" : "Operações hoje", fmt.format(operationCount), periodLabel, uiIcon("anchor"), activeOps.length ? `${activeOps.length} em andamento` : "Nenhuma em andamento", "blue")}
-          ${statCard("Operações ativas", fmt.format(activeOps.length), "em acompanhamento", uiIcon("gauge"), activeOps.length ? "Monitorar execução e vazão" : "Planta sem operação ativa", "indigo")}
-          ${statCard(filtersActive ? "Carretas no filtro" : "Carretas hoje", fmt.format(truckCount), periodLabel, uiIcon("truck"), "Entradas e saídas registradas", "green")}
-          ${statCard("Equipamentos ocupados", fmt.format(occupiedAssets), `de ${d.tanks.length} tanques e silos`, uiIcon("layers"), `${blockedAssets} bloqueado(s)`, "cyan")}
-          ${statCard("Manutenções abertas", fmt.format(openMaintenance), "ordens pendentes", uiIcon("wrench"), "Corretivas e preventivas", "amber")}
-          ${statCard("Alertas críticos", fmt.format(criticalAlerts), "automáticos e não lidos", uiIcon("alert"), criticalAlerts ? "Requerem atenção" : "Nenhuma criticidade", "red")}
+          ${statCard("Operações ativas", fmt.format(activeOps.length), "em acompanhamento", uiIcon("gauge"), activeOps.length ? "Monitorar execução e vazão" : "Planta sem operação ativa", "blue")}
+          ${statCard("Próxima operação", fmt.format(upcomingOperations.length), "programada(s)", uiIcon("calendar"), nextOperation ? `${esc(nextOperation.client || "Cliente")} • ${esc(nextOperation.vessel || "Embarcação")}` : "Nenhuma programação", "cyan")}
+          ${statCard("Ocupação da planta", fmt.format(occupiedAssets), `de ${d.tanks.length} equipamentos`, uiIcon("layers"), `${blockedAssets} bloqueado(s)`, "green")}
+          ${statCard("Pendências prioritárias", fmt.format(attentionTotal), "controles para acompanhar", uiIcon("alert"), criticalAlerts ? `${criticalAlerts} crítico(s)` : "Sem criticidade", attentionTotal ? "amber" : "green")}
         </section>
 
         <div class="dashboard-main-grid">
@@ -2635,6 +2748,8 @@
           </aside>
         </div>
 
+        <details class="dashboard-manager-view">
+          <summary><span>${uiIcon("chart")}</span><div><strong>Visão gerencial e análises</strong><small>Tancagem, rankings, atividades recentes e consulta inteligente</small></div><b>Abrir</b></summary>
         <section class="card dashboard-storage-overview">
           <div class="dashboard-section-heading"><div><small>SALDO ATUAL DA PLANTA</small><h3>Tancagem por família de produto</h3><p>Volumes atuais, capacidade utilizada e espaço livre.</p></div><button class="btn small secondary" data-page-link="tanks">Abrir inventário</button></div>
           <div class="dashboard-storage-grid">
@@ -2665,6 +2780,7 @@
         </div>
 
         <section class="card smart-query dashboard-smart-query"><div><small>ASSISTENTE OPERACIONAL</small><h3>Consulta inteligente</h3><p>Pergunte sobre volumes, clientes, carretas, tanques, químicos, certificados ou diesel.</p></div><div class="smart-input"><input id="smartQuestion" placeholder="Ex.: Quantos bbl de Brine temos?"><button class="btn primary" data-action="smart-query">Perguntar</button></div><div id="smartAnswer" class="smart-answer hidden"></div></section>
+        </details>
       </div>`;
   }
 
@@ -2907,11 +3023,13 @@
         ${badge(op.status)}
       </div>
       <div class="operation-focus-service"><strong>${esc(op.activity)}</strong><span>${esc(op.product || "Produto não informado")}</span></div>
-      <div class="operation-focus-meta">
+      ${(op.rig || op.well || op.ticketNumber || op.service_order || op.lot) ? `<details class="operation-extra-details"><summary>Mais detalhes <span>+</span></summary><div class="operation-focus-meta">
         ${op.rig ? `<span>Sonda<strong>${esc(op.rig)}</strong></span>` : ""}
         ${op.well ? `<span>Poço<strong>${esc(op.well)}</strong></span>` : ""}
         ${op.ticketNumber ? `<span>Ticket<strong>${esc(op.ticketNumber)}</strong></span>` : ""}
-      </div>
+        ${op.service_order ? `<span>OS<strong>${esc(op.service_order)}</strong></span>` : ""}
+        ${op.lot ? `<span>Lote<strong>${esc(op.lot)}</strong></span>` : ""}
+      </div></details>` : ""}
       <div class="operation-focus-progress"><div><span>Progresso</span><strong>${pct}%</strong></div><div class="progress"><span style="width:${pct}%"></span></div></div>
       <div class="operation-focus-kpis">
         <span>Executado<strong>${fmt.format(op.executed)} ${esc(op.unit)}</strong></span>
@@ -2920,8 +3038,11 @@
       </div>
       <div class="operation-focus-actions">
         ${op.status === "Programada" ? marineTrafficOperationButton(op) : ""}
-        <button class="btn small secondary" data-operation-timeline="${op.id}">${uiIcon("history", "ui-icon btn-icon")} Timeline</button>
-        <button class="btn small primary" data-edit-operation="${op.id}">${uiIcon("edit", "ui-icon btn-icon")} Abrir operação</button>${isAdmin() ? `<button class="btn small danger outline" data-delete-operation="${op.id}">Excluir</button>` : ""}
+        <button class="btn small primary" data-edit-operation="${op.id}">${uiIcon("edit", "ui-icon btn-icon")} Abrir operação</button>
+        <details class="action-menu"><summary class="btn small secondary" aria-label="Mais ações">•••</summary><div class="action-menu-popover">
+          <button class="btn small secondary" data-operation-timeline="${op.id}">${uiIcon("history", "ui-icon btn-icon")} Timeline</button>
+          ${isAdmin() ? `<button class="btn small danger outline" data-delete-operation="${op.id}">Excluir operação</button>` : ""}
+        </div></details>
       </div>
     </article>`;
   }
@@ -2949,22 +3070,25 @@
         <td>${operationAllocationHtml(op)}<div style="margin-top:6px">${badge(tankStatus)}</div></td>
         <td>${badge(op.status)}${op.locked ? `<br><span class="tag">${uiIcon("lock", "ui-icon ui-icon-inline")} Encerrada</span>` : ""}</td>
         <td>${dateTime(op.start_at)}<br><small>${op.end_at ? `Fim: ${dateTime(op.end_at)}` : "Sem término"}</small></td>
-        <td><div class="row-actions">
-          <button class="btn small secondary" data-operation-timeline="${op.id}">Timeline</button>
-          ${op.status === "Programada" ? marineTrafficOperationButton(op, true) : ""}
-          <button class="btn small secondary" data-attachments="operation:${op.id}" data-attachment-title="${esc(op.vessel)}">${uiIcon("paperclip", "ui-icon btn-icon")} ${attachmentCount("operation", op.id)}</button>
-          ${hasRole(["supervisor", "lider", "operador"]) && op.status === "Concluída" && !op.tank_movement_applied && tankMovementMode(op.activity) !== "none" ? `<button class="btn small soft" data-apply-operation-tank="${op.id}">Aplicar na tancagem</button>` : ""}
-          ${canEdit ? `<button class="btn small primary" data-edit-operation="${op.id}">Editar</button>` : ""}${isAdmin() ? `<button class="btn small danger outline" data-delete-operation="${op.id}">Excluir</button>` : ""}
+        <td><div class="row-actions operation-row-actions">
+          ${canEdit ? `<button class="btn small primary" data-edit-operation="${op.id}">Abrir</button>` : ""}
+          <details class="action-menu"><summary class="btn small secondary" aria-label="Mais ações">•••</summary><div class="action-menu-popover">
+            <button class="btn small secondary" data-operation-timeline="${op.id}">Timeline</button>
+            ${op.status === "Programada" ? marineTrafficOperationButton(op, true) : ""}
+            <button class="btn small secondary" data-attachments="operation:${op.id}" data-attachment-title="${esc(op.vessel)}">${uiIcon("paperclip", "ui-icon btn-icon")} Anexos (${attachmentCount("operation", op.id)})</button>
+            ${hasRole(["supervisor", "lider", "operador"]) && op.status === "Concluída" && !op.tank_movement_applied && tankMovementMode(op.activity) !== "none" ? `<button class="btn small soft" data-apply-operation-tank="${op.id}">Aplicar na tancagem</button>` : ""}
+            ${isAdmin() ? `<button class="btn small danger outline" data-delete-operation="${op.id}">Excluir operação</button>` : ""}
+          </div></details>
         </div></td>
       </tr>`;
     }).join("");
 
     const mobile = operations.map(op => `<div class="card mobile-record-card operation-mobile-card">
       <div class="mobile-record-head operation-mobile-head"><div class="operation-mobile-title">${clientLogoBadge(op.client, "calendar", "operation-mobile-logo")}<div><strong>${esc(op.client)}</strong><small>${esc(op.vessel)} • ${esc(op.activity)}</small></div></div>${badge(op.status)}</div>
-      <div class="operation-mobile-meta">${op.rig ? `<span>Sonda <strong>${esc(op.rig)}</strong></span>` : ""}${op.well ? `<span>Poço <strong>${esc(op.well)}</strong></span>` : ""}${op.ticketNumber ? `<span>Ticket <strong>${esc(op.ticketNumber)}</strong></span>` : ""}</div>
+      ${(op.rig || op.well || op.ticketNumber) ? `<details class="operation-extra-details mobile-operation-extra"><summary>Mais detalhes <span>+</span></summary><div class="operation-mobile-meta">${op.rig ? `<span>Sonda <strong>${esc(op.rig)}</strong></span>` : ""}${op.well ? `<span>Poço <strong>${esc(op.well)}</strong></span>` : ""}${op.ticketNumber ? `<span>Ticket <strong>${esc(op.ticketNumber)}</strong></span>` : ""}</div></details>` : ""}
       <div class="mobile-record-grid"><span>Produto<strong>${esc(op.product)}</strong></span><span>Executado<strong>${fmt.format(op.executed)} ${esc(op.unit)}</strong></span><span>Vazão<strong>${fmt.format(operationFlow(op))} ${esc(op.unit)}/h</strong></span><span>Tancagem<strong>${normalizedOperationAllocations(op).length} equipamento(s)</strong></span></div>
       <div class="mobile-allocation-summary">${operationAllocationHtml(op)}</div>
-      <div class="row-actions">${op.status === "Programada" ? marineTrafficOperationButton(op, true) : ""}<button class="btn small secondary" data-operation-timeline="${op.id}">Timeline</button>${isAdmin() || !op.locked || hasRole(["supervisor"]) ? `<button class="btn small primary" data-edit-operation="${op.id}">Editar</button>` : ""}${isAdmin() ? `<button class="btn small danger outline" data-delete-operation="${op.id}">Excluir</button>` : ""}</div>
+      <div class="row-actions operation-mobile-actions">${isAdmin() || !op.locked || hasRole(["supervisor"]) ? `<button class="btn small primary" data-edit-operation="${op.id}">Abrir</button>` : ""}${op.status === "Programada" ? marineTrafficOperationButton(op, true) : ""}<details class="action-menu"><summary class="btn small secondary" aria-label="Mais ações">•••</summary><div class="action-menu-popover"><button class="btn small secondary" data-operation-timeline="${op.id}">Timeline</button>${isAdmin() ? `<button class="btn small danger outline" data-delete-operation="${op.id}">Excluir operação</button>` : ""}</div></details></div>
     </div>`).join("");
 
     const priority = [...active, ...programmed].slice(0, 6);
@@ -3697,12 +3821,14 @@
         <span>${dateTime(tank.updated_at)}</span>
       </div>
 
-      <div class="row-actions">
-        ${hasRole(["supervisor", "lider", "operador", "logistica"]) ? `<button class="btn small primary" data-edit-tank="${tank.id}">Atualizar conteúdo</button>` : ""}
-        ${isAdmin() ? `<button class="btn small secondary admin-structure-btn" data-edit-tank-structure="${tank.id}">Editar estrutura</button>` : ""}
-        <button class="btn small secondary" data-tank-history="${tank.id}">Histórico</button>
-        <button class="btn small secondary" data-tank-movements="${tank.id}">Movimentações</button>
-        <button class="btn small secondary" data-asset-qr="tank:${tank.id}">QR Code</button>
+      <div class="row-actions tank-row-actions">
+        ${hasRole(["supervisor", "lider", "operador", "logistica"]) ? `<button class="btn small primary" data-edit-tank="${tank.id}">Atualizar</button>` : ""}
+        <details class="action-menu"><summary class="btn small secondary" aria-label="Mais ações">•••</summary><div class="action-menu-popover">
+          ${isAdmin() ? `<button class="btn small secondary admin-structure-btn" data-edit-tank-structure="${tank.id}">Editar estrutura</button>` : ""}
+          <button class="btn small secondary" data-tank-history="${tank.id}">Histórico</button>
+          <button class="btn small secondary" data-tank-movements="${tank.id}">Movimentações</button>
+          <button class="btn small secondary" data-asset-qr="tank:${tank.id}">QR Code</button>
+        </div></details>
       </div>
     </div>`;
   }
@@ -4921,6 +5047,21 @@
     const grouped = [...new Set(all.map(x=>x.category||"Sistema"))];
     const recent = all.filter(item => { const age=Date.now()-new Date(item.created_at||0).getTime(); return Number.isFinite(age) && age <= 24*60*60*1000; });
     const automaticCount = all.filter(item=>item.automatic).length;
+    const alertLane = item => {
+      const terms = normalizeSearch(`${item.category || ""} ${item.title || ""} ${item.message || ""} ${item.action_page || ""}`);
+      if (isCriticalAlert(item.level)) return "critical";
+      if (/manut|equipamento|motor|bomba|compressor/.test(terms)) return "maintenance";
+      if (/document|certific|ticket|fdt|frt|mdt|mrt|qualidade/.test(terms)) return "documental";
+      if (/oper|tanque|silo|carreta|embarc|qhse|estoque|planta/.test(terms)) return "operational";
+      return "informational";
+    };
+    const alertLanes = [
+      { id:"critical", label:"Críticos", detail:"Ação imediata", icon:"alert", tone:"red" },
+      { id:"operational", label:"Operacionais", detail:"Rotina da planta", icon:"activity", tone:"blue" },
+      { id:"documental", label:"Documentais", detail:"Tickets e validade", icon:"file", tone:"purple" },
+      { id:"maintenance", label:"Manutenção", detail:"Equipamentos e OS", icon:"wrench", tone:"amber" },
+      { id:"informational", label:"Informativos", detail:"Avisos gerais", icon:"bell", tone:"green" }
+    ].map(lane => ({ ...lane, count: all.filter(item => alertLane(item) === lane.id).length }));
     const adminAlertActions = item => isAdmin() && item.deleteKey
       ? `<button class="btn small danger outline" data-delete-alert="${esc(item.deleteKey)}" data-alert-automatic="${item.automatic ? "true" : "false"}" data-alert-title="${esc(item.title || "Alerta")}" data-alert-category="${esc(item.category || "Sistema")}">Excluir</button>`
       : "";
@@ -4929,6 +5070,7 @@
     const chatMessages=messages.slice(-100).map(item=>`<div class="chat-message"><div class="chat-avatar">${esc(String(item.sender_name||"U").trim().slice(0,1).toUpperCase())}</div><div><strong>${esc(item.sender_name)}</strong><p>${esc(item.message)}</p><small>${dateTime(item.created_at)}</small></div></div>`).join("");
     $("#page-alerts").innerHTML=header("Alertas e comunicação", "Prioridades operacionais, avisos automáticos e comunicação da equipe.", hasRole(["supervisor","lider","qhse","logistica"])?`<button class="btn primary" data-action="new-alert">+ Criar comunicado</button>`:"")+
       `<section class="alert-professional-kpis">${statCard("Alertas ativos", fmt.format(all.length), "avisos disponíveis", uiIcon("bell"), `${recent.length} nas últimas 24h`, "blue")}${statCard("Críticos e altos", fmt.format(critical.length), "exigem acompanhamento", uiIcon("alert"), critical.length ? "Prioridade operacional" : "Sem criticidade", "red")}${statCard("Automáticos", fmt.format(automaticCount), "gerados pelo sistema", uiIcon("settings"), `${grouped.length} categoria(s)`, "purple")}${statCard("Mensagens", fmt.format(messages.length), "no chat da equipe", uiIcon("users"), `${offlineQueue().length} pendente(s) offline`, "green")}</section>
+      <section class="alert-workflow-lanes">${alertLanes.map(lane => `<article class="alert-workflow-lane tone-${lane.tone}"><span>${uiIcon(lane.icon)}</span><div><strong>${lane.label}</strong><small>${lane.detail}</small></div><b>${lane.count}</b></article>`).join("")}</section>
       ${isAdmin() ? `<div class="admin-edit-notice alert-admin-notice"><strong>Exclusão administrativa ativa</strong><span>Comunicados são apagados definitivamente. Alertas automáticos são removidos da central sem apagar o dado operacional de origem.</span></div>` : ""}
       <section class="alert-priority-layout"><div class="card alert-priority-panel"><div class="professional-section-heading"><div><small>PRIORIDADE</small><h3>Pontos que exigem atenção</h3></div><span>${critical.length} crítico(s)</span></div><div class="alert-priority-list">${priorityCards || `<div class="empty">Nenhum alerta crítico ou alto.</div>`}</div></div><div class="card alert-category-panel"><div class="professional-section-heading"><div><small>DISTRIBUIÇÃO</small><h3>Alertas por categoria</h3></div></div><div class="alert-category-list">${grouped.map(category=>{ const count=all.filter(x=>(x.category||"Sistema")===category).length; const pct=all.length?Math.round(count/all.length*100):0; return `<div><span><strong>${esc(category)}</strong><small>${count} alerta(s)</small></span><div class="mini-progress"><i style="width:${pct}%"></i></div><b>${pct}%</b></div>`; }).join("") || `<div class="empty">Nenhuma categoria disponível.</div>`}</div></div></section>
       <section class="alert-center-layout professional-alert-layout"><div><div class="professional-section-heading alert-section-heading"><div><small>CENTRAL</small><h3>Todos os alertas</h3></div><span>${all.length} registro(s)</span></div><div class="alert-filter-row">${grouped.map(category=>`<span>${esc(category)} <strong>${all.filter(x=>(x.category||"Sistema")===category).length}</strong></span>`).join("")}</div><div class="alert-center-grid">${cards||`<div class="empty">Nenhum alerta ativo.</div>`}</div></div>
@@ -6284,6 +6426,12 @@
     if (!targetPage) return toast("A página solicitada não está disponível.", "error");
     $$(".page").forEach(item => item.classList.remove("active"));
     $$(".nav-item").forEach(item => item.classList.toggle("active", item.dataset.page === page));
+    refreshSidebarFavorites();
+    const activeGroup = $(`.nav-section .nav-item[data-page="${page}"]`)?.closest(".nav-section");
+    if (activeGroup && !activeGroup.classList.contains("nav-favorites")) {
+      activeGroup.querySelector(".nav-section-toggle")?.setAttribute("aria-expanded", "true");
+      activeGroup.querySelector(".nav-section-list")?.classList.remove("collapsed");
+    }
     targetPage.classList.add("active");
     $("#sidebar")?.classList.remove("open");
     $("#sidebarBackdrop")?.classList.remove("visible");
@@ -6884,6 +7032,15 @@
     }
     if (button.id === "mobileSheetBackdrop") return closeMobileSheets();
     if (button.id === "modalClose" || button.hasAttribute("data-close-modal")) return closeModal();
+    const favoriteToggle = event.target.closest("[data-favorite-page]");
+    if (favoriteToggle) { event.preventDefault(); event.stopPropagation(); return toggleSidebarFavorite(favoriteToggle.dataset.favoritePage); }
+    if (button.dataset.navGroupToggle) {
+      const list = $(`[data-nav-group-list="${button.dataset.navGroupToggle}"]`);
+      const expanded = button.getAttribute("aria-expanded") === "true";
+      button.setAttribute("aria-expanded", String(!expanded));
+      list?.classList.toggle("collapsed", expanded);
+      return;
+    }
     if (button.dataset.mobilePage) return showPage(button.dataset.mobilePage);
     if (button.classList.contains("nav-item")) return showPage(button.dataset.page);
     if (button.closest(".user-chip")) return showPage("settings");
@@ -7925,6 +8082,8 @@
     window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(console.error));
   }
 
+  setupSidebarNavigation();
+  startTopbarClock();
   $("#connectionHint").textContent = "Acesse com seu e-mail e senha cadastrados.";
   restoreSession();
 })();

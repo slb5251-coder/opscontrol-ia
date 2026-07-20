@@ -1,13 +1,14 @@
-const CACHE="opscontrol-20260720-v33-12-14-6-mobile-fix";
+const CACHE="opscontrol-20260720-v33-12-14-7-operational-ux";
 const FILES=[
   "./",
   "./index.html",
-  "./app.css?v=20260720-v33-12-14-6-mobile-fix",
-  "./v33.css?v=20260720-v33-12-14-6-mobile-fix",
-  "./industrial-theme.css?v=20260720-v33-12-14-6-mobile-fix",
-  "./mobile-fix.css?v=20260720-v33-12-14-6-mobile-fix",
-  "./js/config.js?v=20260720-v33-12-14-6-mobile-fix",
-  "./js/app.js?v=20260720-v33-12-14-6-mobile-fix",
+  "./app.css?v=20260720-v33-12-14-7-operational-ux",
+  "./v33.css?v=20260720-v33-12-14-7-operational-ux",
+  "./industrial-theme.css?v=20260720-v33-12-14-7-operational-ux",
+  "./mobile-fix.css?v=20260720-v33-12-14-7-operational-ux",
+  "./ux-overhaul.css?v=20260720-v33-12-14-7-operational-ux",
+  "./js/config.js?v=20260720-v33-12-14-7-operational-ux",
+  "./js/app.js?v=20260720-v33-12-14-7-operational-ux",
   "./manifest.json",
   "./assets/icon.svg","./vendor/qrcode.js"
 ];

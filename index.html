@@ -7,10 +7,11 @@
   <title>OpsControl IA Pro</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="app.css?v=20260720-v33-12-14-6-mobile-fix">
-  <link rel="stylesheet" href="v33.css?v=20260720-v33-12-14-6-mobile-fix">
-  <link rel="stylesheet" href="industrial-theme.css?v=20260720-v33-12-14-6-mobile-fix">
-  <link rel="stylesheet" href="mobile-fix.css?v=20260720-v33-12-14-6-mobile-fix">
+  <link rel="stylesheet" href="app.css?v=20260720-v33-12-14-7-operational-ux">
+  <link rel="stylesheet" href="v33.css?v=20260720-v33-12-14-7-operational-ux">
+  <link rel="stylesheet" href="industrial-theme.css?v=20260720-v33-12-14-7-operational-ux">
+  <link rel="stylesheet" href="mobile-fix.css?v=20260720-v33-12-14-7-operational-ux">
+  <link rel="stylesheet" href="ux-overhaul.css?v=20260720-v33-12-14-7-operational-ux">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
@@ -45,7 +46,7 @@
       </div>
       <div class="topbar-right">
         <button id="globalSearchBtn" class="icon-btn" aria-label="Busca geral" title="Busca geral"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-4-4"></path></svg></button>
-        <span id="syncBadge" class="status-badge neutral">Modo local</span>
+        <span id="topbarClock" class="topbar-clock" aria-label="Data e hora atual"></span><span id="syncBadge" class="status-badge neutral">Modo local</span>
         <button id="notificationsBtn" class="icon-btn" aria-label="Notificações"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 7h18s-3 0-3-7"></path><path d="M10.5 20a1.5 1.5 0 0 0 3 0"></path></svg><span id="alertCount" class="count-badge">0</span></button>
         <button class="user-chip"><span id="userInitials" class="user-avatar-shell">US<img id="userAvatar" class="hidden" alt=""></span><div><strong id="userName">Usuário</strong><small id="userRole">Perfil</small></div></button>
       </div>
@@ -122,9 +123,9 @@
       <span class="mobile-plus">+</span>
       <span>Novo</span>
     </button>
-    <button data-mobile-page="tanks" class="mobile-nav-item" aria-label="Tancagem">
+    <button data-mobile-page="alerts" class="mobile-nav-item" aria-label="Alertas">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M7 4h10"></path><path d="M7 20h10"></path><path d="M8 4v16"></path><path d="M16 4v16"></path><path d="M8 10h8"></path><path d="M8 15h8"></path></svg>
-      <span>Tancagem</span>
+      <span>Alertas</span>
     </button>
     <button data-action="mobile-more" class="mobile-nav-item" aria-label="Mais módulos">
       <svg viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.7"></circle><circle cx="12" cy="12" r="1.7"></circle><circle cx="19" cy="12" r="1.7"></circle></svg>
@@ -158,8 +159,8 @@
   </div>
 
   <div id="toastContainer" class="toast-container"></div>
-  <script src="js/config.js?v=20260720-v33-12-14-6-mobile-fix"></script>
-  <script src="vendor/qrcode.js?v=20260720-v33-12-14-6-mobile-fix"></script>
-  <script src="js/app.js?v=20260720-v33-12-14-6-mobile-fix"></script>
+  <script src="js/config.js?v=20260720-v33-12-14-7-operational-ux"></script>
+  <script src="vendor/qrcode.js?v=20260720-v33-12-14-7-operational-ux"></script>
+  <script src="js/app.js?v=20260720-v33-12-14-7-operational-ux"></script>
 </body>
 </html>

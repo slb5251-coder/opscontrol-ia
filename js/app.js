@@ -3873,16 +3873,29 @@
 
       <div class="row-actions tank-row-actions">
         ${hasRole(["supervisor", "lider", "operador", "logistica"]) ? `<button class="btn small primary" data-edit-tank="${tank.id}">Atualizar</button>` : ""}
-        <details class="action-menu"><summary class="btn small secondary" aria-label="Mais ações">•••</summary><div class="action-menu-popover">
-          ${isAdmin() ? `<button class="btn small secondary admin-structure-btn" data-edit-tank-structure="${tank.id}">Editar estrutura</button>` : ""}
-          <button class="btn small secondary" data-tank-history="${tank.id}">Histórico</button>
-          <button class="btn small secondary" data-tank-movements="${tank.id}">Movimentações</button>
-          <button class="btn small secondary" data-asset-qr="tank:${tank.id}">QR Code</button>
-        </div></details>
+        <button type="button" class="btn small secondary tank-more-actions-btn" data-tank-actions="${tank.id}" aria-label="Abrir ações de ${esc(tank.name)}" title="Mais ações"><span aria-hidden="true">•••</span></button>
       </div>
     </div>`;
   }
 
+
+  function tankActionsPanel(tank) {
+    if (!tank) return `<div class="empty">Equipamento não localizado.</div>`;
+    return `<div class="tank-actions-sheet">
+      <div class="tank-actions-summary">
+        <div><small>Equipamento</small><strong>${esc(tank.name)}</strong></div>
+        <div><small>Produto</small><strong>${esc(tank.product || "Sem produto")}</strong></div>
+        <div><small>Cliente</small><strong>${esc(tank.client || "A definir")}</strong></div>
+      </div>
+      <div class="tank-actions-list">
+        ${isAdmin() ? `<button type="button" class="btn secondary" data-edit-tank-structure="${tank.id}">Editar estrutura</button>` : ""}
+        <button type="button" class="btn secondary" data-tank-history="${tank.id}">Ver histórico</button>
+        <button type="button" class="btn secondary" data-tank-movements="${tank.id}">Ver movimentações</button>
+        <button type="button" class="btn secondary" data-asset-qr="tank:${tank.id}">Abrir QR Code</button>
+      </div>
+      <button type="button" class="btn secondary full tank-actions-close" data-close-modal>Fechar</button>
+    </div>`;
+  }
 
 
   function tankHistoryVisual(tank, history) {
@@ -7834,6 +7847,12 @@
     }
 
     if (button.dataset.addEvent) return openModal("Adicionar evento", eventForm(button.dataset.addEvent), "TIMELINE");
+
+    if (button.dataset.tankActions) {
+      const tank = state.data.tanks.find(x => x.id === button.dataset.tankActions);
+      if (!tank) return toast("O tanque ou silo não foi encontrado. Atualize a página.", "error");
+      return openModal(`Ações — ${tank.name}`, tankActionsPanel(tank), "TANCAGEM");
+    }
 
     if (button.dataset.editTank) {
       const tank = state.data.tanks.find(x => x.id === button.dataset.editTank);

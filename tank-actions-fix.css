@@ -1,0 +1,144 @@
+/* OpsControl IA v33.12.14.14 — menu estável dos tanques e silos */
+
+.tank-card-horizontal .tank-row-actions{
+  display:grid!important;
+  grid-template-columns:minmax(0,1fr) 44px!important;
+  align-items:stretch!important;
+  gap:8px!important;
+  width:100%!important;
+  overflow:visible!important;
+}
+
+.tank-card-horizontal .tank-row-actions>.btn{
+  min-width:0!important;
+  width:100%!important;
+}
+
+.tank-more-actions-btn{
+  display:grid!important;
+  place-items:center!important;
+  width:44px!important;
+  min-width:44px!important;
+  max-width:44px!important;
+  min-height:40px!important;
+  padding:0!important;
+  line-height:1!important;
+  font-size:18px!important;
+  font-weight:900!important;
+  letter-spacing:1px!important;
+  overflow:hidden!important;
+}
+
+.tank-more-actions-btn span{
+  display:block;
+  transform:translateY(-2px);
+  white-space:nowrap;
+}
+
+.tank-actions-sheet{
+  display:grid;
+  gap:14px;
+  width:100%;
+  min-width:0;
+}
+
+.tank-actions-summary{
+  display:grid;
+  grid-template-columns:repeat(3,minmax(0,1fr));
+  gap:9px;
+}
+
+.tank-actions-summary>div{
+  min-width:0;
+  padding:11px 12px;
+  border:1px solid var(--border,var(--line));
+  border-radius:13px;
+  background:var(--card-2,var(--card));
+}
+
+.tank-actions-summary small,
+.tank-actions-summary strong{
+  display:block;
+  min-width:0;
+}
+
+.tank-actions-summary small{
+  margin-bottom:5px;
+  color:var(--muted);
+  font-size:10px;
+  font-weight:800;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+}
+
+.tank-actions-summary strong{
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+  color:var(--text);
+  font-size:13px;
+}
+
+.tank-actions-list{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:9px;
+  width:100%;
+}
+
+.tank-actions-list .btn{
+  width:100%!important;
+  min-width:0!important;
+  min-height:44px!important;
+  justify-content:flex-start!important;
+  text-align:left!important;
+  white-space:normal!important;
+}
+
+.tank-actions-close{
+  margin-top:2px;
+}
+
+/* Neutraliza apenas o popover antigo nos cartões de tancagem. */
+.tank-card-horizontal .action-menu,
+.tank-card-horizontal .action-menu-popover{
+  display:none!important;
+}
+
+:root[data-theme="industrial"] .tank-actions-summary>div{
+  background:#0b1928;
+  border-color:#294158;
+}
+
+:root[data-theme="industrial"] .tank-more-actions-btn{
+  background:#101f30;
+  border-color:#36536d;
+  color:#dcecff;
+}
+
+:root[data-theme="industrial"] .tank-more-actions-btn:hover,
+:root[data-theme="industrial"] .tank-more-actions-btn:focus-visible{
+  background:#173049;
+  border-color:#20d4c6;
+  color:#55eee2;
+}
+
+@media(max-width:760px){
+  .tank-card-horizontal .tank-row-actions{
+    grid-template-columns:minmax(0,1fr) 44px!important;
+  }
+
+  .tank-actions-summary,
+  .tank-actions-list{
+    grid-template-columns:minmax(0,1fr)!important;
+  }
+
+  .tank-actions-summary strong{
+    white-space:normal;
+    overflow-wrap:anywhere;
+  }
+
+  .tank-actions-list .btn{
+    min-height:48px!important;
+  }
+}

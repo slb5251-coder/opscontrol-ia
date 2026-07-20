@@ -1,4 +1,4 @@
-const VERSION="20260720-v33-12-14-13-layout-stability";
+const VERSION="20260720-v33-12-14-14-tank-actions-stable";
 const CACHE=`opscontrol-${VERSION}`;
 const FILES=[
   "./",
@@ -12,6 +12,7 @@ const FILES=[
   `./contrast-boost.css?v=${VERSION}`,
   `./tank-card-fix.css?v=${VERSION}`,
   `./layout-stability.css?v=${VERSION}`,
+  `./tank-actions-fix.css?v=${VERSION}`,
   `./js/config.js?v=${VERSION}`,
   `./js/app.js?v=${VERSION}`,
   `./vendor/qrcode.js?v=${VERSION}`,

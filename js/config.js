@@ -17,3 +17,14 @@ window.OPSCONTROL_CONFIG = {
   appName: "OpsControl IA Pro",
   plantName: "B-Port LMP"
 };
+
+/* Carrega apenas os ajustes finos da versão manual atual. */
+(() => {
+  const href = "ajustes-finos.css?v=20260721-polimento-1";
+  if (document.querySelector('link[data-opscontrol-fine-tuning]')) return;
+  const link = document.createElement("link");
+  link.rel = "stylesheet";
+  link.href = href;
+  link.dataset.opscontrolFineTuning = "true";
+  document.head.appendChild(link);
+})();

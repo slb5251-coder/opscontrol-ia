@@ -1947,10 +1947,17 @@
     Object.entries(labels).forEach(([page, label]) => {
       const target = nav.querySelector(`[data-page="${page}"]`);
       if (!target) return;
-      const section = document.createElement("span");
+      const section = document.createElement("button");
+      section.type = "button";
       section.className = "nav-section-label";
-      section.textContent = label;
+      section.dataset.navSectionToggle = page;
+      section.innerHTML = `<span>${label}</span><b aria-hidden="true">⌄</b>`;
       target.before(section);
+    });
+    let currentSection = "";
+    [...nav.children].forEach(item => {
+      if (item.classList.contains("nav-section-label")) currentSection = item.dataset.navSectionToggle;
+      else if (item.classList.contains("nav-item")) item.dataset.navSection = currentSection;
     });
     const names = {
       "vessel-registry": "Embarcações",
@@ -1961,6 +1968,24 @@
       const item = nav.querySelector(`[data-page="${page}"] .nav-label`);
       if (item) item.textContent = label;
     });
+    nav.querySelectorAll(".nav-count").forEach(item => item.remove());
+    const data = state.data || {};
+    const counts = {
+      alerts: [...(data.systemAlerts || []), ...(data.alerts || [])].filter(item => isCriticalAlert(item.level) && item.read !== true).length,
+      maintenance: (data.maintenanceOrders || []).filter(item => !["Concluída","Fechada","Cancelada"].includes(item.status)).length,
+      certificates: (data.certificates || []).filter(item => { const days=daysUntil(item.expires_at); return days!==null && days>=0 && days<=30; }).length,
+      qhse: [...(data.qhse || []), ...(data.actionItems || [])].filter(item => !["Concluído","Concluída","Fechado"].includes(item.status)).length
+    };
+    Object.entries(counts).forEach(([page, count]) => {
+      if (!count) return;
+      const target = nav.querySelector(`[data-page="${page}"]`);
+      if (!target) return;
+      const badge = document.createElement("span");
+      badge.className = "nav-count";
+      badge.textContent = count > 99 ? "99+" : String(count);
+      target.appendChild(badge);
+    });
+    document.body.classList.toggle("sidebar-compact", localStorage.getItem("opscontrol_sidebar_compact") === "true");
   }
 
   function openApp() {
@@ -1975,7 +2000,7 @@
       button.classList.toggle("hidden", !moduleAllowed(button.dataset.page));
     });
 
-    applyTheme(localStorage.getItem(THEME_KEY) || "light");
+    applyTheme(localStorage.getItem(THEME_KEY) || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
     updateConnectionBadge();
     renderAll();
 
@@ -6424,6 +6449,11 @@
     if (!targetPage) return toast("A página solicitada não está disponível.", "error");
     $$(".page").forEach(item => item.classList.remove("active"));
     $$(".nav-item").forEach(item => item.classList.toggle("active", item.dataset.page === page));
+    const activeNavItem = document.querySelector(`#sidebar .nav-item[data-page="${page}"]`);
+    if (activeNavItem) {
+      activeNavItem.classList.remove("section-collapsed");
+      document.querySelector(`#sidebar .nav-section-label[data-nav-section-toggle="${activeNavItem.dataset.navSection}"]`)?.classList.remove("collapsed");
+    }
     targetPage.classList.add("active");
     const desktopMeta = DESKTOP_PAGE_META[page] || MOBILE_PAGE_META[page] || ["OpsControl IA", "Gestão integrada da planta"];
     if ($("#desktopPageTitle")) $("#desktopPageTitle").textContent = desktopMeta[0];
@@ -6986,6 +7016,23 @@
   document.addEventListener("click", async event => {
     const button = event.target.closest("button");
     if (!button) return;
+    if (button.id === "sidebarToggleBtn") {
+      const compact = !document.body.classList.contains("sidebar-compact");
+      document.body.classList.toggle("sidebar-compact", compact);
+      localStorage.setItem("opscontrol_sidebar_compact", String(compact));
+      button.setAttribute("aria-label", compact ? "Expandir menu" : "Recolher menu");
+      button.title = compact ? "Expandir menu" : "Recolher menu";
+      return;
+    }
+    if (button.dataset.navSectionToggle) {
+      const section = button.dataset.navSectionToggle;
+      const collapsed = !button.classList.contains("collapsed");
+      button.classList.toggle("collapsed", collapsed);
+      document.querySelectorAll(`#sidebar .nav-item[data-nav-section="${section}"]`).forEach(item => {
+        if (!item.classList.contains("active")) item.classList.toggle("section-collapsed", collapsed);
+      });
+      return;
+    }
 
     if (button.id === "loginBtn") return login();
     if (button.id === "logoutBtn") return logout();
@@ -7879,6 +7926,21 @@
   });
 
   document.addEventListener("input", event => {
+    if (event.target.id === "sidebarSearch") {
+      const query = String(event.target.value || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().trim();
+      document.querySelectorAll("#sidebar .nav-item").forEach(item => {
+        const label = String(item.textContent || "").normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+        item.classList.toggle("search-hidden", Boolean(query) && !label.includes(query));
+        if (query) item.classList.remove("section-collapsed");
+      });
+      document.querySelectorAll("#sidebar .nav-section-label").forEach(section => {
+        const key = section.dataset.navSectionToggle;
+        const hasVisible = [...document.querySelectorAll(`#sidebar .nav-item[data-nav-section="${key}"]`)]
+          .some(item => !item.classList.contains("hidden") && !item.classList.contains("search-hidden"));
+        section.classList.toggle("search-hidden", Boolean(query) && !hasVisible);
+      });
+      return;
+    }
     if (event.target.matches("[data-client-ticket-filter='query']")) {
       state.clientTicketFilters.query = event.target.value;
       scheduleClientTicketFilterRender(event.target);

@@ -1,4 +1,4 @@
-const CACHE="opscontrol-20260721-interface-fix-1";
+const CACHE="opscontrol-20260721-control-center-2";
 const FILES=[
   "./",
   "./index.html",
@@ -6,9 +6,12 @@ const FILES=[
   "./v33.css?v=20260719-v33-12-14-1-client-tickets",
   "./opscontrol-ui.css?v=20260721-ui-consolidada-1",
   "./interface-fix.css?v=20260721-interface-fix-1",
+  "./design-upgrade.css?v=20260721-control-center-1",
   "./js/config.js?v=20260721-ui-consolidada-1",
   "./js/app.js?v=20260719-v33-12-14-1-client-tickets",
   "./js/ui-polish.js?v=20260721-ui-consolidada-1",
+  "./js/design-upgrade.js?v=20260721-control-center-1",
+  "./js/design-stability.js?v=20260721-control-center-1",
   "./manifest.json",
   "./assets/icon.svg",
   "./vendor/qrcode.js"
@@ -39,9 +42,12 @@ self.addEventListener("fetch", event => {
     url.pathname.endsWith("/v33.css") ||
     url.pathname.endsWith("/opscontrol-ui.css") ||
     url.pathname.endsWith("/interface-fix.css") ||
+    url.pathname.endsWith("/design-upgrade.css") ||
     url.pathname.endsWith("/js/app.js") ||
     url.pathname.endsWith("/js/config.js") ||
-    url.pathname.endsWith("/js/ui-polish.js")
+    url.pathname.endsWith("/js/ui-polish.js") ||
+    url.pathname.endsWith("/js/design-upgrade.js") ||
+    url.pathname.endsWith("/js/design-stability.js")
   );
 
   if (appFile) {
@@ -57,7 +63,5 @@ self.addEventListener("fetch", event => {
     return;
   }
 
-  event.respondWith(
-    caches.match(event.request).then(cached => cached || fetch(event.request))
-  );
+  event.respondWith(caches.match(event.request).then(cached => cached || fetch(event.request)));
 });

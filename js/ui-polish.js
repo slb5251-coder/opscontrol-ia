@@ -4,10 +4,10 @@
   const scriptUrl = document.currentScript?.src || new URL('js/ui-polish.js', document.baseURI).href;
   const INTERFACE_STYLESHEET = new URL('../interface-fix.css?v=20260721-interface-fix-1', scriptUrl).href;
   const DESIGN_STYLESHEET = new URL('../design-upgrade.css?v=20260721-control-center-1', scriptUrl).href;
-  const CAPACITY_STYLESHEET = new URL('../capacity-bars-only.css?v=20260721-capacity-bars-1', scriptUrl).href;
+  const CAPACITY_STYLESHEET = new URL('../capacity-bars-only.css?v=20260721-flat-capacity-2', scriptUrl).href;
   const DESIGN_SCRIPT = new URL('design-upgrade.js?v=20260721-control-center-1', scriptUrl).href;
   const STABILITY_SCRIPT = new URL('design-stability.js?v=20260721-control-center-1', scriptUrl).href;
-  const CAPACITY_SCRIPT = new URL('capacity-bars-only.js?v=20260721-capacity-bars-1', scriptUrl).href;
+  const CAPACITY_SCRIPT = new URL('capacity-bars-only.js?v=20260721-flat-capacity-2', scriptUrl).href;
   const TAB_CONTAINERS = [
     '[role="tablist"]',
     '.tabs',

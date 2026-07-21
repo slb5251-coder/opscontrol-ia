@@ -1,3 +1,4 @@
+@import url("opscontrol-redesign.css?v=20260721-redesign-v1");
 :root{--ocai-blue:#1769e0;--ocai-blue-dark:#0f4fae;--ocai-blue-soft:#edf5ff;--ocai-cyan:#0ea5c6;--ocai-bg:#f4f7fb;--ocai-card:#fff;--ocai-text:#172033;--ocai-muted:#667085;--ocai-line:#dfe6ef;--ocai-success:#15803d;--ocai-danger:#b42318;--ocai-shadow:0 12px 34px rgba(16,40,76,.08)}
 .page-ai-integrated{background:var(--ocai-bg)!important;color:var(--ocai-text)!important;min-height:calc(100vh - 72px);padding:0!important;overflow:visible!important}
 .page-ai-integrated *{box-sizing:border-box}

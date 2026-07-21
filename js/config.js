@@ -18,9 +18,9 @@ window.OPSCONTROL_CONFIG = {
   plantName: "B-Port LMP"
 };
 
-/* Carrega apenas os ajustes finos da versão manual atual. */
+/* Carrega apenas os ajustes visuais conservadores da versão manual atual. */
 (() => {
-  const href = "ajustes-finos.css?v=20260721-polimento-1";
+  const href = "ajustes-finos.css?v=20260721-polimento-2";
   if (document.querySelector('link[data-opscontrol-fine-tuning]')) return;
   const link = document.createElement("link");
   link.rel = "stylesheet";

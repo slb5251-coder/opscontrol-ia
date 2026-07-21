@@ -1968,6 +1968,12 @@
       const item = nav.querySelector(`[data-page="${page}"] .nav-label`);
       if (item) item.textContent = label;
     });
+    nav.querySelectorAll(".nav-item").forEach(item => {
+      const label = item.querySelector(".nav-label")?.textContent?.trim() || "Módulo";
+      item.dataset.navTitle = label;
+      item.title = label;
+      item.setAttribute("aria-label", label);
+    });
     nav.querySelectorAll(".nav-count").forEach(item => item.remove());
     const data = state.data || {};
     const counts = {

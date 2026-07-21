@@ -1,16 +1,16 @@
-const CACHE="opscontrol-20260721-premium-ui-2";
+const CACHE="opscontrol-20260721-icons-3";
 const FILES=[
   "./",
   "./index.html",
   "./app.css?v=20260719-v33-12-14-1-client-tickets",
   "./v33.css?v=20260719-v33-12-14-1-client-tickets",
   "./opscontrol-ui.css?v=20260721-ui-consolidada-1",
-  "./figma-interface.css?v=20260721-premium-ui-2",
+  "./figma-interface.css?v=20260721-icons-3",
   "./interface-fix.css?v=20260721-interface-fix-1",
   "./design-upgrade.css?v=20260721-control-center-1",
   "./tank-cards-reference.css?v=20260721-reference-cards-1",
   "./js/config.js?v=20260721-ui-consolidada-1",
-  "./js/app.js?v=20260721-premium-ui-2",
+  "./js/app.js?v=20260721-icons-3",
   "./js/ui-polish.js?v=20260721-reference-cards-1",
   "./js/design-upgrade.js?v=20260721-control-center-1",
   "./js/design-stability.js?v=20260721-original-tanks-1",

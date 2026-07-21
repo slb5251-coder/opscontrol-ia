@@ -298,4 +298,59 @@ button.figma-recent-row:hover{background:#f8faff}.figma-recent-row>span{min-widt
   *,*:before,*:after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important;scroll-behavior:auto!important}
 }
 
+/* Sistema vetorial de ícones */
+.nav-icon{
+  width:30px!important;height:30px!important;flex:0 0 30px!important;padding:6px!important;
+  display:grid!important;place-items:center!important;border-radius:9px!important;
+  color:#718197!important;background:transparent!important
+}
+.nav-icon svg{display:block!important;width:18px!important;height:18px!important;overflow:visible}
+.nav-item:hover .nav-icon{color:#40516a!important;background:#f0f4f8!important}
+.nav-item.active .nav-icon{color:var(--blue)!important;background:#dce9ff!important}
+.nav-item.active:before{left:0;top:9px;bottom:9px}
+.nav-item.active .nav-label{color:#1254d8}
+.nav-count{margin-left:auto}
+
+.ui-icon{width:18px;height:18px;flex:0 0 18px;display:inline-block;vertical-align:-4px}
+.btn-icon{width:16px!important;height:16px!important;vertical-align:-3px}
+.btn .ui-icon{transition:transform .18s ease}.btn:hover .ui-icon{transform:scale(1.06)}
+.icon-btn svg{width:18px;height:18px}
+.figma-kpi-head i{transition:transform .2s ease,background .2s ease}
+.figma-kpi:hover .figma-kpi-head i{transform:translateY(-1px) scale(1.05);background:#e4efff}
+.figma-kpi-head i svg{stroke-width:1.9}
+
+body.sidebar-compact .nav-item{position:relative}
+body.sidebar-compact .nav-icon,body.sidebar-compact .nav-item.active .nav-icon{
+  width:34px!important;height:34px!important;flex-basis:34px!important;padding:7px!important
+}
+body.sidebar-compact .nav-item:hover:after{
+  content:attr(data-nav-title);position:absolute;left:58px;top:50%;transform:translateY(-50%);
+  padding:8px 10px;background:#081a33;color:#fff;border-radius:8px;font-size:11px;font-weight:600;
+  white-space:nowrap;box-shadow:0 8px 22px rgba(8,26,51,.22);z-index:100;pointer-events:none
+}
+body.sidebar-compact .nav-item:hover:before{
+  content:"";position:absolute;left:52px;top:50%;transform:translateY(-50%);
+  border-width:5px 6px 5px 0;border-style:solid;border-color:transparent #081a33 transparent transparent;
+  width:0;height:0;background:transparent
+}
+body.sidebar-compact .nav-item.active:before{left:2px;top:9px;bottom:9px;width:4px;border:0;transform:none;background:var(--blue)}
+
+/* Categorias cromáticas sem perder consistência */
+.nav-item[data-page="operations"] .nav-icon,.nav-item[data-page="vessel-registry"] .nav-icon{color:#2563eb!important}
+.nav-item[data-page="tanks"] .nav-icon,.nav-item[data-page="fluids"] .nav-icon{color:#0891b2!important}
+.nav-item[data-page="trucks"] .nav-icon,.nav-item[data-page="chemicals"] .nav-icon{color:#b86a08!important}
+.nav-item[data-page="qhse"] .nav-icon,.nav-item[data-page="certificates"] .nav-icon{color:#16824b!important}
+.nav-item[data-page="maintenance"] .nav-icon,.nav-item[data-page="alerts"] .nav-icon{color:#c93646!important}
+.nav-item[data-page="reports"] .nav-icon,.nav-item[data-page="audit"] .nav-icon{color:#6d5ce7!important}
+.nav-item[data-page="settings"] .nav-icon{color:#475569!important}
+.nav-item.active .nav-icon{color:var(--blue)!important}
+
+:root[data-theme="dark"] .nav-item:hover .nav-icon{background:#1a2d44!important}
+:root[data-theme="dark"] .nav-item.active .nav-icon{background:#17375f!important}
+
+@media(max-width:820px){
+  .nav-icon{width:32px!important;height:32px!important;flex-basis:32px!important}
+  body.sidebar-compact .nav-item:hover:after,body.sidebar-compact .nav-item:hover:before{display:none}
+}
+
 @media print{.topbar-page-context{display:none}}

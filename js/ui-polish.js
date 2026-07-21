@@ -5,6 +5,7 @@
   const INTERFACE_STYLESHEET = new URL('../interface-fix.css?v=20260721-interface-fix-1', scriptUrl).href;
   const DESIGN_STYLESHEET = new URL('../design-upgrade.css?v=20260721-control-center-1', scriptUrl).href;
   const DESIGN_SCRIPT = new URL('design-upgrade.js?v=20260721-control-center-1', scriptUrl).href;
+  const STABILITY_SCRIPT = new URL('design-stability.js?v=20260721-control-center-1', scriptUrl).href;
   const TAB_CONTAINERS = [
     '[role="tablist"]',
     '.tabs',
@@ -36,6 +37,15 @@
     document.head.appendChild(link);
   }
 
+  function appendScript(src, marker) {
+    if (document.querySelector(`script[data-${marker}="true"]`)) return;
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = false;
+    script.setAttribute(`data-${marker}`, 'true');
+    document.head.appendChild(script);
+  }
+
   function ensureDesignUpgrade() {
     if (!document.querySelector('link[data-design-upgrade="true"]')) {
       const link = document.createElement('link');
@@ -44,13 +54,8 @@
       link.dataset.designUpgrade = 'true';
       document.head.appendChild(link);
     }
-
-    if (!document.querySelector('script[data-design-upgrade="true"]')) {
-      const script = document.createElement('script');
-      script.src = DESIGN_SCRIPT;
-      script.dataset.designUpgrade = 'true';
-      document.head.appendChild(script);
-    }
+    appendScript(DESIGN_SCRIPT, 'design-upgrade');
+    appendScript(STABILITY_SCRIPT, 'design-stability');
   }
 
   function activeItem(container) {

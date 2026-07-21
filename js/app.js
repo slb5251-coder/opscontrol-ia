@@ -212,7 +212,7 @@
     alerts: ["Alertas e Chat", "Comunicação operacional"],
     reports: ["Relatórios", "Passagem de serviço"],
     audit: ["Auditoria", "Rastreabilidade"],
-    settings: ["Configurações", "Perfil e sistema"]
+    settings: ["Usuários e Acessos", "Perfis e permissões"]
   };
 
   const DESKTOP_PAGE_META = {
@@ -234,7 +234,7 @@
     alerts: ["Central de Alertas", "Comunicação operacional e direcionamento por função"],
     reports: ["Relatórios", "Indicadores, consolidações e passagem de serviço"],
     audit: ["Auditoria", "Histórico e rastreabilidade das alterações"],
-    settings: ["Configurações", "Perfis, acessos e parâmetros do sistema"]
+    settings: ["Usuários e Acessos", "Perfis, acessos e parâmetros do sistema"]
   };
 
   function isMobileViewport() {
@@ -1932,6 +1932,37 @@
     }
   }
 
+  function decorateSidebarNavigation() {
+    const nav = $("#sidebar nav");
+    if (!nav) return;
+    nav.querySelectorAll(".nav-section-label").forEach(item => item.remove());
+    const labels = {
+      dashboard: "VISÃO GERAL",
+      operations: "OPERAÇÕES",
+      tanks: "LOGÍSTICA E MATERIAIS",
+      qhse: "QHSE E CONFIABILIDADE",
+      reports: "DADOS E RELATÓRIOS",
+      settings: "ADMINISTRAÇÃO"
+    };
+    Object.entries(labels).forEach(([page, label]) => {
+      const target = nav.querySelector(`[data-page="${page}"]`);
+      if (!target) return;
+      const section = document.createElement("span");
+      section.className = "nav-section-label";
+      section.textContent = label;
+      target.before(section);
+    });
+    const names = {
+      "vessel-registry": "Embarcações",
+      alerts: "Central de Alertas",
+      settings: "Usuários e Acessos"
+    };
+    Object.entries(names).forEach(([page, label]) => {
+      const item = nav.querySelector(`[data-page="${page}"] .nav-label`);
+      if (item) item.textContent = label;
+    });
+  }
+
   function openApp() {
     $("#loginView").classList.add("hidden");
     $("#appView").classList.remove("hidden");
@@ -1939,6 +1970,7 @@
     const profile = state.data.profile;
     openAppProfileHeader();
 
+    decorateSidebarNavigation();
     $$(".nav-item").forEach(button => {
       button.classList.toggle("hidden", !moduleAllowed(button.dataset.page));
     });
@@ -2461,6 +2493,121 @@
   }
 
   function renderDashboard() {
+    return renderFigmaDashboard();
+  }
+
+  function renderFigmaDashboard() {
+    const d = state.data;
+    const operations = filteredOperations();
+    const trucks = filteredTrucks();
+    const activeOperations = operations.filter(item => !["Concluída", "Cancelada", "Fechada"].includes(item.status));
+    const uniqueVessels = new Set(activeOperations.map(item => item.vessel).filter(Boolean));
+    const tanks = d.tanks || [];
+    const totalVolume = tanks.reduce((sum, item) => sum + Number(item.volume || 0), 0);
+    const totalCapacity = tanks.reduce((sum, item) => sum + Number(item.capacity || 0), 0);
+    const occupancy = totalCapacity ? Math.round(totalVolume / totalCapacity * 100) : 0;
+    const criticalAlerts = [...(d.systemAlerts || []), ...(d.alerts || [])]
+      .filter(item => isCriticalAlert(item.level) && item.read !== true).length;
+    const expiringDocuments = (d.certificates || []).filter(item => {
+      const days = daysUntil(item.expires_at);
+      return days !== null && days >= 0 && days <= 15;
+    }).length;
+
+    const storageTotals = ["wbm", "sbm", "brine"].map(type => tanks
+      .filter(item => productClass(item.product, item.kind, item.volume) === type)
+      .reduce((sum, item) => sum + Number(item.volume || 0), 0));
+    const storageBase = Math.max(totalCapacity, 1);
+    const shares = storageTotals.map(value => Math.round(value / storageBase * 100));
+    const filled = Math.min(100, shares.reduce((sum, value) => sum + value, 0));
+    const empty = Math.max(0, 100 - filled);
+
+    const dayLabels = ["Dom", "Seg", "Ter", "Qua", "Qui", "Sex", "Sáb"];
+    const days = Array.from({ length: 7 }, (_, index) => {
+      const date = new Date();
+      date.setDate(date.getDate() - (6 - index));
+      const key = localDateKey(date);
+      const value = operations
+        .filter(item => recordDateKey(item.start_at || item.created_at) === key)
+        .reduce((sum, item) => sum + Number(item.executed || item.planned || 0), 0);
+      return { key, label: dayLabels[date.getDay()], value };
+    });
+    const maxDay = Math.max(...days.map(item => item.value), 1);
+
+    const recent = [
+      ...operations.map(item => ({
+        time: item.updated_at || item.start_at || item.created_at,
+        title: `${item.activity || "Operação"} — ${item.product || "Produto não informado"}`,
+        detail: `${item.client || "Cliente"} • ${item.vessel || "Embarcação não informada"}`,
+        status: item.status || "Registrada", responsible: d.users.find(user => user.id === item.responsible_id)?.name || "Equipe operacional",
+        page: "operations"
+      })),
+      ...trucks.map(item => ({
+        time: item.updated_at || item.created_at || item.date,
+        title: `${item.movement || "Movimentação"} de ${item.product || item.truckType || "carga"}`,
+        detail: `${item.plate || "Placa não informada"} • NF ${item.invoice || "-"}`,
+        status: item.status || "Registrada", responsible: d.users.find(user => user.id === item.created_by)?.name || "Logística",
+        page: "trucks"
+      })),
+      ...(d.maintenanceOrders || []).map(item => ({
+        time: item.closed_at || item.opened_at,
+        title: item.title || "Ordem de manutenção",
+        detail: d.equipment.find(eq => eq.id === item.equipment_id)?.name || "Equipamento",
+        status: item.status || "Aberta", responsible: item.responsible || "Manutenção",
+        page: "maintenance"
+      }))
+    ].filter(item => item.time)
+      .sort((a, b) => new Date(b.time) - new Date(a.time))
+      .slice(0, 6);
+
+    const kpis = [
+      ["Operações ativas", activeOperations.length, "Serviços em acompanhamento", "blue", "anchor"],
+      ["Embarcações no terminal", uniqueVessels.size, "Programação operacional ativa", "green", "anchor"],
+      ["Volume armazenado", `${fmt.format(totalVolume)} bbl`, `${occupancy}% da capacidade cadastrada`, "cyan", "database"],
+      ["Alertas críticos", criticalAlerts, criticalAlerts ? "Requer atenção do líder" : "Nenhuma criticidade", "red", "alert"],
+      ["Docs vencendo", expiringDocuments, "Próximos 15 dias", "amber", "file"]
+    ];
+
+    $("#page-dashboard").innerHTML =
+      header("Visão Geral da Planta", "Monitoramento integrado de fluidos, atividades de tancagem e conformidade operacional.",
+        `<button class="btn soft" data-action="refresh">${uiIcon("refresh", "ui-icon btn-icon")} Sincronizar</button><button class="btn primary" data-action="new-operation">+ Novo registro</button>`) +
+      `<div class="figma-dashboard">
+        <section class="figma-kpi-grid">
+          ${kpis.map(([title,value,detail,tone,icon]) => `<article class="figma-kpi tone-${tone}">
+            <div class="figma-kpi-head"><span>${esc(title)}</span><i>${uiIcon(icon)}</i></div>
+            <strong>${esc(value)}</strong><small>${esc(detail)}</small>
+          </article>`).join("")}
+        </section>
+        <section class="figma-dashboard-charts">
+          <article class="card figma-volume-chart">
+            <div class="figma-card-heading"><div><h3>Movimentação de Volume</h3><p>Volume executado nos últimos sete dias</p></div><span>Semanal</span></div>
+            <div class="figma-bars">
+              ${days.map((item, index) => `<div class="figma-bar-item"><b>${fmt.format(item.value)}</b><i class="${index === days.length - 1 ? "current" : ""}" style="height:${Math.max(8, item.value / maxDay * 100)}%"></i><span>${item.label}</span></div>`).join("")}
+            </div>
+          </article>
+          <article class="card figma-occupancy-card">
+            <div class="figma-card-heading"><div><h3>Distribuição de Ocupação</h3><p>Volume por tipo de fluido</p></div></div>
+            <div class="figma-occupancy-content">
+              <div class="figma-donut" style="--a:${shares[0]}%;--b:${shares[0]+shares[1]}%;--c:${shares[0]+shares[1]+shares[2]}%"><div><strong>${occupancy}%</strong><span>preenchido</span></div></div>
+              <div class="figma-legend">
+                <span><i class="wbm"></i>WBM <b>${shares[0]}%</b></span>
+                <span><i class="sbm"></i>SBM <b>${shares[1]}%</b></span>
+                <span><i class="brine"></i>Brine <b>${shares[2]}%</b></span>
+                <span><i class="empty"></i>Vazio <b>${empty}%</b></span>
+              </div>
+            </div>
+          </article>
+        </section>
+        <section class="card figma-recent-card">
+          <div class="figma-card-heading"><div><h3>Painel de Atividades Recentes</h3><p>Últimos movimentos e atualizações da planta</p></div><button class="text-button-inline" data-page-link="audit">Ver histórico completo</button></div>
+          <div class="figma-recent-table">
+            <div class="figma-recent-row head"><span>Hora</span><span>Operação / Evento</span><span>Status</span><span>Responsável</span></div>
+            ${recent.map(item => `<button class="figma-recent-row" data-page-link="${item.page}"><span>${dateTime(item.time)}</span><span><strong>${esc(item.title)}</strong><small>${esc(item.detail)}</small></span><span>${badge(item.status)}</span><span>${esc(item.responsible)}</span></button>`).join("") || `<div class="empty">Nenhuma atividade recente disponível.</div>`}
+          </div>
+        </section>
+      </div>`;
+  }
+
+  function renderDashboardLegacy() {
     const d = state.data;
     const operations = filteredOperations();
     const trucks = filteredTrucks();
@@ -3627,7 +3774,7 @@
     const products = [...new Set(all.map(item=>item.product).filter(Boolean))].sort();
     const statuses = [...new Set(all.map(item=>item.status).filter(Boolean))].sort();
     $("#page-tanks").innerHTML =
-      header("Tanques e silos", "Controle operacional de volumetria, produto, lote, disponibilidade e histórico.",
+      header("Tanques e Silos", "Controle operacional de volumetria, produto, lote, disponibilidade e histórico.",
         `<button class="btn secondary" data-page-link="fluids">Fluidos e Granéis</button><button class="btn secondary" data-export="tanks">Exportar CSV</button>${hasRole(["supervisor", "lider", "operador", "logistica"]) ? `<button class="btn primary" data-action="new-tank-transfer">Transferir entre tanques</button>` : ""}`) +
       `<section class="tank-command-center">
         <div class="tank-kpi"><span>Equipamentos</span><strong>${all.length}</strong><small>${occupied} com volume</small></div>
@@ -4947,7 +5094,7 @@
     const priorityCards = critical.slice(0,6).map(item=>`<article class="alert-priority-card ${statusClass(item.level)}"><span>${uiIcon("alert")}</span><div><strong>${esc(item.title)}</strong><small>${esc(item.category||"Sistema")} • ${dateTime(item.created_at)}</small><p>${esc(item.message||"")}</p></div><div class="alert-admin-actions">${item.action_page&&moduleAllowed(item.action_page)?`<button class="btn small secondary" data-alert-page="${esc(item.action_page)}">Abrir</button>`:""}${adminAlertActions(item)}</div></article>`).join("");
     const cards=all.slice(0,80).map(item=>`<article class="alert-center-card ${statusClass(item.level)}"><div class="alert-center-top"><span>${esc(item.category||"Sistema")}</span>${badge(item.level)}</div><h3>${esc(item.title)}</h3><p>${esc(item.message||"")}</p><footer><span>${item.automatic ? "Automático" : "Comunicado"} • ${dateTime(item.created_at)}</span><div class="alert-admin-actions">${item.action_page&&moduleAllowed(item.action_page)?`<button class="btn small secondary" data-alert-page="${esc(item.action_page)}">Abrir módulo</button>`:""}${adminAlertActions(item)}</div></footer></article>`).join("");
     const chatMessages=messages.slice(-100).map(item=>`<div class="chat-message"><div class="chat-avatar">${esc(String(item.sender_name||"U").trim().slice(0,1).toUpperCase())}</div><div><strong>${esc(item.sender_name)}</strong><p>${esc(item.message)}</p><small>${dateTime(item.created_at)}</small></div></div>`).join("");
-    $("#page-alerts").innerHTML=header("Alertas e comunicação", "Prioridades operacionais, avisos automáticos e comunicação da equipe.", hasRole(["supervisor","lider","qhse","logistica"])?`<button class="btn primary" data-action="new-alert">+ Criar comunicado</button>`:"")+
+    $("#page-alerts").innerHTML=header("Central de Alertas", "Prioridades operacionais, avisos automáticos e comunicação direcionada da equipe.", hasRole(["supervisor","lider","qhse","logistica"])?`<button class="btn primary" data-action="new-alert">+ Criar alerta</button>`:"")+
       `<section class="alert-professional-kpis">${statCard("Alertas ativos", fmt.format(all.length), "avisos disponíveis", uiIcon("bell"), `${recent.length} nas últimas 24h`, "blue")}${statCard("Críticos e altos", fmt.format(critical.length), "exigem acompanhamento", uiIcon("alert"), critical.length ? "Prioridade operacional" : "Sem criticidade", "red")}${statCard("Automáticos", fmt.format(automaticCount), "gerados pelo sistema", uiIcon("settings"), `${grouped.length} categoria(s)`, "purple")}${statCard("Mensagens", fmt.format(messages.length), "no chat da equipe", uiIcon("users"), `${offlineQueue().length} pendente(s) offline`, "green")}</section>
       ${isAdmin() ? `<div class="admin-edit-notice alert-admin-notice"><strong>Exclusão administrativa ativa</strong><span>Comunicados são apagados definitivamente. Alertas automáticos são removidos da central sem apagar o dado operacional de origem.</span></div>` : ""}
       <section class="alert-priority-layout"><div class="card alert-priority-panel"><div class="professional-section-heading"><div><small>PRIORIDADE</small><h3>Pontos que exigem atenção</h3></div><span>${critical.length} crítico(s)</span></div><div class="alert-priority-list">${priorityCards || `<div class="empty">Nenhum alerta crítico ou alto.</div>`}</div></div><div class="card alert-category-panel"><div class="professional-section-heading"><div><small>DISTRIBUIÇÃO</small><h3>Alertas por categoria</h3></div></div><div class="alert-category-list">${grouped.map(category=>{ const count=all.filter(x=>(x.category||"Sistema")===category).length; const pct=all.length?Math.round(count/all.length*100):0; return `<div><span><strong>${esc(category)}</strong><small>${count} alerta(s)</small></span><div class="mini-progress"><i style="width:${pct}%"></i></div><b>${pct}%</b></div>`; }).join("") || `<div class="empty">Nenhuma categoria disponível.</div>`}</div></div></section>
@@ -5355,7 +5502,7 @@
       ["Backup local", backupDate, latestLocalBackup()?.created_at ? "ok" : "warning"],
       ["Ambiente", environment, state.config.environment === "production" ? "ok" : "warning"]
     ].map(([label,value,status])=>`<div class="settings-health-item ${status}"><span>${label}</span><strong>${esc(value)}</strong></div>`).join("");
-    $("#page-settings").innerHTML = header("Administração do sistema","Usuários, permissões, ambientes, segurança, diagnóstico e preferências.", `<button class="btn secondary" data-action="toggle-theme">Alternar tema</button>${isAdmin() ? `<button class="btn primary" data-action="new-user">+ Novo usuário</button>` : ""}`) +
+    $("#page-settings").innerHTML = header("Usuários e Acessos","Contas, perfis, permissões, segurança e parâmetros administrativos.", `<button class="btn secondary" data-action="toggle-theme">Alternar tema</button>${isAdmin() ? `<button class="btn primary" data-action="new-user">+ Novo usuário</button>` : ""}`) +
       `<section class="settings-kpi-grid">${statCard("Usuários cadastrados",fmt.format(users.length),"contas no sistema",uiIcon("settings"),"Gestão centralizada","blue")}${statCard("Usuários ativos",fmt.format(activeUsers),"acesso liberado",uiIcon("check"),`${inactiveUsers} inativo(s)`,"green")}${statCard("Administradores",fmt.format(adminUsers),"acesso elevado",uiIcon("shield"),"Permissões críticas","purple")}${statCard("Liderança",fmt.format(leadershipUsers),"líderes e supervisores",uiIcon("gauge"),"Gestão operacional","orange")}</section>
        <section class="settings-command-grid"><div class="card settings-profile-panel"><div class="professional-section-heading"><div><small>MEU PERFIL</small><h3>Identidade e acesso atual</h3></div>${badge(state.data.profile.role)}</div><div class="settings-profile-card"><div class="settings-profile-avatar">${profileAvatarHtml(state.data.profile.avatarUrl, state.data.profile.name)}</div><div><strong>${esc(state.data.profile.name)}</strong><small>${esc(state.data.profile.email)}</small><span>${esc(state.data.profile.department || "Departamento não informado")}</span></div></div><div class="settings-profile-meta"><span>Função<strong>${esc(state.data.profile.role)}</strong></span><span>Ambiente<strong>${environment}</strong></span></div><div class="row-actions profile-security-actions"><button class="btn primary" data-action="change-avatar">${state.data.profile.avatarUrl ? "Trocar foto" : "Adicionar foto"}</button><button class="btn secondary" data-action="change-password">Alterar senha</button></div></div><div class="card settings-health-panel"><div class="professional-section-heading"><div><small>DIAGNÓSTICO</small><h3>Saúde do sistema</h3></div><span>${errors.length || queueCount ? "Atenção" : "Normal"}</span></div><div class="settings-health-grid">${healthItems}</div><div class="row-actions settings-health-actions"><button class="btn primary" data-action="backup-json">Backup JSON</button><button class="btn secondary" data-action="sync-offline">Sincronizar offline</button></div></div></section>
        <section class="settings-control-grid"><div><div class="section-title">Ambiente</div>${environmentPanel()}<div class="section-title">Teste seguro</div>${homologationPanel()}</div><div><div class="section-title">Distribuição da equipe</div><div class="card settings-department-panel"><div class="professional-section-heading"><div><small>DEPARTAMENTOS</small><h3>Usuários por setor</h3></div><span>${users.length} usuários</span></div><div class="settings-department-list">${departmentRows || `<div class="empty">Sem usuários cadastrados.</div>`}</div></div>${isAdmin() ? `<div class="admin-edit-notice settings-admin-notice"><strong>Edição total ativa</strong><span>Administradores podem gerenciar usuários e registros operacionais. Auditoria e históricos permanecem protegidos.</span></div>` : ""}</div></section>

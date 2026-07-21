@@ -57,6 +57,11 @@ body{background:var(--bg);color:var(--text);font-size:13px}
   box-shadow:none
 }
 .sidebar nav{gap:2px;padding-right:3px}
+.nav-section-label{
+  display:block;padding:16px 12px 7px;color:#7a899d;font-size:9px;font-weight:800;
+  letter-spacing:.055em;line-height:1;text-transform:uppercase
+}
+.nav-section-label:first-child{padding-top:8px}
 .nav-item{
   min-height:40px;padding:9px 12px;border-radius:10px;color:#40516a;font-size:13px;font-weight:500;
   gap:11px;border:0;background:transparent
@@ -105,6 +110,77 @@ input,select,textarea{border-color:var(--line);border-radius:10px;background:#ff
 .badge.red{background:var(--red-soft);color:var(--red)}
 .badge.amber{background:var(--amber-soft);color:var(--amber)}
 
+/* Dashboard fiel ao protótipo */
+.figma-dashboard{display:grid;gap:20px}
+.figma-kpi-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:16px}
+.figma-kpi{
+  min-width:0;min-height:124px;padding:18px;background:#fff;border:1px solid var(--line);
+  border-radius:16px;box-shadow:var(--shadow);position:relative;overflow:hidden
+}
+.figma-kpi:before{content:"";position:absolute;inset:-1px auto -1px -1px;width:4px;background:var(--tone,var(--blue))}
+.figma-kpi.tone-green{--tone:var(--green)}.figma-kpi.tone-cyan{--tone:#2997b8}
+.figma-kpi.tone-red{--tone:var(--red)}.figma-kpi.tone-amber{--tone:var(--amber)}
+.figma-kpi-head{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.figma-kpi-head>span{color:var(--muted);font-size:10px;font-weight:800;letter-spacing:.04em;text-transform:uppercase}
+.figma-kpi-head i{width:28px;height:28px;display:grid;place-items:center;color:var(--tone,var(--blue));background:#edf4ff;border-radius:8px;font-style:normal}
+.figma-kpi-head svg{width:14px;height:14px}
+.figma-kpi>strong{display:block;margin-top:8px;font-size:25px;line-height:1.15;letter-spacing:-.035em}
+.figma-kpi>small{display:block;margin-top:7px;color:var(--muted);font-size:10px;white-space:normal}
+.figma-dashboard-charts{display:grid;grid-template-columns:minmax(0,1.65fr) minmax(330px,.85fr);gap:16px}
+.figma-card-heading{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.figma-card-heading h3{font-size:16px;margin:0}.figma-card-heading p{font-size:11px!important;margin:2px 0 0}
+.figma-card-heading>span{padding:5px 9px;background:#f3f6fa;color:var(--muted);border-radius:7px;font-size:10px;font-weight:700}
+.figma-volume-chart{min-height:280px}
+.figma-bars{height:202px;margin:18px 6px 0;display:flex;align-items:flex-end;gap:8px;border-bottom:1px solid var(--line)}
+.figma-bar-item{height:100%;flex:1;display:flex;flex-direction:column;align-items:center;justify-content:flex-end;gap:7px}
+.figma-bar-item b{color:var(--blue);font-size:9px;white-space:nowrap}
+.figma-bar-item i{display:block;width:100%;max-width:76px;min-height:8px;background:#b4cffd;border-radius:6px 6px 0 0;transition:height .35s ease}
+.figma-bar-item i.current{background:var(--blue)}.figma-bar-item span{font-size:10px;color:var(--muted);padding-bottom:8px}
+.figma-occupancy-content{display:flex;align-items:center;justify-content:center;gap:25px;min-height:220px}
+.figma-donut{
+  width:144px;height:144px;border-radius:50%;display:grid;place-items:center;
+  background:conic-gradient(var(--blue) 0 var(--a),#b86a08 var(--a) var(--b),var(--green) var(--b) var(--c),#e5ebf2 var(--c) 100%);
+  position:relative
+}
+.figma-donut:after{content:"";position:absolute;inset:24px;background:#fff;border-radius:50%}
+.figma-donut>div{z-index:1;display:flex;flex-direction:column;align-items:center}
+.figma-donut strong{font-size:20px}.figma-donut span{font-size:8px;color:var(--muted);text-transform:uppercase}
+.figma-legend{display:grid;gap:10px}.figma-legend span{display:grid;grid-template-columns:11px 1fr auto;align-items:center;gap:7px;font-size:11px}
+.figma-legend i{width:11px;height:11px;border-radius:4px}.figma-legend .wbm{background:var(--blue)}
+.figma-legend .sbm{background:#b86a08}.figma-legend .brine{background:var(--green)}.figma-legend .empty{background:#e5ebf2}
+.figma-recent-card{padding:22px}.text-button-inline{border:0;background:transparent;color:var(--blue);font-size:11px;font-weight:700}
+.figma-recent-table{margin-top:14px}.figma-recent-row{width:100%;display:grid;grid-template-columns:130px minmax(260px,1fr) 180px 180px;align-items:center;gap:12px;padding:12px;border:0;border-bottom:1px solid var(--line);background:#fff;text-align:left;color:var(--text)}
+.figma-recent-row.head{background:#f3f6fa;border:0;border-radius:8px;color:var(--muted);font-size:10px;font-weight:800}
+button.figma-recent-row:hover{background:#f8faff}.figma-recent-row>span{min-width:0}.figma-recent-row>span:first-child,.figma-recent-row>span:last-child{font-size:11px;color:var(--muted)}
+.figma-recent-row strong{display:block;font-size:12px}.figma-recent-row small{display:block;color:var(--muted);font-size:10px;margin-top:3px}
+
+/* Visual industrial dos tanques e silos */
+.tank-command-center{border-radius:16px!important}.compact-tank-grid{grid-template-columns:repeat(auto-fit,minmax(245px,1fr))!important}
+.compact-tank-card{padding:16px!important;overflow:hidden;position:relative;transition:transform .2s ease,box-shadow .2s ease}
+.compact-tank-card:hover{transform:translateY(-2px);box-shadow:0 10px 24px rgba(15,31,58,.1)!important}
+.tank-card-body{align-items:center!important}
+.tank-mini-visual{
+  width:74px!important;height:128px!important;flex:0 0 74px!important;border:2px solid #9baabe!important;
+  border-radius:34px 34px 18px 18px!important;background:linear-gradient(90deg,#eef3f8,#fff 48%,#dbe4ed)!important;
+  box-shadow:inset 8px 0 12px rgba(8,26,51,.06),inset -8px 0 12px rgba(8,26,51,.08);overflow:hidden!important
+}
+.tank-mini-visual:before{content:"";position:absolute;top:8px;left:9px;right:9px;height:12px;border:2px solid #a9b6c5;border-radius:50%;z-index:2}
+.tank-mini-visual>span{left:5px!important;right:5px!important;bottom:5px!important;width:auto!important;border-radius:0 0 12px 12px!important;background:linear-gradient(90deg,#1768ff,#58a1ff)!important}
+.tank-bg-brine .tank-mini-visual>span{background:linear-gradient(90deg,#16824b,#49bd79)!important}
+.tank-bg-sbm .tank-mini-visual>span,.tank-bg-olefin .tank-mini-visual>span{background:linear-gradient(90deg,#8a521e,#c88746)!important}
+.tank-mini-visual.is-silo{border-radius:12px 12px 28px 28px!important}
+.tank-mini-visual.is-silo:after{content:"";position:absolute;left:18px;right:18px;bottom:-17px;height:24px;background:#9baabe;clip-path:polygon(0 0,100% 0,65% 100%,35% 100%)}
+.tank-mini-visual b{background:rgba(8,26,51,.78)!important;color:#fff!important;border-radius:999px!important;padding:4px 7px!important;font-size:10px!important;z-index:4}
+
+/* Alertas e usuários */
+.alert-professional-kpis,.settings-kpi-grid{grid-template-columns:repeat(4,minmax(0,1fr))!important;gap:16px!important}
+.alert-priority-layout,.settings-command-grid{gap:16px!important}
+.alert-center-card,.alert-priority-card{background:#fff!important;border-color:var(--line)!important}
+.professional-chat-panel{position:sticky;top:96px;max-height:calc(100vh - 120px)}
+.settings-profile-panel,.settings-health-panel,.settings-department-panel{box-shadow:var(--shadow)!important}
+.permission-item{border-radius:10px!important;border-color:var(--line)!important}
+.settings-user-mobile{box-shadow:none!important}
+
 /* Tanques, silos e demais módulos */
 .tank-card,.truck-card,.operation-card,.maintenance-card,.certificate-card,.alert-center-card{
   border:1px solid var(--line)!important;border-radius:16px!important;box-shadow:var(--shadow)!important
@@ -116,6 +192,8 @@ input,select,textarea{border-color:var(--line);border-radius:10px;background:#ff
 
 @media(max-width:1200px){
   .dashboard-kpi-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .figma-kpi-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+  .figma-dashboard-charts{grid-template-columns:1fr}
   .topbar{grid-template-columns:1fr auto}.topbar-page-context{display:none}
 }
 @media(max-width:820px){
@@ -126,12 +204,20 @@ input,select,textarea{border-color:var(--line);border-radius:10px;background:#ff
   .topbar .icon-btn{background:transparent}.main-content{padding:14px 12px 92px}
   .page-header h1{font-size:23px}.page-header p{font-size:12px}
   .dashboard-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .figma-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}
+  .figma-recent-table{overflow-x:auto}.figma-recent-row{min-width:780px}
+  .figma-occupancy-content{min-height:190px}
+  .alert-professional-kpis,.settings-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+  .professional-chat-panel{position:static;max-height:none}
   .mobile-bottom-nav{background:#fff;border-top:1px solid var(--line);box-shadow:0 -8px 28px rgba(15,31,58,.08)}
   .mobile-nav-item.active{background:transparent;color:var(--blue)}
 }
 @media(max-width:560px){
   .login-view{display:block}.login-panel{min-height:100vh;padding:18px}.login-card{padding:24px}
   .dashboard-kpi-grid{grid-template-columns:1fr}
+  .figma-kpi-grid{grid-template-columns:1fr}
+  .figma-kpi{min-height:110px}.figma-occupancy-content{flex-direction:column}
+  .alert-professional-kpis,.settings-kpi-grid{grid-template-columns:1fr!important}
 }
 
 @media print{.topbar-page-context{display:none}}

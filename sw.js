@@ -1,10 +1,11 @@
-const CACHE="opscontrol-20260721-reference-tank-cards-1";
+const CACHE="opscontrol-20260721-figma-interface-1";
 const FILES=[
   "./",
   "./index.html",
   "./app.css?v=20260719-v33-12-14-1-client-tickets",
   "./v33.css?v=20260719-v33-12-14-1-client-tickets",
   "./opscontrol-ui.css?v=20260721-ui-consolidada-1",
+  "./figma-interface.css?v=20260721-figma-1",
   "./interface-fix.css?v=20260721-interface-fix-1",
   "./design-upgrade.css?v=20260721-control-center-1",
   "./tank-cards-reference.css?v=20260721-reference-cards-1",
@@ -43,6 +44,7 @@ self.addEventListener("fetch", event => {
     url.pathname.endsWith("/app.css") ||
     url.pathname.endsWith("/v33.css") ||
     url.pathname.endsWith("/opscontrol-ui.css") ||
+    url.pathname.endsWith("/figma-interface.css") ||
     url.pathname.endsWith("/interface-fix.css") ||
     url.pathname.endsWith("/design-upgrade.css") ||
     url.pathname.endsWith("/tank-cards-reference.css") ||

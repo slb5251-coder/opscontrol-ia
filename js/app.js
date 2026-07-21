@@ -215,6 +215,28 @@
     settings: ["Configurações", "Perfil e sistema"]
   };
 
+  const DESKTOP_PAGE_META = {
+    dashboard: ["Painel Geral de Operações", "Comando central e telemetria da planta"],
+    quality: ["Qualidade dos Dados", "Conciliação e integridade dos registros"],
+    sanitation: ["Saneamento de Dados", "Tratamento de vínculos e registros antigos"],
+    tv: ["Painel TV", "Acompanhamento operacional em tempo real"],
+    operations: ["Operações", "Programação e execução dos serviços"],
+    "vessel-registry": ["Embarcações", "Cadastro e programação marítima"],
+    tanks: ["Tanques e Silos", "Inventário e telemetria da planta"],
+    fluids: ["Fluidos e Granéis", "Controle de produtos e movimentações"],
+    "chemical-catalog": ["Catálogo Químico", "Padronização de produtos e unidades"],
+    chemicals: ["Inventário Químico", "Lotes, validade e níveis de estoque"],
+    trucks: ["Carretas", "Recebimentos, expedições e rastreabilidade"],
+    "client-tickets": ["Tickets de Clientes", "FDT, FRT, MDT e MRT"],
+    qhse: ["QHSE", "Saúde, segurança, meio ambiente e qualidade"],
+    maintenance: ["Manutenção", "Ordens de serviço e ativos da planta"],
+    certificates: ["Certificados", "Documentos, licenças e vencimentos"],
+    alerts: ["Central de Alertas", "Comunicação operacional e direcionamento por função"],
+    reports: ["Relatórios", "Indicadores, consolidações e passagem de serviço"],
+    audit: ["Auditoria", "Histórico e rastreabilidade das alterações"],
+    settings: ["Configurações", "Perfis, acessos e parâmetros do sistema"]
+  };
+
   function isMobileViewport() {
     return window.matchMedia("(max-width: 820px)").matches;
   }
@@ -6256,6 +6278,9 @@
     $$(".page").forEach(item => item.classList.remove("active"));
     $$(".nav-item").forEach(item => item.classList.toggle("active", item.dataset.page === page));
     targetPage.classList.add("active");
+    const desktopMeta = DESKTOP_PAGE_META[page] || MOBILE_PAGE_META[page] || ["OpsControl IA", "Gestão integrada da planta"];
+    if ($("#desktopPageTitle")) $("#desktopPageTitle").textContent = desktopMeta[0];
+    if ($("#desktopPageSubtitle")) $("#desktopPageSubtitle").textContent = desktopMeta[1];
     $("#sidebar")?.classList.remove("open");
     $("#sidebarBackdrop")?.classList.remove("visible");
     closeMobileSheets();

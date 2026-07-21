@@ -1,4 +1,4 @@
-const CACHE="opscontrol-20260721-control-center-1";
+const CACHE="opscontrol-20260721-control-center-2";
 const FILES=[
   "./",
   "./index.html",
@@ -11,6 +11,7 @@ const FILES=[
   "./js/app.js?v=20260719-v33-12-14-1-client-tickets",
   "./js/ui-polish.js?v=20260721-ui-consolidada-1",
   "./js/design-upgrade.js?v=20260721-control-center-1",
+  "./js/design-stability.js?v=20260721-control-center-1",
   "./manifest.json",
   "./assets/icon.svg",
   "./vendor/qrcode.js"
@@ -45,7 +46,8 @@ self.addEventListener("fetch", event => {
     url.pathname.endsWith("/js/app.js") ||
     url.pathname.endsWith("/js/config.js") ||
     url.pathname.endsWith("/js/ui-polish.js") ||
-    url.pathname.endsWith("/js/design-upgrade.js")
+    url.pathname.endsWith("/js/design-upgrade.js") ||
+    url.pathname.endsWith("/js/design-stability.js")
   );
 
   if (appFile) {

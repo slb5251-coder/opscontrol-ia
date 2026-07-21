@@ -11,6 +11,8 @@
     style.textContent = `
       .design-operation-drawer:not(.is-open){visibility:hidden!important;pointer-events:none!important}
       .design-operation-drawer.is-open{visibility:visible!important;pointer-events:auto!important}
+      #page-tanks .design-industrial-vessel,
+      #page-tanks .design-capacity-only{display:none!important}
     `;
     document.head.appendChild(style);
   }

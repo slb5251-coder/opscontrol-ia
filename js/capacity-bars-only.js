@@ -97,7 +97,6 @@
   function enhanceCard(card) {
     if (card.closest(".design-operation-drawer")) return;
 
-    $$(":scope > .design-industrial-vessel", card).forEach(element => element.remove());
     card.classList.add("design-capacity-card");
     hideOriginalProgress(card);
 
@@ -133,13 +132,8 @@
     `;
   }
 
-  function removeTankDrawings() {
-    $$(".design-industrial-vessel,.login-scene-tank,.login-scene-silo").forEach(element => element.remove());
-  }
-
   function run() {
     scheduled = false;
-    removeTankDrawings();
     const page = $("#page-tanks");
     if (!page) return;
     candidateCards(page).forEach(enhanceCard);
@@ -154,7 +148,7 @@
   function start() {
     schedule();
     const observer = new MutationObserver(schedule);
-    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    observer.observe(document.body, { childList: true, subtree: true });
     window.addEventListener("resize", schedule, { passive: true });
     window.addEventListener("orientationchange", schedule, { passive: true });
   }

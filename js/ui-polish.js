@@ -1,7 +1,8 @@
 (() => {
   "use strict";
 
-  const INTERFACE_STYLESHEET = 'interface-fix.css?v=20260721-interface-fix-1';
+  const scriptUrl = document.currentScript?.src || new URL('js/ui-polish.js', document.baseURI).href;
+  const INTERFACE_STYLESHEET = new URL('../interface-fix.css?v=20260721-interface-fix-1', scriptUrl).href;
   const TAB_CONTAINERS = [
     '[role="tablist"]',
     '.tabs',

@@ -12,7 +12,7 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const APP_VERSION = "20260720-v34-0-0-homologacao";
+  const APP_VERSION = "20260719-v33-12-14-1-client-tickets";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -368,6 +368,22 @@
       .replace(/[\u0300-\u036f]/g, "")
       .toLowerCase()
       .trim();
+  }
+
+  function clientLogoConfig(client = "") {
+    const normalized = normalizeSearch(client);
+    if (!normalized) return null;
+    if (normalized.includes("equinor")) return { src: "assets/client-logos/equinor.png", alt: "Equinor" };
+    if (normalized.includes("petrobras") || normalized === "br") return { src: "assets/client-logos/petrobras.gif", alt: "Petrobras" };
+    if (normalized.includes("prio") || normalized === "pro") return { src: "assets/client-logos/prio.png", alt: "PRIO" };
+    return null;
+  }
+
+  function clientLogoBadge(client = "", fallbackIcon = "calendar", extraClass = "") {
+    const logo = clientLogoConfig(client);
+    const classes = ["client-logo-badge", extraClass].filter(Boolean).join(" ");
+    if (logo) return `<span class="${classes}" title="${esc(logo.alt)}"><img src="${logo.src}" alt="${esc(logo.alt)}" loading="lazy"></span>`;
+    return `<span class="${classes} client-logo-fallback" title="${esc(client || "Operação")}">${uiIcon(fallbackIcon)}</span>`;
   }
 
   function searchIndex() {
@@ -2889,7 +2905,7 @@
     const statusIcon = op.status === "Em andamento" ? "activity" : op.status === "Paralisada" ? "alert" : "calendar";
     return `<article class="operation-focus-card ${statusClass(op.status)}">
       <div class="operation-focus-head">
-        <div class="operation-focus-icon">${uiIcon(statusIcon)}</div>
+        <div class="operation-focus-icon">${clientLogoBadge(op.client, statusIcon, "operation-card-logo")}</div>
         <div><small>${esc(op.client || "Cliente não informado")}</small><h3>${esc(op.vessel || "Operação")}</h3></div>
         ${badge(op.status)}
       </div>
@@ -2947,7 +2963,7 @@
     }).join("");
 
     const mobile = operations.map(op => `<div class="card mobile-record-card operation-mobile-card">
-      <div class="mobile-record-head"><div><strong>${esc(op.client)}</strong><small>${esc(op.vessel)} • ${esc(op.activity)}</small></div>${badge(op.status)}</div>
+      <div class="mobile-record-head operation-mobile-head"><div class="operation-mobile-title">${clientLogoBadge(op.client, "calendar", "operation-mobile-logo")}<div><strong>${esc(op.client)}</strong><small>${esc(op.vessel)} • ${esc(op.activity)}</small></div></div>${badge(op.status)}</div>
       <div class="operation-mobile-meta">${op.rig ? `<span>Sonda <strong>${esc(op.rig)}</strong></span>` : ""}${op.well ? `<span>Poço <strong>${esc(op.well)}</strong></span>` : ""}${op.ticketNumber ? `<span>Ticket <strong>${esc(op.ticketNumber)}</strong></span>` : ""}</div>
       <div class="mobile-record-grid"><span>Produto<strong>${esc(op.product)}</strong></span><span>Executado<strong>${fmt.format(op.executed)} ${esc(op.unit)}</strong></span><span>Vazão<strong>${fmt.format(operationFlow(op))} ${esc(op.unit)}/h</strong></span><span>Tancagem<strong>${normalizedOperationAllocations(op).length} equipamento(s)</strong></span></div>
       <div class="mobile-allocation-summary">${operationAllocationHtml(op)}</div>

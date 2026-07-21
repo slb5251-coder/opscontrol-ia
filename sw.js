@@ -1,13 +1,11 @@
-const CACHE="opscontrol-20260720-v34-0-0-homologacao";
+const CACHE="opscontrol-20260719-v33-12-14-1-client-tickets";
 const FILES=[
   "./",
   "./index.html",
-  "./app.css?v=20260720-v34-0-0-homologacao",
-  "./v33.css?v=20260720-v34-0-0-homologacao",
-  "./opscontrol-v2.css?v=20260720-v34-0-0-homologacao",
-  "./js/config.js?v=20260720-v34-0-0-homologacao",
-  "./js/app.js?v=20260720-v34-0-0-homologacao",
-  "./js/opscontrol-v2.js?v=20260720-v34-0-0-homologacao",
+  "./app.css?v=20260719-v33-12-14-1-client-tickets",
+  "./v33.css?v=20260719-v33-12-14-1-client-tickets",
+  "./js/config.js?v=20260719-v33-12-14-1-client-tickets",
+  "./js/app.js?v=20260719-v33-12-14-1-client-tickets",
   "./manifest.json",
   "./assets/icon.svg","./vendor/qrcode.js"
 ];
@@ -35,9 +33,7 @@ self.addEventListener("fetch", event => {
     url.pathname.endsWith("/index.html") ||
     url.pathname.endsWith("/app.css") ||
     url.pathname.endsWith("/v33.css") ||
-    url.pathname.endsWith("/opscontrol-v2.css") ||
     url.pathname.endsWith("/js/app.js") ||
-    url.pathname.endsWith("/js/opscontrol-v2.js") ||
     url.pathname.endsWith("/js/config.js")
   );
 

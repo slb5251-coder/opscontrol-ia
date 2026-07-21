@@ -1,6 +1,7 @@
 (() => {
   "use strict";
 
+  const INTERFACE_STYLESHEET = 'interface-fix.css?v=20260721-interface-fix-1';
   const TAB_CONTAINERS = [
     '[role="tablist"]',
     '.tabs',
@@ -22,6 +23,15 @@
   const prefersReducedMotion = window.matchMedia?.('(prefers-reduced-motion: reduce)')?.matches;
   let scheduled = false;
   let resizeTimer = null;
+
+  function ensureInterfaceStylesheet() {
+    if (document.querySelector('link[data-interface-fix="true"]')) return;
+    const link = document.createElement('link');
+    link.rel = 'stylesheet';
+    link.href = INTERFACE_STYLESHEET;
+    link.dataset.interfaceFix = 'true';
+    document.head.appendChild(link);
+  }
 
   function activeItem(container) {
     return container.querySelector('.active,[aria-selected="true"],[data-active="true"]');
@@ -133,6 +143,7 @@
   }
 
   function start() {
+    ensureInterfaceStylesheet();
     schedule();
 
     const observer = new MutationObserver(schedule);

@@ -5,6 +5,16 @@
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
   let scheduled = false;
 
+  const GENERATED_VISUALS = [
+    ".design-industrial-vessel",
+    ".design-vessel-shell",
+    ".design-vessel-fill",
+    ".design-vessel-cap",
+    ".design-vessel-scale",
+    ".login-scene-tank",
+    ".login-scene-silo"
+  ].join(",");
+
   function normalize(value = "") {
     return String(value)
       .normalize("NFD")
@@ -23,8 +33,15 @@
     return Number.isFinite(number) ? number : null;
   }
 
+  function sourceText(card) {
+    const clone = card.cloneNode(true);
+    $$(".design-capacity-only,.design-industrial-vessel,.design-hidden-vessel-visual", clone)
+      .forEach(element => element.remove());
+    return clone.textContent || "";
+  }
+
   function capacityLevel(card) {
-    const text = card.textContent || "";
+    const text = sourceText(card);
     const percent = text.match(/(\d{1,3}(?:[.,]\d+)?)\s*%/);
     if (percent) return Math.max(0, Math.min(100, Number(percent[1].replace(",", "."))));
 
@@ -65,7 +82,7 @@
   }
 
   function volumeSummary(card) {
-    const text = card.textContent || "";
+    const text = sourceText(card);
     const ratio = text.match(/([\d.,]+\s*(?:bbl|ton|t|m³|m3)?)\s*(?:\/|de)\s*([\d.,]+\s*(?:bbl|ton|t|m³|m3)?)/i);
     return ratio ? `${ratio[1].trim()} de ${ratio[2].trim()}` : "Capacidade do equipamento";
   }
@@ -88,6 +105,48 @@
     });
   }
 
+  function isVerticalVisual(element) {
+    if (!(element instanceof Element)) return false;
+    if (element.closest(".design-capacity-only")) return false;
+    if (element.matches("input,select,textarea,button,a,label")) return false;
+    if (element.querySelector("input,select,textarea,button,a")) return false;
+
+    const className = String(element.className || "");
+    const normalizedClass = normalize(className);
+    const looksLikeEquipment = /(tank|tanque|silo|vessel|reservatorio)/.test(normalizedClass);
+    const looksLikeDrawing = /(visual|shape|shell|cylinder|figure|illustration|graphic|gauge|vertical|level)/.test(normalizedClass);
+    if (!looksLikeEquipment || !looksLikeDrawing) return false;
+
+    return normalize(element.textContent || "").length < 60;
+  }
+
+  function removeVerticalVisuals(card) {
+    $$(GENERATED_VISUALS, card).forEach(element => element.remove());
+    $$('*', card).filter(isVerticalVisual).forEach(element => {
+      element.classList.add("design-hidden-vessel-visual");
+      element.setAttribute("aria-hidden", "true");
+    });
+
+    card.classList.add("design-flat-capacity-card");
+    card.style.removeProperty("height");
+    card.style.removeProperty("min-height");
+    card.style.removeProperty("max-height");
+    card.style.removeProperty("width");
+    card.style.removeProperty("max-width");
+    card.style.removeProperty("aspect-ratio");
+    card.style.removeProperty("clip-path");
+    card.style.removeProperty("transform");
+  }
+
+  function flattenCardGrid(cards, page) {
+    const parents = [...new Set(cards.map(card => card.parentElement).filter(Boolean))];
+    parents.forEach(parent => {
+      if (parent === page || parent.classList.contains("page")) return;
+      const cardCount = cards.filter(card => card.parentElement === parent).length;
+      if (cardCount > 1) parent.classList.add("design-flat-capacity-grid");
+    });
+  }
+
   function insertCapacityBar(card, bar) {
     const anchor = $(":scope > .tank-top,:scope > .storage-head,:scope > header", card);
     if (anchor) anchor.insertAdjacentElement("afterend", bar);
@@ -98,10 +157,12 @@
     if (card.closest(".design-operation-drawer")) return;
 
     card.classList.add("design-capacity-card");
+    removeVerticalVisuals(card);
     hideOriginalProgress(card);
 
+    const originalText = sourceText(card);
     const level = capacityLevel(card);
-    const tone = capacityTone(card.textContent || "");
+    const tone = capacityTone(originalText);
     const status = capacityStatus(level);
     const summary = volumeSummary(card);
     const signature = `${Math.round(level)}:${tone}:${status.tone}:${summary}`;
@@ -132,11 +193,18 @@
     `;
   }
 
+  function removeGlobalTankDrawings() {
+    $$(GENERATED_VISUALS).forEach(element => element.remove());
+  }
+
   function run() {
     scheduled = false;
+    removeGlobalTankDrawings();
     const page = $("#page-tanks");
     if (!page) return;
-    candidateCards(page).forEach(enhanceCard);
+    const cards = candidateCards(page);
+    flattenCardGrid(cards, page);
+    cards.forEach(enhanceCard);
   }
 
   function schedule() {

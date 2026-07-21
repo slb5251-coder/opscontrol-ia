@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#0b1f3a">
+  <title>Assistente IA | OpsControl IA</title>
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="app.css">
+  <link rel="stylesheet" href="v33.css">
+  <link rel="stylesheet" href="opscontrol-v2.css">
+  <link rel="stylesheet" href="assistente-ia.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body class="ai-body">
+  <header class="ai-topbar">
+    <a class="ai-back" href="index.html" aria-label="Voltar ao sistema">←</a>
+    <div class="ai-brand">
+      <span class="ai-logo">OC</span>
+      <div><strong>Assistente IA</strong><small>OpsControl IA • Homologação</small></div>
+    </div>
+    <span id="aiConnection" class="ai-status">Verificando...</span>
+  </header>
+
+  <main class="ai-shell">
+    <section class="ai-hero">
+      <div>
+        <span class="ai-eyebrow">INTELIGÊNCIA OPERACIONAL</span>
+        <h1>Transforme anotações em informações prontas para uso</h1>
+        <p>Gere passagem de turno, relatório operacional, análise de alerta e respostas operacionais usando a IA segura do OpsControl.</p>
+      </div>
+      <div class="ai-shield">🔒<strong>Chave protegida</strong><span>Processamento via Supabase Edge Function</span></div>
+    </section>
+
+    <section class="ai-workspace">
+      <div class="ai-mode-panel">
+        <h2>O que deseja gerar?</h2>
+        <div class="ai-mode-grid">
+          <button class="ai-mode active" data-mode="handover"><span>🔄</span><strong>Passagem de turno</strong><small>Organiza atividades, pendências e observações.</small></button>
+          <button class="ai-mode" data-mode="report"><span>📄</span><strong>Relatório operacional</strong><small>Estrutura volumes, horários e ocorrências.</small></button>
+          <button class="ai-mode" data-mode="alert"><span>⚠️</span><strong>Análise de alerta</strong><small>Avalia risco, prioridade e ações recomendadas.</small></button>
+          <button class="ai-mode" data-mode="assistant"><span>✨</span><strong>Assistente geral</strong><small>Responde e redige conteúdos operacionais.</small></button>
+        </div>
+      </div>
+
+      <div class="ai-editor-grid">
+        <section class="ai-card">
+          <div class="ai-card-head">
+            <div><small>ENTRADA</small><h2 id="aiInputTitle">Dados da passagem de turno</h2></div>
+            <button id="aiClear" class="ai-link">Limpar</button>
+          </div>
+          <textarea id="aiPrompt" maxlength="30000" placeholder="Cole aqui as atividades realizadas, pendências e observações..."></textarea>
+          <div class="ai-editor-footer">
+            <span id="aiCounter">0 / 30.000</span>
+            <button id="aiGenerate" class="ai-generate"><span>✨</span> Gerar com IA</button>
+          </div>
+          <div id="aiMessage" class="ai-message hidden"></div>
+        </section>
+
+        <section class="ai-card ai-result-card">
+          <div class="ai-card-head">
+            <div><small>RESULTADO</small><h2>Conteúdo gerado</h2></div>
+            <button id="aiCopy" class="ai-link" disabled>Copiar</button>
+          </div>
+          <div id="aiResult" class="ai-result ai-empty">
+            <div class="ai-empty-icon">🤖</div>
+            <strong>O resultado aparecerá aqui</strong>
+            <span>Selecione um modo, informe os dados e clique em “Gerar com IA”.</span>
+          </div>
+          <div class="ai-result-actions">
+            <button id="aiWhatsApp" disabled>WhatsApp</button>
+            <button id="aiEmail" disabled>E-mail</button>
+            <button id="aiPrint" disabled>Imprimir / PDF</button>
+          </div>
+        </section>
+      </div>
+    </section>
+
+    <section class="ai-examples">
+      <h2>Exemplos rápidos</h2>
+      <div id="aiExamples" class="ai-example-grid"></div>
+    </section>
+  </main>
+
+  <script src="js/config.js"></script>
+  <script src="js/assistente-ia.js"></script>
+</body>
+</html>

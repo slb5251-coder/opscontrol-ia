@@ -4,8 +4,10 @@
   const scriptUrl = document.currentScript?.src || new URL('js/ui-polish.js', document.baseURI).href;
   const INTERFACE_STYLESHEET = new URL('../interface-fix.css?v=20260721-interface-fix-1', scriptUrl).href;
   const DESIGN_STYLESHEET = new URL('../design-upgrade.css?v=20260721-control-center-1', scriptUrl).href;
+  const TANK_CARD_STYLESHEET = new URL('../tank-cards-reference.css?v=20260721-reference-cards-1', scriptUrl).href;
   const DESIGN_SCRIPT = new URL('design-upgrade.js?v=20260721-control-center-1', scriptUrl).href;
   const STABILITY_SCRIPT = new URL('design-stability.js?v=20260721-original-tanks-1', scriptUrl).href;
+  const TANK_CARD_SCRIPT = new URL('tank-cards-reference.js?v=20260721-reference-cards-1', scriptUrl).href;
   const TAB_CONTAINERS = [
     '[role="tablist"]',
     '.tabs',
@@ -57,8 +59,10 @@
 
   function ensureDesignUpgrade() {
     appendStylesheet(DESIGN_STYLESHEET, 'design-upgrade');
+    appendStylesheet(TANK_CARD_STYLESHEET, 'tank-cards-reference');
     appendScript(DESIGN_SCRIPT, 'design-upgrade');
     appendScript(STABILITY_SCRIPT, 'design-stability');
+    appendScript(TANK_CARD_SCRIPT, 'tank-cards-reference');
   }
 
   function activeItem(container) {

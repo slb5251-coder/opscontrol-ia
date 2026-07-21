@@ -1,0 +1,329 @@
+/* OpsControl IA — cartões de tanques e silos no formato da referência */
+
+#page-tanks .compact-tank-grid{
+  display:grid!important;
+  grid-template-columns:repeat(3,minmax(0,1fr))!important;
+  gap:20px!important;
+  align-items:start!important;
+}
+
+#page-tanks .reference-tank-card{
+  --tank-accent:#1769ff;
+  --tank-soft:#eaf1ff;
+  position:relative!important;
+  display:block!important;
+  min-width:0!important;
+  min-height:0!important;
+  height:auto!important;
+  aspect-ratio:auto!important;
+  padding:0!important;
+  overflow:hidden!important;
+  border:1px solid #d9e2ec!important;
+  border-radius:18px!important;
+  background:#fff!important;
+  box-shadow:0 12px 28px rgba(15,31,58,.07)!important;
+  transform:none!important;
+}
+
+#page-tanks .reference-tank-card::before,
+#page-tanks .reference-tank-card::after{
+  display:none!important;
+  content:none!important;
+}
+
+#page-tanks .reference-tank-card.tone-green{--tank-accent:#16874f;--tank-soft:#e7f7ef}
+#page-tanks .reference-tank-card.tone-blue{--tank-accent:#1769ff;--tank-soft:#eaf1ff}
+#page-tanks .reference-tank-card.tone-amber{--tank-accent:#c86c00;--tank-soft:#fff2df}
+#page-tanks .reference-tank-card.tone-brown{--tank-accent:#9a5b2d;--tank-soft:#f6ece4}
+#page-tanks .reference-tank-card.tone-gray{--tank-accent:#69778a;--tank-soft:#edf1f5}
+#page-tanks .reference-tank-card.tone-red{--tank-accent:#c93646;--tank-soft:#fdebed}
+
+#page-tanks .reference-original-hidden{
+  display:none!important;
+}
+
+#page-tanks .reference-card-view{
+  display:grid;
+  gap:14px;
+  padding:18px 18px 16px;
+}
+
+#page-tanks .reference-card-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:14px;
+}
+
+#page-tanks .reference-card-title{
+  min-width:0;
+}
+
+#page-tanks .reference-card-title h3{
+  margin:0 0 10px;
+  color:#17233a;
+  font-size:19px;
+  font-weight:900;
+  line-height:1.15;
+  letter-spacing:-.02em;
+}
+
+#page-tanks .reference-phase-chip,
+#page-tanks .reference-status-chip{
+  display:inline-flex;
+  align-items:center;
+  min-height:28px;
+  padding:6px 9px;
+  border-radius:999px;
+  font-size:10px;
+  font-weight:800;
+  line-height:1;
+  white-space:nowrap;
+}
+
+#page-tanks .reference-phase-chip{
+  color:#60708a;
+  background:#eef3f8;
+}
+
+#page-tanks .reference-status-chip{
+  flex:0 0 auto;
+  color:var(--tank-accent);
+  background:var(--tank-soft);
+}
+
+#page-tanks .reference-product-block{
+  display:grid;
+  gap:5px;
+  min-width:0;
+}
+
+#page-tanks .reference-product-block span{
+  color:#69788e;
+  font-size:9px;
+  font-weight:850;
+  line-height:1;
+  letter-spacing:.06em;
+  text-transform:uppercase;
+}
+
+#page-tanks .reference-product-block strong{
+  overflow:hidden;
+  color:#1b2840;
+  font-size:12px;
+  font-weight:800;
+  line-height:1.35;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+#page-tanks .reference-volume-row{
+  display:flex;
+  align-items:flex-end;
+  justify-content:space-between;
+  gap:12px;
+  min-width:0;
+}
+
+#page-tanks .reference-volume-row strong{
+  min-width:0;
+  overflow:hidden;
+  color:#17233a;
+  font-size:20px;
+  font-weight:950;
+  line-height:1.1;
+  letter-spacing:-.025em;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+#page-tanks .reference-volume-row span{
+  flex:0 0 auto;
+  color:var(--tank-accent);
+  font-size:11px;
+  font-weight:900;
+}
+
+#page-tanks .reference-progress{
+  width:100%;
+  height:10px;
+  overflow:hidden;
+  border-radius:999px;
+  background:#e5ebf2;
+}
+
+#page-tanks .reference-progress span{
+  display:block;
+  width:var(--reference-level,0%);
+  height:100%;
+  border-radius:inherit;
+  background:var(--tank-accent);
+  transition:width .35s ease;
+}
+
+#page-tanks .reference-card-foot{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:14px;
+  padding-top:1px;
+}
+
+#page-tanks .reference-update-label{
+  min-width:0;
+  overflow:hidden;
+  color:#738198;
+  font-size:9px;
+  line-height:1.3;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+#page-tanks .reference-details-toggle{
+  flex:0 0 auto;
+  padding:4px 0;
+  border:0;
+  background:transparent;
+  color:#075fff;
+  font:inherit;
+  font-size:10px;
+  font-weight:850;
+  cursor:pointer;
+}
+
+#page-tanks .reference-details-toggle:hover{
+  text-decoration:underline;
+}
+
+#page-tanks .reference-card-details{
+  display:none;
+  padding:15px 18px 18px;
+  border-top:1px solid #e4eaf1;
+  background:#f8fafc;
+}
+
+#page-tanks .reference-tank-card.reference-details-open .reference-card-details{
+  display:block;
+}
+
+#page-tanks .reference-detail-grid{
+  display:grid;
+  grid-template-columns:repeat(2,minmax(0,1fr));
+  gap:10px;
+  margin-bottom:14px;
+}
+
+#page-tanks .reference-detail-grid div{
+  min-width:0;
+  padding:9px 10px;
+  border:1px solid #e1e8f0;
+  border-radius:11px;
+  background:#fff;
+}
+
+#page-tanks .reference-detail-grid span{
+  display:block;
+  margin-bottom:4px;
+  color:#7a879a;
+  font-size:8px;
+  font-weight:850;
+  letter-spacing:.055em;
+  text-transform:uppercase;
+}
+
+#page-tanks .reference-detail-grid strong{
+  display:block;
+  overflow:hidden;
+  color:#26344b;
+  font-size:11px;
+  font-weight:800;
+  line-height:1.3;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+#page-tanks .reference-card-details .row-actions{
+  display:flex!important;
+  flex-wrap:wrap!important;
+  gap:7px!important;
+  margin:0!important;
+  padding:0!important;
+}
+
+#page-tanks .reference-card-details .row-actions .btn{
+  min-height:32px;
+  padding:7px 10px;
+  border-radius:9px;
+  font-size:10px;
+}
+
+:root[data-theme="dark"] #page-tanks .reference-tank-card{
+  border-color:#2b3c52!important;
+  background:#101d2d!important;
+  box-shadow:0 12px 28px rgba(0,0,0,.22)!important;
+}
+
+:root[data-theme="dark"] #page-tanks .reference-card-title h3,
+:root[data-theme="dark"] #page-tanks .reference-product-block strong,
+:root[data-theme="dark"] #page-tanks .reference-volume-row strong{
+  color:#edf4ff;
+}
+
+:root[data-theme="dark"] #page-tanks .reference-phase-chip{
+  color:#a8b8cc;
+  background:#1b2c40;
+}
+
+:root[data-theme="dark"] #page-tanks .reference-product-block span,
+:root[data-theme="dark"] #page-tanks .reference-update-label{
+  color:#9aabc0;
+}
+
+:root[data-theme="dark"] #page-tanks .reference-progress{
+  background:#26384c;
+}
+
+:root[data-theme="dark"] #page-tanks .reference-card-details{
+  border-color:#2b3c52;
+  background:#0d1928;
+}
+
+:root[data-theme="dark"] #page-tanks .reference-detail-grid div{
+  border-color:#2b3c52;
+  background:#132238;
+}
+
+:root[data-theme="dark"] #page-tanks .reference-detail-grid strong{
+  color:#dbe7f6;
+}
+
+@media(max-width:1180px){
+  #page-tanks .compact-tank-grid{
+    grid-template-columns:repeat(2,minmax(0,1fr))!important;
+  }
+}
+
+@media(max-width:720px){
+  #page-tanks .compact-tank-grid{
+    grid-template-columns:1fr!important;
+    gap:14px!important;
+  }
+
+  #page-tanks .reference-card-view{
+    padding:16px;
+  }
+
+  #page-tanks .reference-volume-row strong{
+    font-size:19px;
+  }
+
+  #page-tanks .reference-detail-grid{
+    grid-template-columns:1fr;
+  }
+}
+
+@media(prefers-reduced-motion:reduce){
+  #page-tanks .reference-progress span{
+    transition:none!important;
+  }
+}

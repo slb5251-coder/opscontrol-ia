@@ -14,6 +14,16 @@
       .toLowerCase();
   }
 
+  function esc(value = "") {
+    return String(value).replace(/[&<>"']/g, character => ({
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#039;"
+    }[character]));
+  }
+
   function cleanPrefix(value = "", prefix = "") {
     return String(value || "").replace(new RegExp(`^${prefix}\\s*:?\\s*`, "i"), "").trim();
   }
@@ -41,7 +51,7 @@
   function displayStatus(original, level) {
     const value = normalize(original);
     const exceptional = ["bloqueado", "manutencao", "limpeza"].some(status => value.includes(status));
-    if (level <= 15 && !exceptional) return "Baixo volume";
+    if (level > 0 && level <= 15 && !exceptional) return "Baixo volume";
     return original || "Operacional";
   }
 
@@ -54,13 +64,24 @@
     return "blue";
   }
 
+  function statusStyle(tone) {
+    const styles = {
+      green: "color:#16874f;background:#e7f7ef",
+      blue: "color:#1769ff;background:#eaf1ff",
+      amber: "color:#b96200;background:#fff2df",
+      gray: "color:#69778a;background:#edf1f5",
+      red: "color:#c93646;background:#fdebed"
+    };
+    return styles[tone] || styles.blue;
+  }
+
   function progressTone(card, product, status, level) {
     const value = normalize(`${product} ${card.dataset.tankKind || ""}`);
     if (value.includes("silo") || value.includes("barita") || value.includes("bentonita") || value.includes("calcita") || value.includes("granel")) return "amber";
     if (value.includes("sbm") || value.includes("rheliant") || value.includes("glydrill") || value.includes("oleo")) return "brown";
     if (value.includes("olefina")) return "gray";
     if (normalize(status).includes("em uso")) return "green";
-    if (level <= 15) return "amber";
+    if (level > 0 && level <= 15) return "amber";
     return "blue";
   }
 
@@ -75,7 +96,7 @@
   }
 
   function detailField(label, value) {
-    return `<div><span>${label}</span><strong>${value || "-"}</strong></div>`;
+    return `<div><span>${esc(label)}</span><strong title="${esc(value || "-")}">${esc(value || "-")}</strong></div>`;
   }
 
   function enhanceCard(card) {
@@ -118,29 +139,37 @@
       .filter(Boolean)
       .forEach(element => element.classList.add("reference-original-hidden"));
 
+    const safeTitle = esc(title);
+    const safePhase = esc(phase);
+    const safeProduct = esc(product);
+    const safeCurrent = esc(current);
+    const safeCapacity = esc(capacity);
+    const safeStatus = esc(status);
+    const safeUpdated = esc(updatedLabel(dateText, updater));
+
     const view = document.createElement("section");
     view.className = "reference-card-view";
     view.innerHTML = `
       <div class="reference-card-head">
         <div class="reference-card-title">
-          <h3>${title}</h3>
-          <span class="reference-phase-chip">${phase}</span>
+          <h3>${safeTitle}</h3>
+          <span class="reference-phase-chip">${safePhase}</span>
         </div>
-        <span class="reference-status-chip tone-${badgeTone}">${status}</span>
+        <span class="reference-status-chip tone-${badgeTone}" style="${statusStyle(badgeTone)}">${safeStatus}</span>
       </div>
       <div class="reference-product-block">
         <span>Produto</span>
-        <strong title="${product}">${product}</strong>
+        <strong title="${safeProduct}">${safeProduct}</strong>
       </div>
       <div class="reference-volume-row">
-        <strong title="${current} / ${capacity}">${current} / ${capacity}</strong>
+        <strong title="${safeCurrent} / ${safeCapacity}">${safeCurrent} / ${safeCapacity}</strong>
         <span>${Math.round(level)}%</span>
       </div>
-      <div class="reference-progress" role="progressbar" aria-label="Ocupação de ${title}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(level)}">
+      <div class="reference-progress" role="progressbar" aria-label="Ocupação de ${safeTitle}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(level)}">
         <span style="--reference-level:${level}%"></span>
       </div>
       <div class="reference-card-foot">
-        <span class="reference-update-label">${updatedLabel(dateText, updater)}</span>
+        <span class="reference-update-label">${safeUpdated}</span>
         <button type="button" class="reference-details-toggle" data-reference-tank-details aria-expanded="false">Ver detalhes</button>
       </div>
     `;

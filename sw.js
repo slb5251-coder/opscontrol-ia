@@ -1,10 +1,11 @@
-const CACHE="opscontrol-20260721-ui-consolidada-1";
+const CACHE="opscontrol-20260721-interface-fix-1";
 const FILES=[
   "./",
   "./index.html",
   "./app.css?v=20260719-v33-12-14-1-client-tickets",
   "./v33.css?v=20260719-v33-12-14-1-client-tickets",
   "./opscontrol-ui.css?v=20260721-ui-consolidada-1",
+  "./interface-fix.css?v=20260721-interface-fix-1",
   "./js/config.js?v=20260721-ui-consolidada-1",
   "./js/app.js?v=20260719-v33-12-14-1-client-tickets",
   "./js/ui-polish.js?v=20260721-ui-consolidada-1",
@@ -37,6 +38,7 @@ self.addEventListener("fetch", event => {
     url.pathname.endsWith("/app.css") ||
     url.pathname.endsWith("/v33.css") ||
     url.pathname.endsWith("/opscontrol-ui.css") ||
+    url.pathname.endsWith("/interface-fix.css") ||
     url.pathname.endsWith("/js/app.js") ||
     url.pathname.endsWith("/js/config.js") ||
     url.pathname.endsWith("/js/ui-polish.js")

@@ -54,7 +54,7 @@
     if (!items.length) return;
 
     const groups = [
-      { key: "overview", label: "Visão geral", pages: ["dashboard", "tv"] },
+      { key: "overview", label: "Visão geral", pages: ["dashboard", "ai-assistant", "tv"] },
       { key: "operations", label: "Operações", pages: ["operations", "vessel-registry", "client-tickets"] },
       { key: "materials", label: "Logística e materiais", pages: ["tanks", "fluids", "chemical-catalog", "chemicals", "trucks"] },
       { key: "reliability", label: "QHSE e confiabilidade", pages: ["qhse", "maintenance", "certificates", "alerts"] },
@@ -110,7 +110,7 @@
 
   function ensureLoginScene() {
     const hero = $(".login-hero");
-    if (!hero || $(".login-industrial-scene", hero)) return;
+    if (!hero || $(".login-industrial-scene,.login-ops-overview", hero)) return;
 
     const scene = document.createElement("div");
     scene.className = "login-industrial-scene";

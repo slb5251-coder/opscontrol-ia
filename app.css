@@ -531,7 +531,7 @@ body.kiosk-mode .sidebar,body.kiosk-mode .topbar{display:none!important}body.kio
   .mobile-status-banner span{font-size:9px}
   .pull-refresh-indicator{
     display:flex;position:fixed;top:calc(var(--mobile-topbar-height) + env(safe-area-inset-top));
-    left:50%;transform:translate(-50%,-55px);z-index:70;
+    left:50%;transform:translate(-50%,-130px);z-index:70;
     align-items:center;gap:7px;padding:8px 12px;border-radius:99px;
     background:var(--navy);color:#fff;font-size:10px;box-shadow:var(--shadow);
     transition:transform .18s

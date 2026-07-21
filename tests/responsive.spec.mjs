@@ -149,6 +149,33 @@ try {
     record(width, 'login sem overflow global', !loginOverflow);
     await page.screenshot({ path: resolve(outputDir, `login-${width}.png`), fullPage: true });
 
+    const assistantAudit = await page.evaluate(() => {
+      document.querySelector('#loginView')?.classList.add('hidden');
+      document.querySelector('#appView')?.classList.remove('hidden');
+      document.querySelectorAll('.page').forEach(element => element.classList.remove('active'));
+      document.querySelector('#page-ai-assistant')?.classList.add('active');
+      window.OpsControlAI?.render?.();
+      const page = document.querySelector('#page-ai-assistant');
+      const viewport = document.documentElement.clientWidth;
+      const modeButtons = [...(page?.querySelectorAll('[data-ocai-mode]') || [])];
+      const visibleNavIcon = document.querySelector('[data-page="ai-assistant"] .nav-icon svg');
+      return {
+        available: Boolean(window.OpsControlAI && page?.querySelector('.ocai-wrap')),
+        documentOverflow: document.documentElement.scrollWidth > viewport + 2,
+        modeCount: modeButtons.length,
+        vectorModeCount: modeButtons.filter(button => button.querySelector('svg')).length,
+        hasContextControl: Boolean(page?.querySelector('#ocaiIncludeContext')),
+        navIconVisible: visibleNavIcon ? getComputedStyle(visibleNavIcon).display !== 'none' : false
+      };
+    });
+    record(width, 'Assistente IA integrado', assistantAudit.available);
+    record(width, 'Assistente IA sem overflow global', !assistantAudit.documentOverflow);
+    record(width, 'Assistente IA com quatro ações', assistantAudit.modeCount === 4, `encontradas: ${assistantAudit.modeCount}`);
+    record(width, 'Assistente IA usa ícones vetoriais', assistantAudit.vectorModeCount === 4 && assistantAudit.navIconVisible);
+    record(width, 'Assistente IA oferece contexto operacional', assistantAudit.hasContextControl);
+    await page.waitForTimeout(350);
+    await page.screenshot({ path: resolve(outputDir, `assistant-${width}.png`), fullPage: true });
+
     await context.close();
   }
 } finally {

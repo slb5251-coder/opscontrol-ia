@@ -23,13 +23,25 @@
 html,body,button,input,select,textarea{font-family:Inter,Arial,sans-serif}
 body{background:var(--bg);color:var(--text);font-size:13px}
 
-/* Login */
-.login-view{background:#f3f6fa;grid-template-columns:minmax(0,1.15fr) minmax(420px,.85fr)}
-.login-hero{background:linear-gradient(145deg,#071a35,#0d3974);padding:clamp(48px,7vw,110px)}
-.login-hero h1{font-size:clamp(48px,6vw,76px);letter-spacing:-.055em}
-.login-panel{background:#f3f6fa}
-.login-card{border:1px solid var(--line);border-radius:20px;box-shadow:0 18px 55px rgba(8,26,51,.12)}
-.logo-mark,.brand-mark{background:var(--navy);border-radius:10px}
+/* Login — implementado a partir do frame 2:2 do Figma */
+.login-view{background:#f3f6fa;grid-template-columns:minmax(0,3fr) minmax(420px,2fr)}
+.login-hero{position:relative;justify-content:flex-start;gap:0;overflow:hidden;background:#081a33;padding:clamp(44px,7vh,72px) clamp(42px,5vw,70px)}
+.login-hero:before{content:"";position:absolute;width:520px;height:520px;right:-90px;top:-160px;border-radius:50%;background:radial-gradient(circle,rgba(23,104,255,.26),rgba(23,104,255,.06) 62%,transparent 63%)}
+.login-hero:after{content:"";position:absolute;width:380px;height:380px;left:-130px;bottom:-150px;border-radius:50%;background:radial-gradient(circle,rgba(14,165,198,.17),rgba(14,165,198,.035) 66%,transparent 67%)}
+.login-hero-copy,.login-ops-overview,.login-hero-foot{position:relative;z-index:1}
+.login-hero h1{margin:36px 0 8px;font-size:clamp(42px,4vw,54px);line-height:1.04;letter-spacing:-.05em}
+.login-hero p{max-width:650px;margin:0;color:#d9e8fb;font-size:clamp(16px,1.5vw,19px);line-height:1.55}
+.hero-badge{padding:8px 12px;background:rgba(255,255,255,.1);border-color:rgba(255,255,255,.22);font-size:10px;letter-spacing:.1em}
+.login-ops-overview{width:min(720px,100%);margin-top:54px;padding:25px;border:1px solid rgba(255,255,255,.15);border-radius:24px;background:rgba(255,255,255,.06);box-shadow:inset 0 1px 0 rgba(255,255,255,.04)}
+.login-ops-overview>header{display:flex;align-items:center;gap:10px;color:#d9e8fb;font-size:11px}.login-ops-overview>header>span{width:9px;height:9px;border-radius:50%;background:#3ee28c;box-shadow:0 0 0 5px rgba(62,226,140,.1)}
+.login-ops-metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:13px;margin-top:25px}.login-ops-metrics article{min-width:0;padding:15px 16px;border:1px solid rgba(255,255,255,.03);border-radius:14px;background:rgba(255,255,255,.075)}.login-ops-metrics strong{display:block;color:#fff;font-size:25px;letter-spacing:-.035em}.login-ops-metrics span{display:block;margin-top:6px;color:#c9daef;font-size:10px;white-space:nowrap}
+.login-process{display:grid;grid-template-columns:auto minmax(24px,1fr) auto minmax(24px,1fr) auto minmax(24px,1fr) auto;align-items:center;margin-top:30px;padding:24px 18px 17px;border-radius:16px;background:rgba(255,255,255,.045)}.login-process div{display:grid;justify-items:center;gap:9px;min-width:75px}.login-process b{width:42px;height:42px;display:grid;place-items:center;border-radius:50%;background:#173d6b;color:#fff;font-size:13px}.login-process div:last-child b{background:#1768ff;box-shadow:0 0 0 5px rgba(23,104,255,.13)}.login-process span{color:#d9e8fb;font-size:10px;font-weight:600}.login-process i{height:2px;margin-bottom:25px;border-radius:999px;background:#5d84b2}
+.login-hero-foot{margin-top:auto;padding-top:30px;color:#bfd2e8;font-size:12px;font-weight:500}
+.login-panel{min-height:100dvh;background:#f3f6fa}
+.login-card{width:min(420px,100%);min-height:520px;padding:32px;border:1px solid var(--line);border-radius:24px;box-shadow:0 12px 28px rgba(15,31,58,.1)}
+.login-card:before{height:3px!important;background:linear-gradient(90deg,#1768ff,#16824b)!important}.login-card h2{margin-top:0;font-size:25px}.login-card>p{margin:0 0 34px;font-size:12px}.login-card label{margin-top:19px;color:#172033;font-size:11px}
+.logo-mark,.brand-mark{background:var(--navy);border-radius:10px}.logo-mark{margin-bottom:22px}
+.login-field{position:relative}.login-field>svg{position:absolute;z-index:1;left:14px;top:50%;width:18px;height:18px;transform:translateY(-50%);color:#8291a5;pointer-events:none}.login-field input{height:48px;padding-left:43px;border-radius:11px;font-size:12px}.login-card .btn.full{height:46px;margin-top:27px;border-radius:11px;font-size:13px}.login-card .btn.full svg{width:17px;height:17px;margin-left:3px}.login-security{display:flex;align-items:center;justify-content:center;gap:7px;margin-top:18px;color:#16824b;font-size:10px;font-weight:600}.login-security svg{width:15px;height:15px}
 
 /* Estrutura principal */
 .topbar{

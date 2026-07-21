@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "1.0.0-main-integrated";
+  const VERSION = "2.0.0-ops-intelligence";
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
   const CONFIG = window.OPSCONTROL_CONFIG || {};
@@ -63,6 +63,20 @@
     }[character]));
   }
 
+  const ICONS = {
+    handover: '<path d="M20 7h-9"></path><path d="m16 3-4 4 4 4"></path><path d="M4 17h9"></path><path d="m8 13 4 4-4 4"></path>',
+    report: '<path d="M7 3h7l4 4v14H7z"></path><path d="M14 3v5h5"></path><path d="M10 13h5"></path><path d="M10 17h5"></path>',
+    alert: '<path d="M12 3 2.8 20h18.4L12 3z"></path><path d="M12 9v5"></path><path d="M12 17h.01"></path>',
+    sparkles: '<path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z"></path><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15z"></path>',
+    brain: '<path d="M9.5 4.5A3 3 0 0 0 5 7a3 3 0 0 0-1 5.7A3.5 3.5 0 0 0 8 18h1.5"></path><path d="M14.5 4.5A3 3 0 0 1 19 7a3 3 0 0 1 1 5.7 3.5 3.5 0 0 1-4 5.3h-1.5"></path><path d="M9.5 4.5V21"></path><path d="M14.5 4.5V21"></path><path d="M7 10h2.5"></path><path d="M14.5 14H18"></path>',
+    database: '<ellipse cx="12" cy="5" rx="8" ry="3"></ellipse><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"></path><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"></path>',
+    copy: '<rect x="9" y="9" width="11" height="11" rx="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>'
+  };
+
+  function icon(name, className = "ocai-icon") {
+    return `<svg class="${className}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${ICONS[name] || ICONS.sparkles}</svg>`;
+  }
+
   function assistantMarkup() {
     return `<div class="ocai-wrap" data-ocai-version="${VERSION}">
       <section class="ocai-hero">
@@ -86,24 +100,29 @@
       <section class="ocai-mode-section">
         <div class="ocai-section-head"><div><h2>O que deseja fazer?</h2><p>Escolha o formato ideal para sua necessidade.</p></div></div>
         <div class="ocai-mode-grid">
-          <button class="ocai-mode active" data-ocai-mode="handover"><span class="ocai-mode-icon">🔄</span><strong>Passagem de turno</strong><small>Organiza atividades e pendências.</small></button>
-          <button class="ocai-mode" data-ocai-mode="report"><span class="ocai-mode-icon">📄</span><strong>Relatório operacional</strong><small>Estrutura volumes, horários e fatos.</small></button>
-          <button class="ocai-mode" data-ocai-mode="alert"><span class="ocai-mode-icon">⚠️</span><strong>Análise de alerta</strong><small>Avalia risco, prioridade e ação.</small></button>
-          <button class="ocai-mode" data-ocai-mode="assistant"><span class="ocai-mode-icon">✨</span><strong>Assistente geral</strong><small>Redige e responde solicitações.</small></button>
+          <button class="ocai-mode active" type="button" data-ocai-mode="handover" aria-pressed="true"><span class="ocai-mode-icon">${icon("handover")}</span><strong>Passagem de turno</strong><small>Organiza atividades e pendências.</small></button>
+          <button class="ocai-mode" type="button" data-ocai-mode="report" aria-pressed="false"><span class="ocai-mode-icon">${icon("report")}</span><strong>Relatório operacional</strong><small>Estrutura volumes, horários e fatos.</small></button>
+          <button class="ocai-mode" type="button" data-ocai-mode="alert" aria-pressed="false"><span class="ocai-mode-icon">${icon("alert")}</span><strong>Análise de alerta</strong><small>Avalia risco, prioridade e ação.</small></button>
+          <button class="ocai-mode" type="button" data-ocai-mode="assistant" aria-pressed="false"><span class="ocai-mode-icon">${icon("sparkles")}</span><strong>Assistente geral</strong><small>Redige e responde solicitações.</small></button>
         </div>
+        <label class="ocai-context-toggle" for="ocaiIncludeContext">
+          <input id="ocaiIncludeContext" type="checkbox" checked>
+          <span class="ocai-context-icon">${icon("database")}</span>
+          <span><strong>Incluir contexto atual do OpsControl</strong><small>A IA consulta somente dados permitidos ao seu usuário: operações, tanques, carretas, alertas e manutenção.</small></span>
+        </label>
       </section>
 
       <div class="ocai-grid">
         <section class="ocai-panel">
           <div class="ocai-panel-head"><div><span class="ocai-label">ENTRADA</span><h2 id="ocaiInputTitle">Dados da passagem de turno</h2></div><button id="ocaiClear" class="ocai-ghost" type="button">Limpar</button></div>
           <textarea id="ocaiPrompt" maxlength="30000" placeholder="${MODES.handover.placeholder}"></textarea>
-          <div class="ocai-input-foot"><span id="ocaiCounter" class="ocai-counter">0 / 30.000</span><button id="ocaiGenerate" class="ocai-generate" type="button"><span>✨</span> Gerar com IA</button></div>
+          <div class="ocai-input-foot"><span id="ocaiCounter" class="ocai-counter">0 / 30.000</span><button id="ocaiGenerate" class="ocai-generate" type="button">${icon("sparkles")}<span>Gerar com IA</span></button></div>
           <div id="ocaiMessage" class="ocai-message ocai-hidden"></div>
         </section>
 
         <section class="ocai-panel">
           <div class="ocai-panel-head"><div><span class="ocai-label">RESULTADO</span><h2>Conteúdo gerado</h2></div><button id="ocaiCopy" class="ocai-ghost" type="button" disabled>Copiar</button></div>
-          <div id="ocaiResult" class="ocai-result empty"><div class="ocai-empty-icon">🤖</div><strong>O resultado aparecerá aqui</strong><span>Informe os dados e clique em “Gerar com IA”.</span></div>
+          <div id="ocaiResult" class="ocai-result empty"><div class="ocai-empty-icon">${icon("brain")}</div><strong>O resultado aparecerá aqui</strong><span>Informe os dados e clique em “Gerar com IA”.</span></div>
           <div class="ocai-actions"><button id="ocaiWhatsApp" type="button" disabled>WhatsApp</button><button id="ocaiEmail" type="button" disabled>E-mail</button><button id="ocaiPrint" type="button" disabled>Imprimir / PDF</button></div>
         </section>
       </div>
@@ -155,7 +174,11 @@
   function selectMode(mode) {
     if (!MODES[mode]) return;
     currentMode = mode;
-    $$('[data-ocai-mode]').forEach(button => button.classList.toggle("active", button.dataset.ocaiMode === mode));
+    $$('[data-ocai-mode]').forEach(button => {
+      const active = button.dataset.ocaiMode === mode;
+      button.classList.toggle("active", active);
+      button.setAttribute("aria-pressed", String(active));
+    });
     const title = $("#ocaiInputTitle");
     const prompt = $("#ocaiPrompt");
     if (title) title.textContent = MODES[mode].title;
@@ -173,6 +196,18 @@
   function extractResult(data) {
     if (typeof data === "string") return data;
     return data?.result || data?.text || data?.output_text || data?.response || data?.message || data?.content || "";
+  }
+
+  async function functionErrorMessage(error) {
+    const fallback = error?.message || "Falha ao acessar a função de IA.";
+    const response = error?.context;
+    if (!response || typeof response.clone !== "function") return fallback;
+    try {
+      const payload = await response.clone().json();
+      return payload?.error || payload?.details || payload?.message || fallback;
+    } catch (_) {
+      return fallback;
+    }
   }
 
   async function generateWithAI() {
@@ -201,7 +236,7 @@
     }
 
     generateButton.disabled = true;
-    generateButton.innerHTML = '<span class="ocai-spinner"></span> Gerando...';
+    generateButton.innerHTML = '<span class="ocai-spinner"></span><span>Gerando...</span>';
     result.className = "ocai-result ocai-result-loader";
     result.innerHTML = '<span class="ocai-spinner"></span><strong>Analisando informações...</strong>';
     setResultActions(false);
@@ -209,16 +244,18 @@
     try {
       const { data, error } = await client.functions.invoke("opscontrol-ai", {
         body: {
+          task: currentMode,
           mode: currentMode,
           input: text,
           content: text,
           prompt: text,
+          include_context: $("#ocaiIncludeContext")?.checked === true,
           source: "opscontrol-main",
           user_name: $("#userName")?.textContent || "Usuário",
           department: $("#userRole")?.textContent || ""
         }
       });
-      if (error) throw new Error(error.message || "Falha ao acessar a função de IA.");
+      if (error) throw new Error(await functionErrorMessage(error));
 
       currentResult = String(extractResult(data) || "").trim();
       if (!currentResult) throw new Error("A IA respondeu sem conteúdo.");
@@ -233,11 +270,11 @@
     } catch (error) {
       currentResult = "";
       result.className = "ocai-result empty";
-      result.innerHTML = '<div class="ocai-empty-icon">⚠️</div><strong>Não foi possível gerar</strong><span>Confira a mensagem abaixo e tente novamente.</span>';
+      result.innerHTML = `<div class="ocai-empty-icon ocai-empty-alert">${icon("alert")}</div><strong>Não foi possível gerar</strong><span>Confira a mensagem abaixo e tente novamente.</span>`;
       setMessage(error.message || "Falha ao acessar o Assistente IA.", "error");
     } finally {
       generateButton.disabled = false;
-      generateButton.innerHTML = "<span>✨</span> Gerar com IA";
+      generateButton.innerHTML = `${icon("sparkles")}<span>Gerar com IA</span>`;
     }
   }
 
@@ -273,7 +310,7 @@
       setResultActions(false);
       const result = $("#ocaiResult");
       result.className = "ocai-result empty";
-      result.innerHTML = '<div class="ocai-empty-icon">🤖</div><strong>O resultado aparecerá aqui</strong><span>Informe os dados e clique em “Gerar com IA”.</span>';
+      result.innerHTML = `<div class="ocai-empty-icon">${icon("brain")}</div><strong>O resultado aparecerá aqui</strong><span>Informe os dados e clique em “Gerar com IA”.</span>`;
       prompt.focus();
     });
     $("#ocaiCopy")?.addEventListener("click", async () => {
@@ -302,57 +339,9 @@
     checkConnection();
   }
 
-  function closeMobilePanels() {
-    $("#sidebar")?.classList.remove("open", "active", "is-open");
-    $("#sidebarBackdrop")?.classList.remove("active", "show");
-    $("#mobileMoreSheet")?.classList.add("hidden");
-    $("#mobileQuickSheet")?.classList.add("hidden");
-    $("#mobileSheetBackdrop")?.classList.add("hidden");
-    document.body.classList.remove("sidebar-open", "mobile-sheet-open");
-  }
-
-  function openAssistant() {
-    renderAssistant();
-    $$(".page").forEach(page => page.classList.remove("active"));
-    $("#page-ai-assistant")?.classList.add("active");
-    $$(".nav-item").forEach(item => item.classList.remove("active"));
-    $("[data-ai-page='assistant']")?.classList.add("active");
-    $$(".mobile-nav-item").forEach(item => item.classList.remove("active"));
-    const title = $("#mobilePageTitle");
-    const subtitle = $("#mobilePageSubtitle");
-    if (title) title.textContent = "Assistente IA";
-    if (subtitle) subtitle.textContent = "Inteligência operacional";
-    closeMobilePanels();
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }
-
-  function addMobileModuleShortcut() {
-    const container = $("#mobileMoreModules");
-    if (!container || $("[data-ai-mobile]", container)) return;
-    const button = document.createElement("button");
-    button.type = "button";
-    button.className = "mobile-module-item ocai-mobile-module";
-    button.dataset.aiMobile = "assistant";
-    button.innerHTML = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z"></path><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15z"></path></svg><span><strong>Assistente IA</strong><small>Gerar relatórios e análises</small></span>';
-    button.addEventListener("click", event => { event.stopPropagation(); openAssistant(); });
-    container.prepend(button);
-  }
-
   function init() {
-    const navButton = $("[data-ai-page='assistant']");
-    navButton?.addEventListener("click", event => { event.preventDefault(); event.stopPropagation(); openAssistant(); });
-    $("#aiAssistantBtn")?.addEventListener("click", event => { event.preventDefault(); event.stopPropagation(); openAssistant(); });
-
-    document.addEventListener("click", event => {
-      if (event.target.closest("[data-page], [data-mobile-page]") && !event.target.closest("[data-ai-page]")) {
-        $("[data-ai-page='assistant']")?.classList.remove("active");
-      }
-    }, true);
-
-    addMobileModuleShortcut();
-    const mobileObserver = new MutationObserver(addMobileModuleShortcut);
-    const mobileContainer = $("#mobileMoreModules");
-    if (mobileContainer) mobileObserver.observe(mobileContainer, { childList: true });
+    window.OpsControlAI = Object.freeze({ render: renderAssistant });
+    if ($("#page-ai-assistant")?.classList.contains("active")) renderAssistant();
   }
 
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", init, { once: true });

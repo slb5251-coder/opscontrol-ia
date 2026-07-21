@@ -1,4 +1,4 @@
-const CACHE="opscontrol-20260721-icons-3";
+const CACHE="opscontrol-20260721-ai-4";
 const FILES=[
   "./",
   "./index.html",
@@ -6,11 +6,13 @@ const FILES=[
   "./v33.css?v=20260719-v33-12-14-1-client-tickets",
   "./opscontrol-ui.css?v=20260721-ui-consolidada-1",
   "./figma-interface.css?v=20260721-icons-3",
+  "./assistente-integrado.css?v=20260721-ai-2",
   "./interface-fix.css?v=20260721-interface-fix-1",
   "./design-upgrade.css?v=20260721-control-center-1",
   "./tank-cards-reference.css?v=20260721-reference-cards-1",
   "./js/config.js?v=20260721-ui-consolidada-1",
   "./js/app.js?v=20260721-icons-3",
+  "./js/assistente-integrado.js?v=20260721-ai-2",
   "./js/ui-polish.js?v=20260721-reference-cards-1",
   "./js/design-upgrade.js?v=20260721-control-center-1",
   "./js/design-stability.js?v=20260721-original-tanks-1",
@@ -45,10 +47,12 @@ self.addEventListener("fetch", event => {
     url.pathname.endsWith("/v33.css") ||
     url.pathname.endsWith("/opscontrol-ui.css") ||
     url.pathname.endsWith("/figma-interface.css") ||
+    url.pathname.endsWith("/assistente-integrado.css") ||
     url.pathname.endsWith("/interface-fix.css") ||
     url.pathname.endsWith("/design-upgrade.css") ||
     url.pathname.endsWith("/tank-cards-reference.css") ||
     url.pathname.endsWith("/js/app.js") ||
+    url.pathname.endsWith("/js/assistente-integrado.js") ||
     url.pathname.endsWith("/js/config.js") ||
     url.pathname.endsWith("/js/ui-polish.js") ||
     url.pathname.endsWith("/js/design-upgrade.js") ||

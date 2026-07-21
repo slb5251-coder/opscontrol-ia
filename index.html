@@ -11,6 +11,7 @@
   <link rel="stylesheet" href="v33.css?v=20260719-v33-12-14-1-client-tickets">
   <link rel="stylesheet" href="opscontrol-ui.css?v=20260721-ui-consolidada-1">
   <link rel="stylesheet" href="figma-interface.css?v=20260721-icons-3">
+  <link rel="stylesheet" href="assistente-integrado.css?v=20260721-ai-2">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
@@ -18,21 +19,48 @@
 <body>
   <section id="loginView" class="login-view">
     <div class="login-hero">
-      <span class="hero-badge">B-PORT LMP</span>
-      <h1>OpsControl IA</h1>
-      <p>Controle integrado de operações, tanques, fluidos, carretas, QHSE, manutenção e documentos.</p>
+      <div class="login-hero-copy">
+        <span class="hero-badge">B-PORT LMP</span>
+        <h1>OpsControl IA</h1>
+        <p>Centro de controle operacional para fluidos, granéis, logística, QHSE e manutenção.</p>
+      </div>
+
+      <section class="login-ops-overview" aria-label="Visão geral da planta">
+        <header><span aria-hidden="true"></span><strong>Centro de controle operacional</strong></header>
+        <div class="login-ops-metrics">
+          <article><strong>18</strong><span>Tanques WBM</span></article>
+          <article><strong>15</strong><span>Tanques SBM</span></article>
+          <article><strong>9</strong><span>Silos de granel</span></article>
+          <article><strong>24/7</strong><span>Operação integrada</span></article>
+        </div>
+        <div class="login-process" aria-label="Fluxo operacional">
+          <div><b>1</b><span>Recebimento</span></div><i aria-hidden="true"></i>
+          <div><b>2</b><span>Armazenamento</span></div><i aria-hidden="true"></i>
+          <div><b>3</b><span>Fabricação</span></div><i aria-hidden="true"></i>
+          <div><b>4</b><span>Bombeio</span></div>
+        </div>
+      </section>
+
+      <small class="login-hero-foot">Operações mais seguras, rastreáveis e conectadas.</small>
     </div>
     <div class="login-panel">
       <div class="login-card">
         <div class="logo-mark">OC</div>
         <h2>Entrar no sistema</h2>
         <p id="connectionHint">Acesse com seu e-mail e senha cadastrados.</p>
-        <label>E-mail</label>
-        <input id="loginEmail" type="email" placeholder="nome@empresa.com">
-        <label>Senha</label>
-        <input id="loginPassword" type="password" placeholder="Sua senha">
-        <button id="loginBtn" class="btn primary full">Entrar</button>
+        <label for="loginEmail">E-mail</label>
+        <div class="login-field">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="m3 7 9 6 9-6"></path></svg>
+          <input id="loginEmail" type="email" placeholder="nome@empresa.com" autocomplete="email">
+        </div>
+        <label for="loginPassword">Senha</label>
+        <div class="login-field">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>
+          <input id="loginPassword" type="password" placeholder="Sua senha" autocomplete="current-password">
+        </div>
+        <button id="loginBtn" class="btn primary full">Entrar <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14"></path><path d="m13 6 6 6-6 6"></path></svg></button>
         <div id="loginMessage" class="message hidden"></div>
+        <div class="login-security"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8.7-7 10-4-1.3-7-5.5-7-10V6l7-3z"></path><path d="m8.5 12 2.2 2.2 4.8-5"></path></svg><span>Acesso seguro e monitorado</span></div>
       </div>
     </div>
   </section>
@@ -83,6 +111,7 @@
           <button class="nav-item" data-page="maintenance"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.3 2.3-2-2z"></path></svg></span><span class="nav-label">Manutenção</span></button>
           <button class="nav-item" data-page="certificates"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3h8l5 5v11a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"></path><path d="M16 3v5h5"></path><path d="M9 13h6"></path><path d="M9 17h4"></path></svg></span><span class="nav-label">Certificados</span></button>
           <button class="nav-item" data-page="alerts"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 7h18s-3 0-3-7"></path><path d="M10.5 20a1.5 1.5 0 0 0 3 0"></path></svg></span><span class="nav-label">Alertas e Chat</span></button>
+          <button class="nav-item" data-page="ai-assistant"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z"></path><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15z"></path></svg></span><span class="nav-label">Assistente IA</span></button>
           <button class="nav-item" data-page="reports"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10"></path><path d="M10 20V4"></path><path d="M16 20v-7"></path><path d="M22 20v-3"></path></svg></span><span class="nav-label">Relatórios</span></button>
           <button class="nav-item" data-page="audit"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l2 2 4-4"></path><path d="M5 3h14v18H5z"></path><path d="M8 7h8"></path><path d="M8 17h8"></path></svg></span><span class="nav-label">Auditoria</span></button>
           <button class="nav-item" data-page="settings"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 0 1 0 2.8 2 2 0 0 1-2.8 0l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9c0 .7.4 1.3 1 1.5h.2a2 2 0 0 1 0 4h-.2a1.7 1.7 0 0 0-1.5 1z"></path></svg></span><span class="nav-label">Configurações</span></button>
@@ -110,6 +139,7 @@
         <section id="page-maintenance" class="page"></section>
         <section id="page-certificates" class="page"></section>
         <section id="page-alerts" class="page"></section>
+        <section id="page-ai-assistant" class="page page-ai-integrated"></section>
         <section id="page-reports" class="page"></section>
         <section id="page-audit" class="page"></section>
         <section id="page-settings" class="page"></section>
@@ -169,6 +199,7 @@
   <script src="js/config.js?v=20260721-ui-consolidada-1"></script>
   <script src="vendor/qrcode.js?v=20260719-v33-12-14-1-client-tickets"></script>
   <script src="js/app.js?v=20260721-icons-3"></script>
+  <script src="js/assistente-integrado.js?v=20260721-ai-2"></script>
   <script src="js/ui-polish.js?v=20260721-ui-consolidada-1"></script>
 </body>
 </html>

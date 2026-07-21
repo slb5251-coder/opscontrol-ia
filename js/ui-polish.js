@@ -3,6 +3,8 @@
 
   const scriptUrl = document.currentScript?.src || new URL('js/ui-polish.js', document.baseURI).href;
   const INTERFACE_STYLESHEET = new URL('../interface-fix.css?v=20260721-interface-fix-1', scriptUrl).href;
+  const DESIGN_STYLESHEET = new URL('../design-upgrade.css?v=20260721-control-center-1', scriptUrl).href;
+  const DESIGN_SCRIPT = new URL('design-upgrade.js?v=20260721-control-center-1', scriptUrl).href;
   const TAB_CONTAINERS = [
     '[role="tablist"]',
     '.tabs',
@@ -34,6 +36,23 @@
     document.head.appendChild(link);
   }
 
+  function ensureDesignUpgrade() {
+    if (!document.querySelector('link[data-design-upgrade="true"]')) {
+      const link = document.createElement('link');
+      link.rel = 'stylesheet';
+      link.href = DESIGN_STYLESHEET;
+      link.dataset.designUpgrade = 'true';
+      document.head.appendChild(link);
+    }
+
+    if (!document.querySelector('script[data-design-upgrade="true"]')) {
+      const script = document.createElement('script');
+      script.src = DESIGN_SCRIPT;
+      script.dataset.designUpgrade = 'true';
+      document.head.appendChild(script);
+    }
+  }
+
   function activeItem(container) {
     return container.querySelector('.active,[aria-selected="true"],[data-active="true"]');
   }
@@ -50,7 +69,6 @@
 
   function prepareTabContainer(container) {
     if (!container) return;
-
     container.classList.add('ui-tab-scroller');
     if (container.dataset.uiPolished === 'true') return;
 
@@ -73,7 +91,6 @@
     const cards = [...grid.children].filter(element => element.matches('.stat-card,.card'));
     grid.classList.add('dashboard-primary-kpis');
     grid.dataset.uiGrouped = 'true';
-
     if (cards.length <= 4) return;
 
     const secondaryCards = cards.slice(4);
@@ -111,22 +128,14 @@
     const viewportWidth = document.documentElement.clientWidth;
     const offenders = [...document.querySelectorAll('body *')].filter(element => {
       if (element.closest(allowed)) return false;
-
       const style = getComputedStyle(element);
-      if (
-        style.position === 'fixed' ||
-        style.display === 'none' ||
-        style.visibility === 'hidden'
-      ) return false;
-
+      if (style.position === 'fixed' || style.display === 'none' || style.visibility === 'hidden') return false;
       const rect = element.getBoundingClientRect();
       return rect.width > 0 && rect.right > viewportWidth + 2;
     }).slice(0, 12);
 
     document.documentElement.dataset.uiOverflow = offenders.length ? 'true' : 'false';
-    if (offenders.length) {
-      console.warn('[OpsControl UI] Elementos fora da largura da tela:', offenders);
-    }
+    if (offenders.length) console.warn('[OpsControl UI] Elementos fora da largura da tela:', offenders);
   }
 
   function run() {
@@ -145,6 +154,7 @@
 
   function start() {
     ensureInterfaceStylesheet();
+    ensureDesignUpgrade();
     schedule();
 
     const observer = new MutationObserver(schedule);
@@ -160,13 +170,9 @@
       clearTimeout(resizeTimer);
       resizeTimer = setTimeout(schedule, 120);
     }, { passive: true });
-
     window.addEventListener('orientationchange', schedule, { passive: true });
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', start, { once: true });
-  } else {
-    start();
-  }
+  if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', start, { once: true });
+  else start();
 })();

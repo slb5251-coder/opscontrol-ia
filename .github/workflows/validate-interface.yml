@@ -1,0 +1,85 @@
+name: Validate Interface
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Validate JavaScript syntax
+        shell: bash
+        run: |
+          set -euo pipefail
+          while IFS= read -r -d '' file; do
+            echo "Checking $file"
+            node --check "$file"
+          done < <(find js -type f -name '*.js' -print0)
+          node --check sw.js
+
+      - name: Validate interface references and CSS balance
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+          import sys
+
+          errors = []
+          runtime_css = Path('interface-runtime.css').read_text(encoding='utf-8')
+          runtime_js = Path('js/interface-runtime.js').read_text(encoding='utf-8')
+          service_worker = Path('sw.js').read_text(encoding='utf-8')
+
+          css_refs = re.findall(r"@import\s+url\(['\"]?([^'\")?]+)", runtime_css)
+          js_refs = re.findall(r'"([A-Za-z0-9._/-]+\.js\?v=[^"]+)"', runtime_js)
+
+          for ref in css_refs:
+            path = Path(ref.split('?')[0].lstrip('./'))
+            if not path.exists():
+              errors.append(f'Missing CSS reference: {path}')
+
+          for ref in js_refs:
+            path = Path('js') / Path(ref.split('?')[0]).name
+            if not path.exists():
+              errors.append(f'Missing JS reference: {path}')
+
+          required = [
+            Path('final-interface.css'),
+            Path('interface-fix.css'),
+            Path('js/ui-polish.js'),
+            Path('js/interface-runtime.js'),
+          ]
+          for path in required:
+            if not path.exists():
+              errors.append(f'Missing required interface file: {path}')
+
+          forbidden = ['design-upgrade.css', 'js/design-upgrade.js', 'js/design-stability.js']
+          combined = runtime_css + runtime_js + service_worker
+          for item in forbidden:
+            if item in combined:
+              errors.append(f'Legacy reference still active: {item}')
+
+          for path in Path('.').glob('*.css'):
+            text = path.read_text(encoding='utf-8')
+            if text.count('{') != text.count('}'):
+              errors.append(f'Unbalanced CSS braces: {path}')
+
+          if errors:
+            print('\n'.join(f'- {error}' for error in errors))
+            sys.exit(1)
+
+          print(f'Validated {len(css_refs)} runtime CSS imports and {len(js_refs)} runtime JS modules.')

@@ -366,3 +366,20 @@ body.sidebar-compact .nav-item.active:before{left:2px;top:9px;bottom:9px;width:4
 }
 
 @media print{.topbar-page-context{display:none}}
+.login-password-field input{padding-right:48px}
+.login-field-action{position:absolute;z-index:2;right:6px;top:50%;width:36px;height:36px;display:grid;place-items:center;transform:translateY(-50%);border:0;border-radius:9px;background:transparent;color:#718197}
+.login-field-action:hover,.login-field-action:focus-visible{background:#edf3fa;color:#1768ff}
+.login-field-action svg{width:18px;height:18px}
+.login-options{display:flex;align-items:center;justify-content:space-between;gap:16px;margin-top:12px}
+.login-remember{display:flex;align-items:center;gap:8px;margin:0;color:#526078;font-size:11px;cursor:pointer}
+.login-remember input{width:16px;height:16px;margin:0;accent-color:#1768ff}
+.login-link{border:0;background:transparent;color:#1768ff;padding:6px 0;font-size:11px;font-weight:800}
+.login-link:hover{text-decoration:underline}
+.login-card .btn.full[disabled]{cursor:wait;opacity:.68}
+.login-card .btn.full.is-loading svg{animation:loginSpin .8s linear infinite}
+.login-card .message.success{background:#dcf7e8;color:#12703f}
+.confirm-dialog-content{display:grid;gap:18px;max-width:520px}
+.confirm-dialog-content p{margin:0;color:var(--text);font-size:14px;line-height:1.6}
+.confirm-dialog-content .form-actions{margin-top:0}
+@keyframes loginSpin{to{transform:rotate(360deg)}}
+@media(max-width:620px){.login-options{align-items:flex-start;flex-direction:column;gap:4px}.login-card .btn.full{margin-top:18px}}

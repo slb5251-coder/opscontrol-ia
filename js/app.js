@@ -12,12 +12,16 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const APP_VERSION = "20260719-v33-12-14-1-client-tickets";
+  const REMEMBER_LOGIN_KEY = "opscontrol_remember_login";
+  const APP_VERSION = "20260722-security-1";
+  const REALTIME_TABLES = ["tanks", "operations", "alerts", "chat_messages", "trucks", "equipment", "maintenance_orders", "qhse_records"];
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
 
   const state = {
     client: null,
+    clientRemember: null,
+    authListenerBound: false,
     user: null,
     data: null,
     page: "dashboard",
@@ -782,10 +786,27 @@
     setTimeout(() => el.remove(), 3600);
   }
 
-  function showLoginMessage(message) {
+  function showLoginMessage(message, kind = "error") {
     const el = $("#loginMessage");
     el.textContent = message;
+    el.classList.toggle("success", kind === "success");
     el.classList.remove("hidden");
+  }
+
+  function clearLoginMessage() {
+    const el = $("#loginMessage");
+    el.textContent = "";
+    el.classList.remove("success");
+    el.classList.add("hidden");
+  }
+
+  function setLoginLoading(loading, label = "Entrando...") {
+    const button = $("#loginBtn");
+    if (!button) return;
+    button.disabled = loading;
+    button.classList.toggle("is-loading", loading);
+    const text = button.querySelector("span");
+    if (text) text.textContent = loading ? label : "Entrar";
   }
 
   function role() {
@@ -927,7 +948,26 @@
     }, 120);
   }
 
+  let confirmResolver = null;
+
+  function confirmAction(message, title = "Confirmar ação") {
+    if (confirmResolver) confirmResolver(false);
+    return new Promise(resolve => {
+      confirmResolver = resolve;
+      openModal(title, `<div class="confirm-dialog-content"><p>${esc(message)}</p><div class="form-actions"><button type="button" class="btn secondary" data-confirm-choice="false">Cancelar</button><button type="button" class="btn danger" data-confirm-choice="true">Confirmar</button></div></div>`, "AÇÃO CRÍTICA");
+    });
+  }
+
+  function settleConfirmation(choice) {
+    const resolve = confirmResolver;
+    confirmResolver = null;
+    $("#modal").classList.add("hidden");
+    document.body.classList.remove("modal-open");
+    resolve?.(choice);
+  }
+
   function closeModal() {
+    if (confirmResolver) return settleConfirmation(false);
     $("#modal").classList.add("hidden");
     document.body.classList.remove("modal-open");
   }
@@ -1479,23 +1519,83 @@
       .replace(/-+/g, "-");
   }
 
-  async function initClient() {
+  async function initClient(remember = localStorage.getItem(REMEMBER_LOGIN_KEY) !== "false") {
     if (!state.config.url || !state.config.key || !window.supabase) {
       throw new Error("A conexão do sistema não está configurada.");
     }
-    if (!state.client) {
-      state.client = window.supabase.createClient(state.config.url, state.config.key);
+    if (!state.client || state.clientRemember !== remember) {
+      if (state.client && state.authListenerBound) {
+        state.authListenerBound = false;
+      }
+      state.clientRemember = remember;
+      state.client = window.supabase.createClient(state.config.url, state.config.key, {
+        auth: {
+          persistSession: true,
+          autoRefreshToken: true,
+          detectSessionInUrl: true,
+          storage: remember ? window.localStorage : window.sessionStorage,
+          storageKey: remember ? "opscontrol-auth" : "opscontrol-auth-session"
+        }
+      });
+    }
+    if (!state.authListenerBound) {
+      state.authListenerBound = true;
+      state.client.auth.onAuthStateChange(event => {
+        if (event === "PASSWORD_RECOVERY") {
+          setTimeout(openPasswordRecovery, 0);
+        }
+      });
     }
     return state.client;
   }
 
-  async function login() {
-    const email = $("#loginEmail").value.trim();
-    const password = $("#loginPassword").value;
-    if (!email || !password) return showLoginMessage("Preencha e-mail e senha.");
+  async function resolveLoginEmail(identifier) {
+    const normalized = String(identifier || "").trim();
+    if (normalized.includes("@")) return normalized.toLowerCase();
+    const { data, error } = await state.client.rpc("resolve_login_email", { p_identifier: normalized });
+    if (error || !data) throw new Error("Credenciais inválidas.");
+    return String(data).trim().toLowerCase();
+  }
 
+  function openPasswordRecovery() {
+    openModal("Definir nova senha", `<form id="passwordRecoveryForm"><div class="form-grid">
+      <div class="wide"><label for="recoveryNewPassword">Nova senha *</label><input id="recoveryNewPassword" name="new_password" type="password" minlength="8" autocomplete="new-password" required></div>
+      <div class="wide"><label for="recoveryConfirmPassword">Confirmar nova senha *</label><input id="recoveryConfirmPassword" name="confirm_password" type="password" minlength="8" autocomplete="new-password" required></div>
+    </div><div class="info-box" style="margin-top:12px">Use pelo menos 8 caracteres. Após a alteração, entre novamente com a nova senha.</div>${formActions("Atualizar senha")}</form>`, "RECUPERAÇÃO DE ACESSO");
+  }
+
+  async function requestPasswordRecovery() {
+    const identifier = $("#loginEmail").value.trim();
+    if (!identifier) return showLoginMessage("Informe seu e-mail ou usuário para recuperar a senha.");
+    const button = $("#forgotPasswordBtn");
+    button.disabled = true;
+    clearLoginMessage();
     try {
-      await initClient();
+      await initClient($("#rememberLogin")?.checked !== false);
+      const email = await resolveLoginEmail(identifier);
+      const redirectTo = `${location.origin}${location.pathname}`;
+      const { error } = await state.client.auth.resetPasswordForEmail(email, { redirectTo });
+      if (error) throw error;
+      showLoginMessage("Se o acesso estiver cadastrado, enviaremos as instruções de recuperação por e-mail.", "success");
+    } catch (_) {
+      showLoginMessage("Se o acesso estiver cadastrado, enviaremos as instruções de recuperação por e-mail.", "success");
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  async function login() {
+    const identifier = $("#loginEmail").value.trim();
+    const password = $("#loginPassword").value;
+    if (!identifier || !password) return showLoginMessage("Preencha e-mail ou usuário e senha.");
+
+    const remember = $("#rememberLogin")?.checked !== false;
+    localStorage.setItem(REMEMBER_LOGIN_KEY, String(remember));
+    clearLoginMessage();
+    setLoginLoading(true);
+    try {
+      await initClient(remember);
+      const email = await resolveLoginEmail(identifier);
       const { data, error } = await state.client.auth.signInWithPassword({ email, password });
       if (error) throw error;
       state.user = data.user;
@@ -1506,13 +1606,16 @@
       }
       openApp();
     } catch (error) {
-      showLoginMessage(`Falha no login: ${error.message}`);
+      const blocked = String(error?.message || "").includes("bloqueado");
+      showLoginMessage(blocked ? error.message : "Não foi possível entrar. Verifique suas credenciais e tente novamente.");
+    } finally {
+      setLoginLoading(false);
     }
   }
 
   async function restoreSession() {
     try {
-      await initClient();
+      await initClient(localStorage.getItem(REMEMBER_LOGIN_KEY) !== "false");
       const { data } = await state.client.auth.getSession();
       if (!data.session?.user) return;
       state.user = data.session.user;
@@ -2083,13 +2186,14 @@
 
   function subscribeRealtime() {
     if (state.realtime) return;
-    state.realtime = state.client
-      .channel("opscontrol-professional-live")
-      .on("postgres_changes", { event: "*", schema: "public" }, scheduleRealtimeRefresh)
-      .subscribe(status => {
-        state.realtimeStatus = status;
-        updateConnectionBadge();
-      });
+    let channel = state.client.channel(`opscontrol:${state.user.id}:operational`);
+    REALTIME_TABLES.forEach(table => {
+      channel = channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleRealtimeRefresh);
+    });
+    state.realtime = channel.subscribe(status => {
+      state.realtimeStatus = status;
+      updateConnectionBadge();
+    });
   }
 
   function startAutoRefresh() {
@@ -6605,6 +6709,29 @@
   document.addEventListener("submit", async event => {
     event.preventDefault();
     const form = event.target;
+    if (form.id === "loginForm") return login();
+    if (form.id === "passwordRecoveryForm") {
+      const payload = Object.fromEntries(new FormData(form));
+      const password = String(payload.new_password || "");
+      const confirmation = String(payload.confirm_password || "");
+      if (password.length < 8) return toast("A nova senha precisa ter pelo menos 8 caracteres.", "error");
+      if (password !== confirmation) return toast("A confirmação da nova senha não confere.", "error");
+      const submit = form.querySelector("button[type='submit'], button:not([type])");
+      if (submit) submit.disabled = true;
+      try {
+        await initClient(localStorage.getItem(REMEMBER_LOGIN_KEY) !== "false");
+        const { error } = await state.client.auth.updateUser({ password });
+        if (error) throw error;
+        await state.client.auth.signOut();
+        closeModal();
+        showLoginMessage("Senha atualizada. Entre novamente com sua nova senha.", "success");
+      } catch (error) {
+        toast(`Não foi possível atualizar a senha: ${error.message}`, "error");
+      } finally {
+        if (submit) submit.disabled = false;
+      }
+      return;
+    }
     if (state.testMode && form.id !== "feedbackForm") {
       simulateFormSubmission(form);
       return;
@@ -7046,7 +7173,17 @@
       return;
     }
 
-    if (button.id === "loginBtn") return login();
+    if (button.id === "loginBtn") return;
+    if (button.id === "forgotPasswordBtn") return requestPasswordRecovery();
+    if (button.id === "togglePasswordBtn") {
+      const input = $("#loginPassword");
+      const visible = input.type === "text";
+      input.type = visible ? "password" : "text";
+      button.setAttribute("aria-pressed", String(!visible));
+      button.setAttribute("aria-label", visible ? "Mostrar senha" : "Ocultar senha");
+      input.focus({ preventScroll: true });
+      return;
+    }
     if (button.id === "logoutBtn") return logout();
     if (button.id === "menuBtn") {
       const sidebar = $("#sidebar");
@@ -7061,6 +7198,7 @@
       return;
     }
     if (button.id === "mobileSheetBackdrop") return closeMobileSheets();
+    if (button.dataset.confirmChoice) return settleConfirmation(button.dataset.confirmChoice === "true");
     if (button.id === "modalClose" || button.hasAttribute("data-close-modal")) return closeModal();
     if (button.dataset.mobilePage) return showPage(button.dataset.mobilePage);
     if (button.classList.contains("nav-item")) return showPage(button.dataset.page);
@@ -7073,7 +7211,7 @@
     if (button.dataset.deleteAlert) {
       if (!isAdmin()) return toast("Somente o administrador pode excluir alertas.", "error");
       const title = button.dataset.alertTitle || "este alerta";
-      if (!confirm(`Excluir ${title}?`)) return;
+      if (!await confirmAction(`Excluir ${title}? Esta ação ficará registrada na auditoria.`)) return;
       const automatic = button.dataset.alertAutomatic === "true";
       if (automatic) {
         const { error } = await state.client.from("dismissed_system_alerts").upsert({
@@ -7210,7 +7348,7 @@
       return toast("Histórico de homologação exportado.", "success");
     }
     if (action === "clear-test-log") {
-      if (!confirm("Limpar o histórico local de homologação?")) return;
+      if (!await confirmAction("Limpar o histórico local de homologação?")) return;
       localStorage.removeItem(TEST_LOG_KEY);
       renderSettings();
       return toast("Histórico de homologação limpo.");
@@ -7320,7 +7458,7 @@
     if (action === "deliver-handover") {
       const selection=ensureHandoverSelection(); const snapshot=handoverSnapshot(selection);
       const checklist=checklistForShift(selection); const missing=checklist.filter(x=>!x.completed);
-      if (missing.length&&!confirm(`Existem ${missing.length} itens do checklist pendentes. Entregar mesmo assim?`)) return;
+      if (missing.length && !await confirmAction(`Existem ${missing.length} itens do checklist pendentes. Entregar mesmo assim?`)) return;
       const summary={ selection, generated_at:new Date().toISOString(), delivered_by:state.data.profile.name,
         counts:{operations:snapshot.completedOperations.length,events:snapshot.events.length,movements:snapshot.tankMovements.length,pendings:snapshot.openPendings.length}, checklist, observations:snapshot.observations };
       const {error}=await state.client.rpc("submit_shift_handover",{p_shift_date:selection.date,p_shift_type:selection.shift,p_snapshot_json:summary,p_snapshot_text:handoverText(selection)});
@@ -7331,7 +7469,7 @@
       if(error)return toast(error.message,"error"); await loadData();renderReports();return toast("Recebimento confirmado. Passagem bloqueada.","success");
     }
     if (action === "reopen-handover") {
-      const selection=ensureHandoverSelection(); if(!confirm("Reabrir esta passagem aprovada?"))return;
+      const selection=ensureHandoverSelection(); if (!await confirmAction("Reabrir esta passagem aprovada?")) return;
       const {error}=await state.client.rpc("reopen_shift_handover",{p_shift_date:selection.date,p_shift_type:selection.shift});
       if(error)return toast(error.message,"error"); await loadData();renderReports();return toast("Passagem reaberta.","success");
     }
@@ -7475,7 +7613,7 @@
 
     if (button.dataset.deleteHandoverPending) {
       if (!canDeleteHandoverPending()) return toast("Somente liderança, supervisão ou administrador podem excluir.", "error");
-      if (!confirm("Excluir esta pendência permanentemente?")) return;
+      if (!await confirmAction("Excluir esta pendência permanentemente?")) return;
       const { error } = await state.client.from("handover_pending_items").delete().eq("id", button.dataset.deleteHandoverPending);
       if (error) return toast(error.message, "error");
       await loadData(); renderReports();
@@ -7526,7 +7664,7 @@
       const item = state.data.fluids.find(product => product.id === button.dataset.toggleFluidActive);
       const verb = nextActive ? "ativar" : "desativar";
       if (!item) return toast("Produto não encontrado.", "error");
-      if (!confirm(`Deseja ${verb} ${item.name}?`)) return;
+      if (!await confirmAction(`Deseja ${verb} ${item.name}?`)) return;
       try {
         await toggleFluidCatalogActive(item.id, nextActive);
       } catch (error) {
@@ -7567,7 +7705,7 @@
       const document = state.data.clientTicketDocuments.find(item => item.id === button.dataset.deleteClientTicketDocument);
       if (!document) return toast("Documento não localizado.","error");
       if (!(canDeleteClientTickets() || document.uploadedBy === state.user.id)) return toast("Você não pode excluir este documento.","error");
-      if (!confirm(`Excluir ${document.fileName} permanentemente?`)) return;
+      if (!await confirmAction(`Excluir ${document.fileName} permanentemente?`)) return;
       const {error:storageError} = await state.client.storage.from("opscontrol-files").remove([document.filePath]);
       if (storageError) return toast(storageError.message,"error");
       const {error} = await state.client.from("client_ticket_documents").delete().eq("id",document.id);
@@ -7654,7 +7792,7 @@
     }
 
     if (button.dataset.applyOperationTank) {
-      if (!confirm("Aplicar a quantidade executada na volumetria vinculada?")) return;
+      if (!await confirmAction("Aplicar a quantidade executada na volumetria vinculada?")) return;
       const { error } = await state.client.rpc("apply_completed_operation_tank_movement", { p_operation_id: button.dataset.applyOperationTank });
       if (error) return toast(error.message, "error");
       await loadData(); renderAll(); return toast("Movimentação aplicada à tancagem.", "success");
@@ -7700,7 +7838,7 @@
       }
       const vessel = state.data.vessels.find(x => x.id === button.dataset.deleteVessel);
       if (!vessel) return toast("Embarcação não localizada.", "error");
-      if (!confirm(`Excluir a programação de ${vessel.vesselName}? As posições e alertas vinculados também serão removidos.`)) return;
+      if (!await confirmAction(`Excluir a programação de ${vessel.vesselName}? As posições e alertas vinculados também serão removidos.`)) return;
       const { error } = await state.client.from("vessel_schedules").delete().eq("id", vessel.id);
       if (error) return toast(error.message, "error");
       state.vesselMap.selected = "";
@@ -7730,7 +7868,7 @@
       if (!vessel) return toast("Embarcação não localizada.", "error");
       const linked = (state.data.operations || []).filter(item => item.vesselRegistryId === vessel.id).length;
       if (linked) return toast(`Esta embarcação está vinculada a ${linked} operação(ões) e não pode ser excluída.`, "error");
-      if (!confirm(`Excluir o cadastro de ${vessel.name}?`)) return;
+      if (!await confirmAction(`Excluir o cadastro de ${vessel.name}?`)) return;
       const { error } = await state.client.from("vessel_registry").delete().eq("id", vessel.id);
       if (error) return toast(error.message, "error");
       await loadData(); renderAll(); showPage("vessel-registry", { history:false, scroll:false });
@@ -7843,7 +7981,7 @@
     }
 
     if (button.dataset.deleteAttachment) {
-      if (!confirm("Excluir este anexo permanentemente?")) return;
+      if (!await confirmAction("Excluir este anexo permanentemente?")) return;
       const item = state.data.attachments.find(x => x.id === button.dataset.deleteAttachment);
       const { error: storageError } = await state.client.storage.from("opscontrol-files").remove([item.file_path]);
       if (storageError) return toast(storageError.message, "error");
@@ -7996,9 +8134,7 @@
     $("#sidebarBackdrop")?.classList.remove("visible");
   });
 
-  $("#loginPassword").addEventListener("keydown", event => {
-    if (event.key === "Enter") login();
-  });
+  $("#loginForm").addEventListener("input", clearLoginMessage);
 
 
   document.addEventListener("focusout", async event => {
@@ -8056,6 +8192,7 @@
     window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(console.error));
   }
 
-  $("#connectionHint").textContent = "Acesse com seu e-mail e senha cadastrados.";
+  $("#rememberLogin").checked = localStorage.getItem(REMEMBER_LOGIN_KEY) !== "false";
+  $("#connectionHint").textContent = "Acesse com seu e-mail ou usuário e senha cadastrados.";
   restoreSession();
 })();

@@ -48,7 +48,7 @@
 
   function groupSidebarNavigation() {
     const nav = $("#sidebar > nav");
-    if (!nav || nav.dataset.designGrouped === "true" || nav.dataset.finalNavigation === "true") return;
+    if (!nav || nav.dataset.designGrouped === "true") return;
 
     const items = $$(':scope > .nav-item', nav);
     if (!items.length) return;
@@ -110,7 +110,7 @@
 
   function ensureLoginScene() {
     const hero = $(".login-hero");
-    if (!hero || $(".login-sea-motion,.login-industrial-scene,.login-ops-overview", hero)) return;
+    if (!hero || $(".login-industrial-scene,.login-ops-overview", hero)) return;
 
     const scene = document.createElement("div");
     scene.className = "login-industrial-scene";

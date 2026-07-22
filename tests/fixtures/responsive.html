@@ -1,0 +1,128 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>OpsControl UI Responsive Fixture</title>
+  <link rel="stylesheet" href="../../app.css">
+  <link rel="stylesheet" href="../../v33.css">
+  <link rel="stylesheet" href="../../opscontrol-ui.css">
+</head>
+<body>
+  <section class="app-view">
+    <header class="topbar">
+      <div class="topbar-left">
+        <button class="icon-btn mobile-only" aria-label="Abrir menu">☰</button>
+        <div class="brand">
+          <span class="brand-mark">OC</span>
+          <div class="desktop-brand-copy"><strong>OpsControl IA</strong><small>PRO</small></div>
+          <div class="mobile-page-copy"><strong>Dashboard operacional</strong><small>Visão geral</small></div>
+        </div>
+      </div>
+      <div class="topbar-right">
+        <button class="icon-btn" aria-label="Busca">⌕</button>
+        <span class="status-badge online">Tempo real ativo</span>
+        <button class="user-chip"><span>JS</span><div><strong>João Santos</strong><small>Líder</small></div></button>
+      </div>
+    </header>
+
+    <div class="shell">
+      <aside class="sidebar">
+        <nav>
+          <button class="nav-item active"><span class="nav-icon">1</span><span class="nav-label">Dashboard</span></button>
+          <button class="nav-item"><span class="nav-icon">2</span><span class="nav-label">Operações</span></button>
+          <button class="nav-item"><span class="nav-icon">3</span><span class="nav-label">Cadastro de Embarcações</span></button>
+          <button class="nav-item"><span class="nav-icon">4</span><span class="nav-label">Tanques e Silos</span></button>
+          <button class="nav-item"><span class="nav-icon">5</span><span class="nav-label">Fluidos e Granéis</span></button>
+          <button class="nav-item"><span class="nav-icon">6</span><span class="nav-label">Inventário Químico</span></button>
+          <button class="nav-item"><span class="nav-icon">7</span><span class="nav-label">Tickets de Clientes</span></button>
+          <button class="nav-item"><span class="nav-icon">8</span><span class="nav-label">Manutenção</span></button>
+          <button class="nav-item"><span class="nav-icon">9</span><span class="nav-label">Relatórios</span></button>
+        </nav>
+        <div class="sidebar-footer"><button class="btn danger outline full">Sair</button></div>
+      </aside>
+
+      <main class="main-content">
+        <section id="page-dashboard" class="page active">
+          <div class="page-header">
+            <div><h1>Dashboard</h1><p>Visão consolidada da operação, tancagem e pontos de atenção.</p></div>
+            <div class="actions">
+              <button class="btn secondary">Exportar CSV</button>
+              <button class="btn secondary">Atualizar</button>
+              <button class="btn primary">Nova operação</button>
+              <button class="btn soft">Abrir passagem</button>
+            </div>
+          </div>
+
+          <div class="tabs" role="tablist" aria-label="Áreas do dashboard">
+            <button class="active" role="tab" aria-selected="true">Visão geral</button>
+            <button role="tab">Operações</button>
+            <button role="tab">Tancagem</button>
+            <button role="tab">Carretas</button>
+            <button role="tab">QHSE</button>
+            <button role="tab">Manutenção</button>
+            <button role="tab">Documentos</button>
+          </div>
+
+          <div class="dashboard-v331">
+            <section class="dashboard-command-bar">
+              <div><small>SINCRONIZAÇÃO</small><strong>Tempo real ativo</strong></div>
+              <div><small>ÚLTIMA ALTERAÇÃO</small><strong>Hoje, 21:35</strong></div>
+              <div><small>OCUPAÇÃO</small><strong>22 de 37 equipamentos</strong></div>
+              <div><small>STATUS</small><strong>Operação normal</strong></div>
+            </section>
+
+            <section class="dashboard-kpi-grid">
+              <article class="card stat-card"><div><small>Operações hoje</small><h2>8</h2><em>2 em andamento</em></div><span class="stat-icon">A</span></article>
+              <article class="card stat-card"><div><small>Carretas hoje</small><h2>14</h2><em>Entradas e saídas</em></div><span class="stat-icon">B</span></article>
+              <article class="card stat-card"><div><small>Equipamentos ocupados</small><h2>22</h2><em>de 37 ativos</em></div><span class="stat-icon">C</span></article>
+              <article class="card stat-card"><div><small>Alertas críticos</small><h2>2</h2><em>Requer atenção</em></div><span class="stat-icon">D</span></article>
+              <article class="card stat-card"><div><small>Manutenções abertas</small><h2>5</h2><em>Ordens pendentes</em></div><span class="stat-icon">E</span></article>
+              <article class="card stat-card"><div><small>Certificados a vencer</small><h2>3</h2><em>Próximos 60 dias</em></div><span class="stat-icon">F</span></article>
+            </section>
+
+            <section class="card">
+              <div class="dashboard-section-heading"><div><small>OPERAÇÃO</small><h3>Nova operação</h3><p>Stepper e campos representativos.</p></div></div>
+              <div class="operation-stepper-head">
+                <span class="active"><b>1</b><small>Identificação</small></span>
+                <span><b>2</b><small>Produto</small></span>
+                <span><b>3</b><small>Distribuição</small></span>
+                <span><b>4</b><small>Revisão</small></span>
+              </div>
+              <div class="form-grid">
+                <div><label for="client">Cliente</label><select id="client"><option>Petrobras</option></select></div>
+                <div><label for="vessel">Embarcação</label><input id="vessel" value="Scotsman Tide"></div>
+                <div><label for="start">Data inicial</label><input id="start" type="date" value="2026-07-21"></div>
+                <div><label for="product">Produto</label><input id="product" value="Brine 10.0 ppg"></div>
+              </div>
+            </section>
+
+            <section class="card">
+              <div class="dashboard-section-heading"><div><small>REGISTROS</small><h3>Tabela operacional</h3><p>Deve rolar localmente sem estourar a página.</p></div></div>
+              <div class="table-wrap">
+                <table class="data-table">
+                  <thead><tr><th>Data</th><th>Cliente</th><th>Embarcação</th><th>Atividade</th><th>Produto</th><th>Planejado</th><th>Executado</th><th>Status</th><th>Responsável</th></tr></thead>
+                  <tbody>
+                    <tr><td>21/07/2026</td><td>Petrobras</td><td>Scotsman Tide</td><td>Bombeio</td><td>Brine 10.0 ppg</td><td>1.500 bbl</td><td>780 bbl</td><td><span class="badge amber">Em andamento</span></td><td>João Santos</td></tr>
+                    <tr><td>21/07/2026</td><td>PRIO</td><td>Starnav Ursus</td><td>Carregamento</td><td>Barita</td><td>60 ton</td><td>60 ton</td><td><span class="badge green">Concluída</span></td><td>Equipe 1</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </section>
+          </div>
+        </section>
+      </main>
+    </div>
+  </section>
+
+  <nav class="mobile-bottom-nav" aria-label="Navegação principal">
+    <button class="mobile-nav-item active"><span>⌂</span><span>Início</span></button>
+    <button class="mobile-nav-item"><span>⚓</span><span>Operações</span></button>
+    <button class="mobile-nav-item mobile-nav-main"><span class="mobile-plus">+</span><span>Novo</span></button>
+    <button class="mobile-nav-item"><span>▥</span><span>Tancagem</span></button>
+    <button class="mobile-nav-item"><span>•••</span><span>Mais</span></button>
+  </nav>
+
+  <script src="../../js/ui-polish.js"></script>
+</body>
+</html>

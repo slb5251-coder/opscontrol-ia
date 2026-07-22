@@ -12,7 +12,6 @@
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
   const APP_ENV_KEY = "opscontrol_environment";
-  const LOGIN_REMEMBER_KEY = "opscontrol_remember_login";
   const APP_VERSION = "20260719-v33-12-14-1-client-tickets";
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
@@ -196,59 +195,47 @@
   }
 
   const MOBILE_PAGE_META = {
-    dashboard: ["Monitor Operacional", "Hoje"],
+    dashboard: ["Início", "Resumo do seu perfil"],
     quality: ["Qualidade dos Dados", "Conciliação e inconsistências"],
     sanitation: ["Saneamento de Dados", "Registros antigos e vínculos"],
     tv: ["Painel TV", "Exibição coletiva"],
     operations: ["Operações", "Serviços e movimentações"],
-    "vessel-registry": ["Embarcações", "Programação marítima"],
-    tanks: ["Painel de Tanques", "Total de ativos"],
-    fluids: ["Movimentações", "Fluidos e granéis"],
-    "bulk-movements": ["Movimentação de Granéis", "Silos e bombeios"],
-    inventory: ["Inventário", "Estoque consolidado"],
+    "vessel-registry": ["Cadastro de Embarcações", "Nome, IMO e MMSI"],
+    tanks: ["Tanques e Silos", "Inventário da planta"],
+    fluids: ["Fluidos e Granéis", "Catálogo de produtos"],
     "chemical-catalog": ["Catálogo Químico", "Nomes e unidades oficiais"],
     chemicals: ["Inventário Químico", "Lotes, validade e saldo"],
-    trucks: ["Controle de Carretas", "Entradas e saídas"],
+    trucks: ["Carretas", "Entradas e saídas"],
     "client-tickets": ["Tickets de Clientes", "FDT, FRT, MDT e MRT"],
     qhse: ["QHSE", "Segurança e ações"],
-    maintenance: ["Equipamentos", "Manutenção e ordens"],
-    dds: ["DDS e Cursos", "Treinamentos de campo"],
-    documents: ["Documentos", "Certificados e vencimentos"],
+    maintenance: ["Manutenção", "Equipamentos e ordens"],
     certificates: ["Certificados", "Documentos da equipe"],
-    alerts: ["Alertas", "Comunicação operacional"],
-    "ai-assistant": ["Assistente OPS IA", "Inteligência operacional"],
-    reports: ["Relatórios", "Indicadores operacionais"],
-    handover: ["Passagem de Turno", "Continuidade operacional"],
-    users: ["Usuários", "Perfis e permissões"],
+    alerts: ["Alertas e Chat", "Comunicação operacional"],
+    "ai-assistant": ["Assistente IA", "Inteligência operacional"],
+    reports: ["Relatórios", "Passagem de serviço"],
     audit: ["Auditoria", "Rastreabilidade"],
     settings: ["Usuários e Acessos", "Perfis e permissões"]
   };
 
   const DESKTOP_PAGE_META = {
-    dashboard: ["Painel de Visão Geral", "Comando central e telemetria da planta"],
+    dashboard: ["Painel Geral de Operações", "Comando central e telemetria da planta"],
     quality: ["Qualidade dos Dados", "Conciliação e integridade dos registros"],
     sanitation: ["Saneamento de Dados", "Tratamento de vínculos e registros antigos"],
     tv: ["Painel TV", "Acompanhamento operacional em tempo real"],
     operations: ["Operações", "Programação e execução dos serviços"],
-    "vessel-registry": ["Programação de Embarcações", "Cadastro, agenda e monitoramento marítimo"],
-    tanks: ["Controle de Tancagem", "Tanques, silos, níveis e mapa operacional"],
-    fluids: ["Inventários e Movimentações", "Controle de fluidos, granéis e produtos"],
-    "bulk-movements": ["Movimentação de Granéis", "Recebimento, bombeio e silagem"],
-    inventory: ["Inventário", "Estoque consolidado da base"],
+    "vessel-registry": ["Embarcações", "Cadastro e programação marítima"],
+    tanks: ["Tanques e Silos", "Inventário e telemetria da planta"],
+    fluids: ["Fluidos e Granéis", "Controle de produtos e movimentações"],
     "chemical-catalog": ["Catálogo Químico", "Padronização de produtos e unidades"],
     chemicals: ["Inventário Químico", "Lotes, validade e níveis de estoque"],
-    trucks: ["Controle de Carretas", "Recebimentos, expedições e rastreabilidade"],
+    trucks: ["Carretas", "Recebimentos, expedições e rastreabilidade"],
     "client-tickets": ["Tickets de Clientes", "FDT, FRT, MDT e MRT"],
     qhse: ["QHSE", "Saúde, segurança, meio ambiente e qualidade"],
-    maintenance: ["Equipamentos e Manutenção", "Ordens de serviço e ativos da planta"],
-    dds: ["DDS e Cursos", "Treinamentos, presença e conformidade da equipe"],
-    documents: ["Documentos e Certificados", "Arquivos, licenças e vencimentos"],
+    maintenance: ["Manutenção", "Ordens de serviço e ativos da planta"],
     certificates: ["Certificados", "Documentos, licenças e vencimentos"],
-    alerts: ["Alertas e Comunicação", "Comunicação operacional e direcionamento por função"],
-    "ai-assistant": ["Assistente OPS IA", "Passagens, relatórios e análise operacional"],
-    reports: ["Relatórios", "Indicadores e consolidações operacionais"],
-    handover: ["Passagem de Turno", "Continuidade, checklist, pendências e aprovações"],
-    users: ["Usuários e Permissões", "Perfis, cargos e controle de acesso"],
+    alerts: ["Central de Alertas", "Comunicação operacional e direcionamento por função"],
+    "ai-assistant": ["Assistente IA", "Passagens, relatórios e análise operacional"],
+    reports: ["Relatórios", "Indicadores, consolidações e passagem de serviço"],
     audit: ["Auditoria", "Histórico e rastreabilidade das alterações"],
     settings: ["Usuários e Acessos", "Perfis, acessos e parâmetros do sistema"]
   };
@@ -304,18 +291,9 @@
   function renderMobileShell() {
     if (!state.data) return;
 
-    const [title, configuredSubtitle] = MOBILE_PAGE_META[state.page] || [state.page, ""];
-    const now = new Date();
-    const todayMonth = new Intl.DateTimeFormat("pt-BR", { month: "short" }).format(now).replace(".", "").replace(/^./, value => value.toUpperCase());
-    const today = `${String(now.getDate()).padStart(2, "0")} ${todayMonth}`;
-    const subtitle = state.page === "dashboard"
-      ? `Hoje, ${today}`
-      : state.page === "tanks"
-        ? `${state.data.tanks?.length || 0} Total`
-        : configuredSubtitle;
+    const [title, subtitle] = MOBILE_PAGE_META[state.page] || [state.page, ""];
     if ($("#mobilePageTitle")) $("#mobilePageTitle").textContent = title;
     if ($("#mobilePageSubtitle")) $("#mobilePageSubtitle").textContent = subtitle;
-    if ($(".mobile-page-heading")) $(".mobile-page-heading").dataset.page = state.page;
 
     $$("[data-mobile-page]").forEach(button => {
       const page = button.dataset.mobilePage;
@@ -326,28 +304,23 @@
     });
 
     const morePages = [
-      ["vessel-registry", "Programação de Embarcações", "Agenda, IMO, MMSI e monitoramento"],
-      ["trucks", "Controle de Carretas", "Entradas, saídas e rastreabilidade"],
-      ["fluids", "Movimentação de Fluidos", "Transferências e bombeios"],
-      ["bulk-movements", "Movimentação de Granéis", "Silos e recebimentos"],
-      ["inventory", "Inventário", "Estoque consolidado"],
-      ["qhse", "QHSE", "Segurança, ações e ocorrências"],
-      ["maintenance", "Manutenção", "Ativos e ordens de serviço"],
-      ["dds", "DDS e Cursos", "Treinamentos e presença"],
-      ["documents", "Documentos e Certificados", "Biblioteca e vencimentos"],
-      ["reports", "Relatórios", "Indicadores e consolidações"],
-      ["handover", "Passagem de Turno", "Checklist, pendências e aceite"],
-      ["alerts", "Alertas e Comunicação", "Avisos e chat"],
-      ["ai-assistant", "Assistente OPS IA", "Análises e resumos operacionais"],
-      ["users", "Usuários e Permissões", "Equipe e perfis"],
+      ["vessel-registry", "Cadastro de Embarcações", "Nome, IMO e MMSI para o MarineTraffic"],
+      ["fluids", "Fluidos e Granéis", "Cadastrar produtos vinculados à tancagem"],
+      ["chemical-catalog", "Catálogo Químico", "Nomes oficiais dos insumos"],
+      ["quality", "Qualidade", "Conciliação e inconsistências"],
+      ["sanitation", "Saneamento", "Corrigir vínculos antigos"],
+      ["ai-assistant", "Assistente IA", "Passagens, relatórios e alertas"],
+      ["reports", "Relatórios", "Passagem e indicadores"],
+      ["chemicals", "Químicos", "Estoque e validade"],
+      ["trucks", "Carretas", "Entradas e saídas"],
+      ["client-tickets", "Tickets de Clientes", "FDT, FRT, MDT e MRT por cliente"],
+      ["qhse", "QHSE", "Segurança e ocorrências"],
+      ["maintenance", "Manutenção", "Equipamentos e OS"],
+      ["certificates", "Certificados", "Documentos"],
+      ["alerts", "Alertas", "Avisos e chat"],
+      ["audit", "Auditoria", "Alterações do sistema"],
       ["settings", "Configurações", "Perfil e sistema"],
-      ["tv", "Painel TV", "Exibição coletiva"],
-      ["quality", "Qualidade dos Dados", "Conciliação e inconsistências"],
-      ["chemical-catalog", "Catálogo Químico", "Nomes e unidades oficiais"],
-      ["chemicals", "Inventário Químico", "Lotes, validade e saldo"],
-      ["client-tickets", "Tickets de Clientes", "FDT, FRT, MDT e MRT"],
-      ["certificates", "Certificados da Equipe", "Histórico detalhado"],
-      ["audit", "Auditoria", "Alterações do sistema"]
+      ["tv", "Painel TV", "Exibição coletiva"]
     ].filter(([page]) => moduleAllowed(page));
 
     const more = $("#mobileMoreModules");
@@ -809,20 +782,10 @@
     setTimeout(() => el.remove(), 3600);
   }
 
-  function showLoginMessage(message, kind = "error") {
+  function showLoginMessage(message) {
     const el = $("#loginMessage");
     el.textContent = message;
-    el.classList.toggle("success", kind === "success");
     el.classList.remove("hidden");
-  }
-
-  function setLoginLoading(loading, label = "Acessar OPSControl") {
-    const button = $("#loginBtn");
-    if (!button) return;
-    button.disabled = loading;
-    button.classList.toggle("is-loading", loading);
-    const text = button.querySelector("span");
-    if (text) text.textContent = loading ? "Validando acesso..." : label;
   }
 
   function role() {
@@ -894,8 +857,6 @@
   }
 
   function moduleAllowed(module) {
-    const aliases = { dds: "qhse", documents: "certificates", handover: "reports", users: "settings", "bulk-movements": "fluids", inventory: "tanks" };
-    if (aliases[module]) return moduleAllowed(aliases[module]);
     if (isAdmin() || module === "settings") return true;
     if (module === "ai-assistant") return role() !== "tv";
     if (module === "fluids" && ["supervisor", "lider", "operador", "logistica", "qhse"].includes(role())) return true;
@@ -968,7 +929,6 @@
 
   function closeModal() {
     $("#modal").classList.add("hidden");
-    $("#modal").classList.remove("tank-detail-drawer");
     document.body.classList.remove("modal-open");
   }
 
@@ -1519,46 +1479,23 @@
       .replace(/-+/g, "-");
   }
 
-  async function initClient(options = {}) {
+  async function initClient() {
     if (!state.config.url || !state.config.key || !window.supabase) {
       throw new Error("A conexão do sistema não está configurada.");
     }
-    if (!state.client || options.recreate === true) {
-      const remember = options.remember ?? localStorage.getItem(LOGIN_REMEMBER_KEY) !== "false";
-      state.client = window.supabase.createClient(state.config.url, state.config.key, {
-        auth: {
-          persistSession: true,
-          autoRefreshToken: true,
-          detectSessionInUrl: true,
-          storage: remember ? window.localStorage : window.sessionStorage,
-          storageKey: remember ? "opscontrol-auth" : "opscontrol-session-auth"
-        }
-      });
+    if (!state.client) {
+      state.client = window.supabase.createClient(state.config.url, state.config.key);
     }
     return state.client;
   }
 
-  async function resolveLoginEmail(identifier) {
-    const value = String(identifier || "").trim().toLowerCase();
-    if (value.includes("@")) return value;
-    const { data, error } = await state.client.rpc("resolve_login_email", { p_identifier: value });
-    if (error) throw new Error("Não foi possível localizar esse usuário. Use seu e-mail corporativo.");
-    if (!data) throw new Error("Usuário não encontrado ou acesso inativo.");
-    return String(data).trim().toLowerCase();
-  }
-
   async function login() {
-    const identifier = $("#loginEmail").value.trim();
+    const email = $("#loginEmail").value.trim();
     const password = $("#loginPassword").value;
-    if (!identifier || !password) return showLoginMessage("Preencha e-mail ou usuário e senha.");
+    if (!email || !password) return showLoginMessage("Preencha e-mail e senha.");
 
     try {
-      setLoginLoading(true);
-      $("#loginMessage")?.classList.add("hidden");
-      const remember = $("#rememberLogin")?.checked !== false;
-      localStorage.setItem(LOGIN_REMEMBER_KEY, String(remember));
-      await initClient({ recreate: true, remember });
-      const email = await resolveLoginEmail(identifier);
+      await initClient();
       const { data, error } = await state.client.auth.signInWithPassword({ email, password });
       if (error) throw error;
       state.user = data.user;
@@ -1567,33 +1504,9 @@
         await state.client.auth.signOut();
         throw new Error("Seu acesso está bloqueado. Procure o administrador.");
       }
-      $("#loginView")?.classList.add("login-authorized");
-      showLoginMessage("Acesso autorizado. Carregando centro operacional...", "success");
-      setLoginLoading(false, "Acesso autorizado");
-      await new Promise(resolve => setTimeout(resolve, window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 360));
       openApp();
     } catch (error) {
       showLoginMessage(`Falha no login: ${error.message}`);
-      setLoginLoading(false);
-    }
-  }
-
-  async function recoverPassword() {
-    const identifier = $("#loginEmail")?.value.trim();
-    if (!identifier) return showLoginMessage("Informe seu e-mail ou usuário para recuperar a senha.");
-    try {
-      setLoginLoading(true);
-      const remember = $("#rememberLogin")?.checked !== false;
-      await initClient({ recreate: true, remember });
-      const email = await resolveLoginEmail(identifier);
-      const redirectTo = `${location.origin}${location.pathname}#settings`;
-      const { error } = await state.client.auth.resetPasswordForEmail(email, { redirectTo });
-      if (error) throw error;
-      showLoginMessage("Enviamos as instruções de recuperação para o e-mail cadastrado.", "success");
-    } catch (error) {
-      showLoginMessage(`Não foi possível enviar a recuperação: ${error.message}`);
-    } finally {
-      setLoginLoading(false);
     }
   }
 
@@ -1663,12 +1576,7 @@
       c.from("vessel_registry").select("*").order("name", { ascending: true }).limit(2000),
       c.from("dismissed_system_alerts").select("*").order("dismissed_at", { ascending: false }).limit(2000),
       c.from("client_document_tickets").select("*").order("ticket_date", { ascending: false }).order("created_at", { ascending: false }).limit(2000),
-      c.from("client_ticket_documents").select("*").order("created_at", { ascending: false }).limit(5000),
-      c.from("dds_sessions").select("*").order("scheduled_at", { ascending: false }).limit(1000),
-      c.from("dds_attendance").select("*").order("created_at", { ascending: false }).limit(5000),
-      c.from("courses").select("*").order("title", { ascending: true }).limit(1000),
-      c.from("course_enrollments").select("*").order("enrolled_at", { ascending: false }).limit(5000),
-      c.from("documents").select("*").order("created_at", { ascending: false }).limit(3000)
+      c.from("client_ticket_documents").select("*").order("created_at", { ascending: false }).limit(5000)
     ]);
 
     if (results[0]?.error) throw results[0].error;
@@ -1703,7 +1611,6 @@
         id: profile.id,
         name: profile.full_name || u.email,
         email: profile.email || u.email,
-        username: profile.username || "",
         role: profile.role || "user",
         department: profile.department || "",
         avatarUrl: profile.avatar_url || "",
@@ -1711,7 +1618,7 @@
         permissions: profile.permissions || {}
       },
       users: (results[1].data || []).map(x => ({
-        id: x.id, email: x.email || "", username: x.username || "", name: x.full_name || x.email || "Usuário",
+        id: x.id, email: x.email || "", name: x.full_name || x.email || "Usuário",
         role: x.role || "user", department: x.department || "", avatarUrl: x.avatar_url || "", active: x.active !== false,
         permissions: x.permissions || {}, created_at: x.created_at
       })),
@@ -2003,35 +1910,6 @@
         fileSize:Number(item.file_size || 0), notes:item.notes || "", uploadedBy:item.uploaded_by,
         createdAt:item.created_at, updatedAt:item.updated_at
       })),
-      ddsSessions: (results[46].data || []).map(item => ({
-        id:item.id, title:item.title, topic:item.topic || "", scheduledAt:item.scheduled_at,
-        durationMinutes:Number(item.duration_minutes || 0), instructor:item.instructor || "",
-        location:item.location || "", status:item.status || "Planejado", notes:item.notes || "",
-        createdBy:item.created_by, updatedBy:item.updated_by, createdAt:item.created_at, updatedAt:item.updated_at
-      })),
-      ddsAttendance: (results[47].data || []).map(item => ({
-        id:item.id, sessionId:item.session_id, userId:item.user_id, status:item.status || "Convocado",
-        signedAt:item.signed_at, notes:item.notes || "", createdAt:item.created_at, updatedAt:item.updated_at
-      })),
-      courses: (results[48].data || []).map(item => ({
-        id:item.id, title:item.title, description:item.description || "", provider:item.provider || "",
-        workloadHours:Number(item.workload_hours || 0), validityMonths:Number(item.validity_months || 0),
-        status:item.status || "Ativo", createdBy:item.created_by, updatedBy:item.updated_by,
-        createdAt:item.created_at, updatedAt:item.updated_at
-      })),
-      courseEnrollments: (results[49].data || []).map(item => ({
-        id:item.id, courseId:item.course_id, userId:item.user_id, status:item.status || "Inscrito",
-        enrolledAt:item.enrolled_at, completedAt:item.completed_at, expiresAt:item.expires_at,
-        certificateId:item.certificate_id || null, score:item.score === null ? null : Number(item.score),
-        createdAt:item.created_at, updatedAt:item.updated_at
-      })),
-      documents: (results[50].data || []).map(item => ({
-        id:item.id, title:item.title, category:item.category, documentNumber:item.document_number || "",
-        revision:item.revision || "", issuer:item.issuer || "", issueDate:item.issue_date,
-        expiresAt:item.expires_at, status:item.status || "Válido", visibilityRole:item.visibility_role || "all",
-        notes:item.notes || "", createdBy:item.created_by, updatedBy:item.updated_by,
-        createdAt:item.created_at, updatedAt:item.updated_at
-      })),
       vesselRegistryAvailable: optionalAvailability.vesselRegistry,
       vesselModuleAvailable: optionalAvailability.vessels,
       vesselPositionsAvailable: optionalAvailability.vesselPositions,
@@ -2057,17 +1935,47 @@
       avatarImage.src = profile.avatarUrl || "";
       avatarImage.alt = `Foto de ${profile.name}`;
     }
-    if ($("#sidebarUserInitials")) $("#sidebarUserInitials").textContent = userInitials(profile.name);
-    if ($("#sidebarUserName")) $("#sidebarUserName").textContent = profile.name;
-    if ($("#sidebarUserRole")) $("#sidebarUserRole").textContent = `${profile.role}${profile.department ? ` · ${profile.department}` : ""}`;
   }
 
   function decorateSidebarNavigation() {
     const nav = $("#sidebar nav");
     if (!nav) return;
-    nav.dataset.nativeNavigation = "true";
+    nav.querySelectorAll(".nav-section-label").forEach(item => item.remove());
+    const labels = {
+      dashboard: "VISÃO GERAL",
+      operations: "OPERAÇÕES",
+      tanks: "LOGÍSTICA E MATERIAIS",
+      qhse: "QHSE E CONFIABILIDADE",
+      reports: "DADOS E RELATÓRIOS",
+      settings: "ADMINISTRAÇÃO"
+    };
+    Object.entries(labels).forEach(([page, label]) => {
+      const target = nav.querySelector(`[data-page="${page}"]`);
+      if (!target) return;
+      const section = document.createElement("button");
+      section.type = "button";
+      section.className = "nav-section-label";
+      section.dataset.navSectionToggle = page;
+      section.innerHTML = `<span>${label}</span><b aria-hidden="true">⌄</b>`;
+      target.before(section);
+    });
+    let currentSection = "";
+    [...nav.children].forEach(item => {
+      if (item.classList.contains("nav-section-label")) currentSection = item.dataset.navSectionToggle;
+      else if (item.classList.contains("nav-item")) item.dataset.navSection = currentSection;
+    });
+    const names = {
+      "vessel-registry": "Embarcações",
+      alerts: "Central de Alertas",
+      settings: "Usuários e Acessos"
+    };
+    Object.entries(names).forEach(([page, label]) => {
+      const item = nav.querySelector(`[data-page="${page}"] .nav-label`);
+      if (item) item.textContent = label;
+    });
     nav.querySelectorAll(".nav-item").forEach(item => {
       const label = item.querySelector(".nav-label")?.textContent?.trim() || "Módulo";
+      item.dataset.navTitle = label;
       item.title = label;
       item.setAttribute("aria-label", label);
     });
@@ -2076,7 +1984,7 @@
     const counts = {
       alerts: [...(data.systemAlerts || []), ...(data.alerts || [])].filter(item => isCriticalAlert(item.level) && item.read !== true).length,
       maintenance: (data.maintenanceOrders || []).filter(item => !["Concluída","Fechada","Cancelada"].includes(item.status)).length,
-      documents: (data.certificates || []).filter(item => { const days=daysUntil(item.expires_at); return days!==null && days>=0 && days<=30; }).length,
+      certificates: (data.certificates || []).filter(item => { const days=daysUntil(item.expires_at); return days!==null && days>=0 && days<=30; }).length,
       qhse: [...(data.qhse || []), ...(data.actionItems || [])].filter(item => !["Concluído","Concluída","Fechado"].includes(item.status)).length
     };
     Object.entries(counts).forEach(([page, count]) => {
@@ -2088,7 +1996,7 @@
       badge.textContent = count > 99 ? "99+" : String(count);
       target.appendChild(badge);
     });
-    document.body.classList.remove("sidebar-compact");
+    document.body.classList.toggle("sidebar-compact", localStorage.getItem("opscontrol_sidebar_compact") === "true");
   }
 
   function openApp() {
@@ -2103,7 +2011,7 @@
       button.classList.toggle("hidden", !moduleAllowed(button.dataset.page));
     });
 
-    applyTheme(localStorage.getItem(THEME_KEY) || "dark");
+    applyTheme(localStorage.getItem(THEME_KEY) || (window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light"));
     updateConnectionBadge();
     renderAll();
 
@@ -2175,20 +2083,10 @@
 
   function subscribeRealtime() {
     if (state.realtime) return;
-    const liveTables = [
-      "profiles", "tanks", "tank_history", "tank_movements", "operations", "operation_events",
-      "operation_tank_allocations", "trucks", "truck_movement_items", "chemical_inventory",
-      "chemical_movements", "equipment", "maintenance_orders", "qhse_records", "action_items",
-      "alerts", "chat_messages", "certificates", "attachments", "handover_pending_items",
-      "shift_handover_notes", "shift_handover_approvals", "shift_checklist_items", "vessel_schedules",
-      "vessel_positions", "vessel_ais_alerts", "dds_sessions", "dds_attendance",
-      "course_enrollments", "documents"
-    ];
-    let channel = state.client.channel("opscontrol-professional-live");
-    liveTables.forEach(table => {
-      channel = channel.on("postgres_changes", { event: "*", schema: "public", table }, scheduleRealtimeRefresh);
-    });
-    state.realtime = channel.subscribe(status => {
+    state.realtime = state.client
+      .channel("opscontrol-professional-live")
+      .on("postgres_changes", { event: "*", schema: "public" }, scheduleRealtimeRefresh)
+      .subscribe(status => {
         state.realtimeStatus = status;
         updateConnectionBadge();
       });
@@ -2250,23 +2148,7 @@
     }
   }
 
-  function nativeUiContext() {
-    return { state, isAdmin, hasRole, moduleAllowed, role };
-  }
-
-  function renderNativePage(pageId) {
-    return window.OpsControlNativeUI?.renderPage?.(pageId, nativeUiContext()) === true;
-  }
-
   function renderAll() {
-    if (window.OpsControlNativeUI?.renderAll) {
-      window.OpsControlNativeUI.renderAll(nativeUiContext());
-      const manualUnread = (state.data.alerts || []).filter(x => !x.read).length;
-      const alertCount = $("#alertCount");
-      if (alertCount) alertCount.textContent = manualUnread + (state.data.systemAlerts || []).length;
-      renderMobileShell();
-      return;
-    }
     const modules = [
       ["Dashboard", "dashboard", renderDashboard],
       ["Qualidade dos Dados", "quality", renderQuality],
@@ -2282,13 +2164,9 @@
       ["Tickets de Clientes", "client-tickets", renderClientTickets],
       ["QHSE", "qhse", renderQhse],
       ["Manutenção", "maintenance", renderMaintenance],
-      ["DDS e Cursos", "dds", renderDds],
-      ["Documentos e Certificados", "documents", renderDocuments],
       ["Certificados", "certificates", renderCertificates],
       ["Alertas", "alerts", renderAlerts],
       ["Relatórios", "reports", renderReports],
-      ["Passagem de Turno", "handover", renderHandover],
-      ["Usuários e Permissões", "users", renderUsers],
       ["Auditoria", "audit", renderAudit],
       ["Configurações", "settings", renderSettings]
     ];
@@ -2518,7 +2396,6 @@
   }
 
   function renderTv() {
-    if (renderNativePage("tv")) return;
     const page = $("#page-tv");
     if (!page || !state.data) return;
     const totalSlides = 7;
@@ -2534,17 +2411,8 @@
       tvDashboardSlide,
       tvAlertsSlide
     ];
-    const activeOperations = (state.data.operations || []).filter(item => !["Concluída","Cancelada","Fechada"].includes(item.status));
-    const current = activeOperations.find(item => ["Em andamento","Operando"].includes(item.status)) || activeOperations[0] || null;
-    const currentProgress = current?.planned ? Math.min(100, Math.max(0, Number(current.executed || 0) / Number(current.planned) * 100)) : 0;
-    const currentFlow = Number(current?.flow_rate || operationFlow(current || {}));
-    const remainingHours = current && currentFlow > 0 ? Math.max(0, Number(current.planned || 0) - Number(current.executed || 0)) / currentFlow : null;
-    const finishAt = remainingHours === null ? null : new Date(Date.now() + remainingHours * 3600000);
-    const critical = tvCriticalAlerts()[0] || null;
-    const allocation = current ? operationAllocationText(current) : "Nenhum equipamento envolvido";
     page.innerHTML = `<div class="tv-screen tv-light-screen">
       <div class="tv-topbar"><div class="tv-brand"><span>OC</span><div><strong>OpsControl IA</strong><small>Painel Operacional — B-Port LMP</small></div></div><div class="tv-top-status"><span class="live-dot"></span><strong>Dados em tempo real</strong><small>Troca automática a cada ${Math.round(state.tv.intervalMs / 1000)} segundos</small></div><div class="tv-clock"><strong id="tvClock">--:--:--</strong><span id="tvDate">--</span></div></div>
-      <section class="tv-persistent-strip"><div class="tv-current-operation"><span class="live-dot"></span><div><small>OPERAÇÃO ATUAL</small><strong>${esc(current ? `${current.activity} • ${current.vessel || current.client}` : "Nenhuma operação em execução")}</strong><span>${esc(current ? `${current.product || "Produto"} • ${allocation}` : "Planta aguardando programação")}</span></div></div><div class="tv-current-progress"><span><b style="width:${currentProgress}%"></b></span><strong>${fmt.format(currentProgress)}%</strong><small>${current ? `${fmt.format(current.executed)} / ${fmt.format(current.planned)} ${esc(current.unit)}` : "-"}</small></div><div class="tv-current-metrics"><span>Vazão<strong>${currentFlow > 0 ? `${fmt.format(currentFlow)} ${esc(current?.flow_rate_unit || `${current?.unit || ""}/h`)}` : "-"}</strong></span><span>Previsão<strong>${finishAt ? finishAt.toLocaleTimeString("pt-BR", {hour:"2-digit",minute:"2-digit"}) : "-"}</strong></span></div><div class="tv-critical-persistent ${critical ? "active" : "clear"}"><small>ALERTA CRÍTICO</small><strong>${esc(critical?.title || "Planta sem criticidade")}</strong><span>${esc(critical?.message || "Monitoramento normal")}</span></div></section>
       <div class="tv-content">${slides[slide]()}</div>
       <div class="tv-footer"><div class="tv-dots">${labels.map((label,index)=>`<button class="${index===slide?"active":""}" data-tv-slide="${index}"><span></span>${index+1}. ${label}</button>`).join("")}</div><div class="tv-controls no-print"><button class="btn secondary" data-action="tv-prev">‹ Anterior</button><button class="btn secondary" data-action="tv-toggle">${state.tv.paused?"▶ Retomar":"Ⅱ Pausar"}</button><button class="btn secondary" data-action="tv-next">Próximo ›</button><button class="btn primary" data-action="tv-fullscreen">${document.fullscreenElement?"Sair da tela cheia":"Tela cheia"}</button></div></div>
     </div>`;
@@ -2661,7 +2529,6 @@
   }
 
   function renderDashboard() {
-    if (renderNativePage("dashboard")) return;
     return renderFigmaDashboard();
   }
 
@@ -3105,7 +2972,6 @@
   }
 
   function renderQuality() {
-    if (renderNativePage("quality")) return;
     const issues = dataQualityIssues();
     const summary = reconciliationSummary();
     const critical = issues.filter(x => ["Crítica", "Alta"].includes(x.severity));
@@ -3145,7 +3011,6 @@
   }
 
   function renderSanitation() {
-    if (renderNativePage("sanitation")) return;
     const issues=sanitationIssues();
     const grouped=[...new Set(issues.map(item=>item.type))];
     $("#page-sanitation").innerHTML=header("Saneamento de Dados","Localize registros antigos sem vínculo e corrija sem alterar saldos.",`<button class="btn secondary" data-action="refresh">${uiIcon("refresh", "ui-icon btn-icon")} Reanalisar</button>`)+
@@ -3191,7 +3056,6 @@
   }
 
   function renderVesselRegistry() {
-    if (renderNativePage("vessel-registry")) return;
     const page = $("#page-vessel-registry");
     if (!page) return;
     const items = [...(state.data.vesselRegistry || [])].sort((a,b) => a.name.localeCompare(b.name, "pt-BR"));
@@ -3271,7 +3135,6 @@
   }
 
   function renderOperations() {
-    if (renderNativePage("operations")) return;
     const operations = filteredOperations();
     const active = operations.filter(op => ["Em andamento", "Paralisada"].includes(op.status));
     const programmed = operations.filter(op => op.status === "Programada");
@@ -3937,38 +3800,7 @@
     return Number(model.capacities?.[key]?.[level] || 0) || null;
   }
 
-  function plantMapHtml(items) {
-    const phases = ["Phase #1", "Phase #2"];
-    return `<section class="plant-map-card" aria-label="Mapa operacional da planta"><div class="plant-map-head"><div><small>MAPA DA PLANTA</small><h2>Tancagem e armazenagem</h2><p>Selecione um ativo para abrir os detalhes em tempo real.</p></div><div class="plant-map-legend"><span><i class="available"></i>Disponível</span><span><i class="attention"></i>Atenção</span><span><i class="blocked"></i>Indisponível</span></div></div><div class="plant-map-layout">${phases.map(phase => {
-      const phaseItems = items.filter(item => item.phase === phase).sort((a,b) => a.order - b.order);
-      const tanks = phaseItems.filter(item => !isSiloAsset(item));
-      const silos = phaseItems.filter(isSiloAsset);
-      const node = item => {
-        const pct = item.capacity > 0 ? Math.min(100, Math.max(0, item.volume / item.capacity * 100)) : 0;
-        const status = String(item.status || "").toLowerCase();
-        const tone = status.includes("bloque") || status.includes("manuten") ? "blocked" : pct >= 90 || pct <= 10 ? "attention" : "available";
-        return `<button class="plant-asset-node ${isSiloAsset(item) ? "silo" : "tank"} ${tone}" data-tank-detail="${item.id}" title="${esc(`${item.name} • ${fmt.format(pct)}% • ${item.product || "Sem produto"}`)}"><span><b>${esc(item.name)}</b><small>${fmt.format(pct)}%</small></span><i style="height:${pct}%"></i></button>`;
-      };
-      return `<article class="plant-phase"><header><strong>${phase}</strong><span>${phaseItems.length} ativos</span></header><div class="plant-lane"><small>TANQUES</small><div>${tanks.map(node).join("")}</div></div><div class="plant-lane silos"><small>SILOS</small><div>${silos.map(node).join("")}</div></div></article>`;
-    }).join("")}</div></section>`;
-  }
-
-  function tankDetailContent(tank) {
-    const capacity = Number(tank.capacity || 0);
-    const volume = Number(tank.volume || 0);
-    const pct = capacity > 0 ? Math.min(100, Math.max(0, volume / capacity * 100)) : 0;
-    const updater = state.data.users.find(user => user.id === tank.updated_by)?.name || "Não informado";
-    const recent = (state.data.tankHistory || []).filter(item => item.tank_id === tank.id).slice(0, 5);
-    return `<div class="tank-drawer-summary"><div class="tank-drawer-gauge ${isSiloAsset(tank) ? "silo" : ""}"><i style="height:${pct}%"></i><strong>${fmt.format(pct)}%</strong></div><div><span>${esc(tank.phase)} • ${esc(tank.kind)}</span><h2>${esc(tank.name)}</h2>${badge(tank.status)}<p>${esc(tank.product || "Sem produto")} • lote ${esc(tank.lot || "-")}</p></div></div><div class="tank-drawer-metrics"><span>Volume atual<strong>${fmt.format(volume)} ${esc(tank.unit)}</strong></span><span>Capacidade<strong>${fmt.format(capacity)} ${esc(tank.unit)}</strong></span><span>Disponível<strong>${fmt.format(Math.max(0, capacity - volume))} ${esc(tank.unit)}</strong></span><span>Cliente<strong>${esc(tank.client || "A definir")}</strong></span></div><div class="card tank-drawer-update"><small>ÚLTIMA ATUALIZAÇÃO</small><strong>${dateTime(tank.updated_at)}</strong><span>Responsável: ${esc(updater)}</span></div><div class="section-title">Histórico recente</div><div class="timeline professional-timeline">${recent.map(item => `<div class="timeline-item"><span class="timeline-dot"></span><div><strong>${fmt.format(Number(item.old_volume || 0))} → ${fmt.format(Number(item.new_volume || 0))} ${esc(tank.unit)}</strong><small>${dateTime(item.created_at)}</small><p>${esc(item.reason || item.notes || "Atualização de volume")}</p></div></div>`).join("") || `<div class="empty">Nenhuma alteração registrada.</div>`}</div><div class="form-actions">${hasRole(["supervisor","lider","operador","logistica"]) ? `<button class="btn primary" data-edit-tank="${tank.id}">Atualizar conteúdo</button>` : ""}<button class="btn secondary" data-tank-history="${tank.id}">Histórico completo</button></div>`;
-  }
-
-  function openTankDetailDrawer(tank) {
-    openModal(`Detalhes — ${tank.name}`, tankDetailContent(tank), "ATIVO DA PLANTA");
-    $("#modal")?.classList.add("tank-detail-drawer");
-  }
-
   function renderTanks() {
-    if (renderNativePage("tanks")) return;
     const all = state.data.tanks || [];
     const occupied = all.filter(item => Number(item.volume || 0) > 0).length;
     const maintenance = all.filter(item => String(item.status || "").toLowerCase().includes("manuten")).length;
@@ -3978,7 +3810,7 @@
     const products = [...new Set(all.map(item=>item.product).filter(Boolean))].sort();
     const statuses = [...new Set(all.map(item=>item.status).filter(Boolean))].sort();
     $("#page-tanks").innerHTML =
-      header("Planta e Tancagem", "Controle operacional de volumetria, produto, cliente, disponibilidade e histórico em tempo real.",
+      header("Tanques e Silos", "Controle operacional de volumetria, produto, lote, disponibilidade e histórico.",
         `<button class="btn secondary" data-page-link="fluids">Fluidos e Granéis</button><button class="btn secondary" data-export="tanks">Exportar CSV</button>${hasRole(["supervisor", "lider", "operador", "logistica"]) ? `<button class="btn primary" data-action="new-tank-transfer">Transferir entre tanques</button>` : ""}`) +
       `<section class="tank-command-center">
         <div class="tank-kpi"><span>Equipamentos</span><strong>${all.length}</strong><small>${occupied} com volume</small></div>
@@ -3994,7 +3826,7 @@
         <div><label>Status</label><select data-tank-filter="status"><option value="">Todos</option>${statuses.map(x=>`<option>${esc(x)}</option>`).join('')}</select></div>
         <button class="btn secondary" type="button" data-action="clear-tank-filters">Limpar</button>
       </section>
-      <div class="tank-filter-result" data-tank-filter-result>${all.length} equipamento(s)</div>${plantMapHtml(all)}` +
+      <div class="tank-filter-result" data-tank-filter-result>${all.length} equipamento(s)</div>` +
       ["Phase #1", "Phase #2"].map(phase => {
         const phaseItems = all.filter(item => item.phase === phase).sort((a,b)=>a.order-b.order);
         const tanks = phaseItems.filter(item => String(item.kind).toLowerCase() !== "silo");
@@ -4033,9 +3865,8 @@
     const updater = state.data.users.find(user => user.id === tank.updated_by)?.name || "Não informado";
     const productType = productClass(tank.product, tank.kind, volume);
     const volumeState = volume > 0 ? "has-volume" : "no-volume";
-    const stale = !tank.updated_at || Date.now() - new Date(tank.updated_at).getTime() > 30 * 60 * 1000;
 
-    return `<div class="card tank-card compact-tank-card ${silo ? "silo-card" : "fluid-tank-card"} tank-bg-${productType} ${volumeState} ${stale ? "is-stale" : ""}" data-tank-search="${esc(`${tank.name} ${tank.product||""} ${tank.lot||""} ${tank.client||""}`.toLowerCase())}" data-tank-phase="${esc(String(tank.phase||"").toLowerCase())}" data-tank-kind="${silo?"silo":"tank"}" data-tank-product="${esc(String(tank.product||"").toLowerCase())}" data-tank-status="${esc(String(tank.status||"").toLowerCase())}">
+    return `<div class="card tank-card compact-tank-card ${silo ? "silo-card" : "fluid-tank-card"} tank-bg-${productType} ${volumeState}" data-tank-search="${esc(`${tank.name} ${tank.product||""} ${tank.lot||""} ${tank.client||""}`.toLowerCase())}" data-tank-phase="${esc(String(tank.phase||"").toLowerCase())}" data-tank-kind="${silo?"silo":"tank"}" data-tank-product="${esc(String(tank.product||"").toLowerCase())}" data-tank-status="${esc(String(tank.status||"").toLowerCase())}">
       <div class="tank-top">
         <div>
           <h3>${esc(tank.name)}</h3>
@@ -4070,13 +3901,11 @@
       </div>
 
       </div></div><div class="tank-update-meta">
-        ${stale ? `<span class="tank-stale-flag">Informação desatualizada</span>` : ""}
         <span>Atualizado por: ${esc(updater)}</span>
         <span>${dateTime(tank.updated_at)}</span>
       </div>
 
       <div class="row-actions">
-        <button class="btn small secondary" data-tank-detail="${tank.id}">Detalhes</button>
         ${hasRole(["supervisor", "lider", "operador", "logistica"]) ? `<button class="btn small primary" data-edit-tank="${tank.id}">Atualizar conteúdo</button>` : ""}
         ${isAdmin() ? `<button class="btn small secondary admin-structure-btn" data-edit-tank-structure="${tank.id}">Editar estrutura</button>` : ""}
         <button class="btn small secondary" data-tank-history="${tank.id}">Histórico</button>
@@ -4508,7 +4337,6 @@
   }
 
   function renderFluids() {
-    if (renderNativePage("fluids")) return;
     const products = state.data.fluids || [];
     const fluids = products.filter(item => !["granel", "insumo"].includes(String(item.type || "").toLowerCase()));
     const bulks = products.filter(item => ["granel", "insumo"].includes(String(item.type || "").toLowerCase()));
@@ -4558,7 +4386,6 @@
   }
 
   function renderChemicalCatalog() {
-    if (renderNativePage("chemical-catalog")) return;
     const products = groupedChemicalInventory();
     const active = products.filter(item => item.active).length;
     const rows = products.map(item => `<article class="card chemical-catalog-card ${item.active ? "" : "inactive"}">
@@ -4641,7 +4468,6 @@
   }
 
   function renderChemicalInventory() {
-    if (renderNativePage("chemicals")) return;
     const groups = groupedChemicalInventory();
     const lots = state.data.chemicals || [];
     const totalProducts = groups.length;
@@ -4862,7 +4688,6 @@
   }
 
   function renderTrucks() {
-    if (renderNativePage("trucks")) return;
     const allTrucks = state.data?.trucks || [];
     const duplicateIds = duplicateTruckInvoiceIds(allTrucks);
     const trucks = trucksForPage();
@@ -5049,7 +4874,6 @@
   }
 
   function renderClientTickets() {
-    if (renderNativePage("client-tickets")) return;
     const all = state.data?.clientTickets || [];
     const tickets = filteredClientTickets();
     const clients = [...new Set(all.map(item => item.client).filter(Boolean))].sort((a,b) => a.localeCompare(b));
@@ -5202,7 +5026,6 @@
   }
 
   function renderQhse() {
-    if (renderNativePage("qhse")) return;
     const canAddQhse = hasRole(["supervisor", "lider", "qhse", "operador"]);
     const records = state.data.qhse || [];
     const actionsList = state.data.actionItems || [];
@@ -5231,7 +5054,6 @@
   }
 
   function renderMaintenance() {
-    if (renderNativePage("maintenance")) return;
     const canManageMaintenance = hasRole(["supervisor", "lider", "mecanico"]);
     const equipment = state.data.equipment || [];
     const orders = state.data.maintenanceOrders || [];
@@ -5261,7 +5083,6 @@
   }
 
   function renderCertificates() {
-    if (renderNativePage("certificates")) return;
     const canManage = canManageCertificates();
     const certificates = state.data.certificates || [];
     const enriched = certificates.map(item => {
@@ -5292,7 +5113,6 @@
   }
 
   function renderAlerts() {
-    if (renderNativePage("alerts")) return;
     const manual = state.data.alerts || [];
     const automatic = state.data.systemAlerts || [];
     const messages = state.data.messages || [];
@@ -5617,7 +5437,6 @@
   }
 
   function renderReports() {
-    if (renderNativePage("reports")) return;
     const selection=ensureHandoverSelection(); const snapshot=handoverSnapshot(selection); const approval=selectedHandoverApproval(selection);
     const locked=approval?.status==="Aprovada"&&!hasRole(["supervisor"]);
     const operations = state.data.operations || [];
@@ -5641,134 +5460,6 @@
        <div class="section-title no-print">Outros relatórios</div><div class="grid two no-print">${reportCard("Relatório gerencial","KPIs, clientes, produtos, riscos e produtividade.","dashboard","operations")}${reportCard("Operações","Vazão, volume, paralisações e tancagem.","operations","operations")}${reportCard("Inventário de tancagem","Produto, lote, volume e capacidade.","tanks","tanks")}${reportCard("QHSE","Registros, severidades e itens de ação.","qhse")}${reportCard("Manutenção","Equipamentos, diesel e ordens.","maintenance","maintenance")}${reportCard("Carretas","Entradas, saídas, NF, placa e motorista.","trucks","trucks")}</div>`;
   }
 
-  function canManageLearning() {
-    return hasRole(["supervisor", "lider", "qhse"]);
-  }
-
-  function canManageDocuments() {
-    return hasRole(["supervisor", "lider", "logistica", "qhse"]);
-  }
-
-  function ddsSessionForm(item = {}) {
-    return `<form id="ddsSessionForm" data-id="${item.id || ""}" novalidate><div class="form-grid">
-      <div class="wide"><label>Título do DDS *</label><input name="title" required value="${esc(item.title || "")}" placeholder="Ex.: Segurança na transferência de fluidos"></div>
-      <div class="wide"><label>Tema</label><input name="topic" value="${esc(item.topic || "")}" placeholder="Assunto principal"></div>
-      <div><label>Data e horário *</label><input name="scheduled_at" type="datetime-local" required value="${toLocalInput(item.scheduledAt)}"></div>
-      <div><label>Duração (min)</label><input name="duration_minutes" type="number" min="5" step="5" value="${item.durationMinutes || 15}"></div>
-      <div><label>Instrutor</label><input name="instructor" value="${esc(item.instructor || state.data.profile.name)}"></div>
-      <div><label>Local</label><input name="location" value="${esc(item.location || "")}" placeholder="Sala, píer ou área"></div>
-      <div><label>Status</label><select name="status">${["Planejado","Realizado","Cancelado"].map(value => `<option ${value === (item.status || "Planejado") ? "selected" : ""}>${value}</option>`).join("")}</select></div>
-      <div class="wide"><label>Observações</label><textarea name="notes">${esc(item.notes || "")}</textarea></div>
-    </div>${formActions(item.id ? "Salvar DDS" : "Programar DDS")}</form>`;
-  }
-
-  function ddsAttendanceForm(session) {
-    const activeUsers = (state.data.users || []).filter(user => user.active);
-    const rows = activeUsers.map(user => {
-      const current = (state.data.ddsAttendance || []).find(item => item.sessionId === session.id && item.userId === user.id);
-      return `<div class="ops-attendance-row" data-user-id="${user.id}"><div>${profileAvatarHtml(user.avatarUrl, user.name)}<span><strong>${esc(user.name)}</strong><small>${esc(user.department || user.role)}</small></span></div><select data-attendance-status>${["Não convocado","Convocado","Presente","Ausente","Justificado"].map(value => `<option ${value === (current?.status || "Não convocado") ? "selected" : ""}>${value}</option>`).join("")}</select></div>`;
-    }).join("");
-    return `<form id="ddsAttendanceForm" data-session-id="${session.id}"><div class="info-box"><strong>${esc(session.title)}</strong><br>${dateTime(session.scheduledAt)} • ${esc(session.location || "Local não informado")}</div><div class="ops-attendance-list">${rows || `<div class="empty">Nenhum usuário ativo.</div>`}</div>${formActions("Salvar presença")}</form>`;
-  }
-
-  function courseForm(item = {}) {
-    return `<form id="courseForm" data-id="${item.id || ""}" novalidate><div class="form-grid">
-      <div class="wide"><label>Nome do curso *</label><input name="title" required value="${esc(item.title || "")}"></div>
-      <div class="wide"><label>Descrição</label><textarea name="description">${esc(item.description || "")}</textarea></div>
-      <div><label>Instituição / provedor</label><input name="provider" value="${esc(item.provider || "")}"></div>
-      <div><label>Carga horária</label><input name="workload_hours" type="number" min="0" step="0.5" value="${item.workloadHours || 0}"></div>
-      <div><label>Validade (meses)</label><input name="validity_months" type="number" min="0" value="${item.validityMonths || 0}"></div>
-      <div><label>Status</label><select name="status">${["Ativo","Inativo"].map(value => `<option ${value === (item.status || "Ativo") ? "selected" : ""}>${value}</option>`).join("")}</select></div>
-    </div>${formActions(item.id ? "Salvar curso" : "Cadastrar curso")}</form>`;
-  }
-
-  function courseEnrollmentForm(courseId = "") {
-    const courses = (state.data.courses || []).filter(item => item.status === "Ativo" || item.id === courseId);
-    const users = (state.data.users || []).filter(item => item.active);
-    return `<form id="courseEnrollmentForm"><div class="form-grid">
-      <div class="wide"><label>Curso *</label><select name="course_id" required><option value="">Selecione</option>${courses.map(item => `<option value="${item.id}" ${item.id === courseId ? "selected" : ""}>${esc(item.title)}</option>`).join("")}</select></div>
-      <div class="wide"><label>Colaborador *</label><select name="user_id" required><option value="">Selecione</option>${users.map(item => `<option value="${item.id}">${esc(item.name)} — ${esc(item.department || item.role)}</option>`).join("")}</select></div>
-      <div><label>Status</label><select name="status">${["Inscrito","Em andamento","Concluído","Cancelado"].map(value => `<option>${value}</option>`).join("")}</select></div>
-      <div><label>Data de conclusão</label><input name="completed_at" type="date"></div>
-      <div><label>Validade</label><input name="expires_at" type="date"></div>
-      <div><label>Nota</label><input name="score" type="number" min="0" max="100" step="0.1"></div>
-    </div>${formActions("Salvar inscrição")}</form>`;
-  }
-
-  function documentForm(item = {}) {
-    return `<form id="documentForm" data-id="${item.id || ""}" novalidate><div class="form-grid">
-      <div class="wide"><label>Título *</label><input name="title" required value="${esc(item.title || "")}"></div>
-      <div><label>Categoria *</label><select name="category">${["Procedimento","Licença","Certificado","Ficha técnica","Contrato","QHSE","Operacional","Outro"].map(value => `<option ${value === item.category ? "selected" : ""}>${value}</option>`).join("")}</select></div>
-      <div><label>Número</label><input name="document_number" value="${esc(item.documentNumber || "")}"></div>
-      <div><label>Revisão</label><input name="revision" value="${esc(item.revision || "")}"></div>
-      <div><label>Emissor</label><input name="issuer" value="${esc(item.issuer || "")}"></div>
-      <div><label>Emissão</label><input name="issue_date" type="date" value="${String(item.issueDate || "").slice(0,10)}"></div>
-      <div><label>Validade</label><input name="expires_at" type="date" value="${String(item.expiresAt || "").slice(0,10)}"></div>
-      <div><label>Status</label><select name="status">${["Válido","Em revisão","A vencer","Vencido","Arquivado"].map(value => `<option ${value === (item.status || "Válido") ? "selected" : ""}>${value}</option>`).join("")}</select></div>
-      <div><label>Visibilidade</label><select name="visibility_role">${["all","admin","supervisor","lider","operador","logistica","mecanico","qhse"].map(value => `<option ${value === (item.visibilityRole || "all") ? "selected" : ""}>${value === "all" ? "Todos os perfis" : value}</option>`).join("")}</select></div>
-      <div class="wide"><label>Observações</label><textarea name="notes">${esc(item.notes || "")}</textarea></div>
-      <div class="wide"><label>Arquivo</label><input name="attachment" type="file" accept=".pdf,image/jpeg,image/png,image/webp" multiple><small class="field-help">PDFs e imagens ficam no bucket privado e são vinculados ao documento.</small></div>
-    </div>${formActions(item.id ? "Salvar documento" : "Cadastrar documento")}</form>`;
-  }
-
-  function renderDds() {
-    if (renderNativePage("dds")) return;
-    const sessions = state.data.ddsSessions || [];
-    const courses = state.data.courses || [];
-    const enrollments = state.data.courseEnrollments || [];
-    const upcoming = sessions.filter(item => item.status === "Planejado" && new Date(item.scheduledAt) >= new Date()).length;
-    const completed = sessions.filter(item => item.status === "Realizado").length;
-    const present = (state.data.ddsAttendance || []).filter(item => item.status === "Presente").length;
-    const expiring = enrollments.filter(item => { const days = daysUntil(item.expiresAt); return days !== null && days >= 0 && days <= 30; }).length;
-    const sessionCards = sessions.slice(0,30).map(item => {
-      const attendance = (state.data.ddsAttendance || []).filter(row => row.sessionId === item.id);
-      const presentCount = attendance.filter(row => row.status === "Presente").length;
-      return `<article class="ops-list-card"><div><h3>${esc(item.title)}</h3><p>${esc(item.topic || "Tema não informado")}</p></div>${badge(item.status)}<footer><span>${dateTime(item.scheduledAt)}</span><span>${esc(item.instructor || "Sem instrutor")}</span><span>${presentCount}/${attendance.length} presentes</span></footer>${canManageLearning() ? `<div class="row-actions"><button class="btn small secondary" data-action="dds-attendance" data-dds-id="${item.id}">Presença</button><button class="btn small primary" data-action="edit-dds" data-dds-id="${item.id}">Editar</button></div>` : ""}</article>`;
-    }).join("");
-    const courseCards = courses.map(item => {
-      const registered = enrollments.filter(row => row.courseId === item.id);
-      const done = registered.filter(row => row.status === "Concluído").length;
-      return `<article class="ops-list-card"><div><h3>${esc(item.title)}</h3><p>${esc(item.provider || "Provedor não informado")} • ${fmt.format(item.workloadHours)} h • validade ${item.validityMonths || 0} meses</p></div>${badge(item.status)}<footer><span>${registered.length} inscrição(ões)</span><span>${done} concluída(s)</span></footer>${canManageLearning() ? `<div class="row-actions"><button class="btn small secondary" data-action="enroll-course" data-course-id="${item.id}">Inscrever</button><button class="btn small primary" data-action="edit-course" data-course-id="${item.id}">Editar</button></div>` : ""}</article>`;
-    }).join("");
-    $("#page-dds").innerHTML = header("DDS e Cursos", "Diálogos de segurança, treinamentos, presença e validade da capacitação.", canManageLearning() ? `<button class="btn secondary" data-action="new-course">+ Curso</button><button class="btn primary" data-action="new-dds">+ Programar DDS</button>` : "") +
-      `<section class="ops-kpi-grid"><div class="ops-kpi-card"><span>DDS programados</span><strong>${upcoming}</strong><small>próximas sessões</small></div><div class="ops-kpi-card"><span>DDS realizados</span><strong>${completed}</strong><small>histórico registrado</small></div><div class="ops-kpi-card"><span>Presenças</span><strong>${present}</strong><small>assinaturas registradas</small></div><div class="ops-kpi-card"><span>Vencimentos</span><strong>${expiring}</strong><small>nos próximos 30 dias</small></div></section><div class="ops-split"><section><div class="section-title">Agenda de DDS</div><div class="ops-list">${sessionCards || `<div class="ops-empty">Nenhum DDS programado.</div>`}</div></section><aside><div class="section-title">Catálogo de cursos</div><div class="ops-list">${courseCards || `<div class="ops-empty">Nenhum curso cadastrado.</div>`}</div></aside></div>`;
-  }
-
-  function renderDocuments() {
-    if (renderNativePage("documents")) return;
-    const allowed = (state.data.documents || []).filter(item => item.visibilityRole === "all" || item.visibilityRole === role() || isAdmin());
-    const certificates = state.data.certificates || [];
-    const tickets = state.data.clientTickets || [];
-    const expired = [...allowed.map(item => item.expiresAt), ...certificates.map(item => item.expires_at)].filter(value => daysUntil(value) !== null && daysUntil(value) < 0).length;
-    const expiring = [...allowed.map(item => item.expiresAt), ...certificates.map(item => item.expires_at)].filter(value => { const days=daysUntil(value); return days !== null && days >= 0 && days <= 30; }).length;
-    const rows = allowed.map(item => `<tr><td><strong>${esc(item.title)}</strong><br><small>${esc(item.documentNumber || "Sem número")}${item.revision ? ` • Rev. ${esc(item.revision)}` : ""}</small></td><td>${badge(item.category)}</td><td>${esc(item.issuer || "-")}</td><td>${dateOnly(item.issueDate)}</td><td>${dateOnly(item.expiresAt)}</td><td>${badge(item.status)}</td><td><div class="row-actions"><button class="btn small secondary" data-attachments="document:${item.id}" data-attachment-title="${esc(item.title)}">Anexos (${attachmentCount("document", item.id)})</button>${canManageDocuments() ? `<button class="btn small primary" data-action="edit-document" data-document-id="${item.id}">Editar</button>` : ""}</div></td></tr>`).join("");
-    const mobile = allowed.map(item => `<article class="card mobile-record-card"><div class="mobile-record-head"><div><strong>${esc(item.title)}</strong><small>${esc(item.category)} • ${esc(item.documentNumber || "Sem número")}</small></div>${badge(item.status)}</div><div class="mobile-record-grid"><span>Emissor<strong>${esc(item.issuer || "-")}</strong></span><span>Validade<strong>${dateOnly(item.expiresAt)}</strong></span></div><div class="row-actions"><button class="btn small secondary" data-attachments="document:${item.id}" data-attachment-title="${esc(item.title)}">Anexos</button>${canManageDocuments() ? `<button class="btn small primary" data-action="edit-document" data-document-id="${item.id}">Editar</button>` : ""}</div></article>`).join("");
-    $("#page-documents").innerHTML = header("Documentos e Certificados", "Biblioteca operacional privada, licenças, certificados e documentos de clientes.", `<button class="btn secondary" data-page-link="client-tickets">Tickets de clientes</button><button class="btn secondary" data-page-link="certificates">Certificados da equipe</button>${canManageDocuments() ? `<button class="btn primary" data-action="new-document">+ Documento</button>` : ""}`) +
-      `<section class="ops-kpi-grid"><div class="ops-kpi-card"><span>Documentos</span><strong>${allowed.length}</strong><small>visíveis para seu perfil</small></div><div class="ops-kpi-card"><span>Certificados</span><strong>${certificates.length}</strong><small>da equipe</small></div><div class="ops-kpi-card"><span>Tickets</span><strong>${tickets.length}</strong><small>documentação de clientes</small></div><div class="ops-kpi-card"><span>Atenção</span><strong>${expired + expiring}</strong><small>${expired} vencido(s), ${expiring} a vencer</small></div></section><div class="card table-wrap desktop-record-table"><table class="data-table"><thead><tr><th>Documento</th><th>Categoria</th><th>Emissor</th><th>Emissão</th><th>Validade</th><th>Status</th><th>Ações</th></tr></thead><tbody>${rows || `<tr><td colspan="7" class="empty">Nenhum documento disponível.</td></tr>`}</tbody></table></div><div class="mobile-record-list">${mobile || `<div class="ops-empty">Nenhum documento disponível.</div>`}</div>`;
-  }
-
-  function renderHandover() {
-    if (renderNativePage("handover")) return;
-    const selection = ensureHandoverSelection();
-    const snapshot = handoverSnapshot(selection);
-    const approval = selectedHandoverApproval(selection);
-    const locked = approval?.status === "Aprovada" && !hasRole(["supervisor"]);
-    const pendingCards = snapshot.openPendings.map(item => `<article class="ops-list-card"><div><h3>${esc(item.title)}</h3><p>${esc(item.description || "Sem descrição")}</p></div>${badge(item.priority)}<footer><span>${esc(item.category)}</span><span>${esc(item.responsible || "Sem responsável")}</span><span>${item.due_at ? dateTime(item.due_at) : "Sem prazo"}</span></footer>${canManageHandover() ? `<div class="row-actions"><button class="btn small secondary" data-edit-handover-pending="${item.id}">Editar</button><button class="btn small primary" data-toggle-handover-pending="${item.id}">Concluir</button></div>` : ""}</article>`).join("");
-    $("#page-handover").innerHTML = header("Passagem de Turno", "Resumo automático, checklist, pendências e aceite formal entre equipes.", `<button class="btn secondary" data-action="copy-handover">Copiar resumo</button><button class="btn primary" data-action="print-handover">Imprimir</button>`) +
-      `${handoverApprovalCard(selection, snapshot)}<div class="card handover-controls no-print"><div class="handover-control-copy"><strong>Período da passagem</strong><span>Selecione o turno que será entregue.</span></div><div><label>Data</label><input id="handoverDate" type="date" value="${esc(selection.date)}"></div><div><label>Turno</label><select id="handoverShift"><option value="day" ${selection.shift === "day" ? "selected" : ""}>Dia — 07h às 19h</option><option value="night" ${selection.shift === "night" ? "selected" : ""}>Noite — 19h às 07h</option></select></div><button class="btn secondary" data-action="apply-handover-filter">Atualizar</button>${canManageHandover() && !locked ? `<button class="btn primary" data-action="new-handover-pending">+ Pendência</button>` : ""}</div><div class="handover-layout"><div>${handoverSheetHtml(snapshot)}</div><aside class="handover-side no-print"><div class="card"><h3>Observações do turno</h3><textarea id="handoverObservations" rows="7" ${locked ? "disabled" : ""}>${esc(snapshot.observations)}</textarea>${canManageHandover() && !locked ? `<button class="btn primary full" data-action="save-handover-note">Salvar observações</button>` : ""}</div>${shiftChecklistHtml(selection)}<div class="card"><div class="kpi-row"><div><h3>Pendências abertas</h3><span class="muted">Acompanham o próximo turno.</span></div>${badge(snapshot.openPendings.length)}</div><div class="ops-list">${pendingCards || `<div class="ops-empty">Nenhuma pendência aberta.</div>`}</div></div></aside></div>`;
-  }
-
-  function renderUsers() {
-    if (renderNativePage("users")) return;
-    const users = state.data.users || [];
-    const active = users.filter(item => item.active).length;
-    const roles = new Set(users.map(item => item.role)).size;
-    const rows = users.map(user => `<tr><td><div class="ops-user-cell">${profileAvatarHtml(user.avatarUrl, user.name)}<span><strong>${esc(user.name)}</strong><small>${esc(user.email)}</small></span></div></td><td>${badge(user.role)}</td><td>${esc(user.department || "-")}</td><td>${badge(user.active ? "Ativo" : "Inativo")}</td><td>${dateOnly(user.created_at)}</td><td>${isAdmin() ? `<button class="btn small primary" data-edit-user="${user.id}">Gerenciar</button>` : `<span class="muted">Somente leitura</span>`}</td></tr>`).join("");
-    const mobile = users.map(user => `<article class="card mobile-record-card"><div class="mobile-record-head"><div><strong>${esc(user.name)}</strong><small>${esc(user.email)}</small></div>${badge(user.active ? "Ativo" : "Inativo")}</div><div class="mobile-record-grid"><span>Perfil<strong>${esc(user.role)}</strong></span><span>Setor<strong>${esc(user.department || "-")}</strong></span></div>${isAdmin() ? `<button class="btn primary full" data-edit-user="${user.id}">Gerenciar permissões</button>` : ""}</article>`).join("");
-    $("#page-users").innerHTML = header("Usuários e Permissões", "Contas, cargos, departamentos e controle de acesso aplicado também no banco.", isAdmin() ? `<button class="btn primary" data-action="new-user">+ Novo usuário</button>` : "") +
-      `<section class="ops-kpi-grid"><div class="ops-kpi-card"><span>Usuários</span><strong>${users.length}</strong><small>contas cadastradas</small></div><div class="ops-kpi-card"><span>Ativos</span><strong>${active}</strong><small>acesso liberado</small></div><div class="ops-kpi-card"><span>Perfis</span><strong>${roles}</strong><small>cargos em uso</small></div><div class="ops-kpi-card"><span>Bloqueados</span><strong>${users.length - active}</strong><small>sem acesso ao sistema</small></div></section>${!isAdmin() ? `<div class="info-box">Seu perfil pode consultar a equipe. Apenas administradores alteram cargos, status e permissões.</div>` : ""}<div class="card table-wrap desktop-record-table"><table class="data-table"><thead><tr><th>Usuário</th><th>Perfil</th><th>Departamento</th><th>Status</th><th>Cadastro</th><th>Ação</th></tr></thead><tbody>${rows}</tbody></table></div><div class="mobile-record-list">${mobile}</div>`;
-  }
-
 
 
   function auditChangeSummary(item) {
@@ -5777,7 +5468,6 @@
   }
 
   function renderAudit() {
-    if (renderNativePage("audit")) return;
     const page=$("#page-audit"); if(!page)return;
     if(!canViewAudit()){page.innerHTML=header("Auditoria","Acesso restrito.")+`<div class="card empty">Somente administração e supervisão podem consultar a auditoria.</div>`;return;}
     const auditLogs = state.data.auditLogs || [];
@@ -5826,7 +5516,6 @@
   }
 
   function renderSettings() {
-    if (renderNativePage("settings")) return;
     const users = state.data?.users || [];
     const activeUsers = users.filter(user => user.active).length;
     const inactiveUsers = users.length - activeUsers;
@@ -6237,7 +5926,7 @@
   }
 
   function newUserForm() {
-    return `<form id="newUserForm"><div class="form-grid"><div class="wide"><label>Nome completo *</label><input name="full_name" required></div><div><label>E-mail *</label><input name="email" type="email" required></div><div><label>Usuário *</label><input name="username" required minlength="3" pattern="[a-zA-Z0-9._-]+" autocomplete="off" placeholder="nome.sobrenome"></div><div><label>Senha inicial *</label><input name="password" type="password" minlength="8" required></div><div><label>Cargo</label><select name="role">${["user","tv","operador","logistica","mecanico","qhse","lider","supervisor","admin"].map(x => `<option>${x}</option>`).join("")}</select></div><div><label>Departamento</label><input name="department"></div><div class="wide info-box">A conta será criada pelo cadastro seguro do Supabase. O identificador também poderá ser usado no login.</div></div>${formActions("Criar usuário")}</form>`;
+    return `<form id="newUserForm"><div class="form-grid"><div class="wide"><label>Nome completo *</label><input name="full_name" required></div><div><label>E-mail *</label><input name="email" type="email" required></div><div><label>Senha inicial *</label><input name="password" type="password" minlength="8" required></div><div><label>Cargo</label><select name="role">${["user","tv","operador","logistica","mecanico","qhse","lider","supervisor","admin"].map(x => `<option>${x}</option>`).join("")}</select></div><div><label>Departamento</label><input name="department"></div><div class="wide info-box">A conta será criada pelo cadastro seguro do Supabase. Dependendo da configuração, o usuário poderá receber uma confirmação por e-mail.</div></div>${formActions("Criar usuário")}</form>`;
   }
 
   function userForm(user) {
@@ -6250,7 +5939,6 @@
     return `<form id="userForm" data-user-id="${user.id}"><div class="form-grid">
       <div class="wide"><label>Nome</label><input name="full_name" required value="${esc(user.name)}"></div>
       <div><label>E-mail</label><input value="${esc(user.email)}" disabled></div>
-      <div><label>Usuário</label><input name="username" required minlength="3" pattern="[a-zA-Z0-9._-]+" value="${esc(user.username || "")}"></div>
       <div><label>Cargo</label><select name="role">${["admin", "supervisor", "lider", "operador", "logistica", "mecanico", "qhse", "tv", "user"].map(x => `<option ${user.role === x ? "selected" : ""}>${x}</option>`).join("")}</select></div>
       <div><label>Departamento</label><input name="department" value="${esc(user.department)}"></div>
       <div><label>Status</label><select name="active"><option value="true" ${user.active ? "selected" : ""}>Ativo</option><option value="false" ${!user.active ? "selected" : ""}>Bloqueado</option></select></div>
@@ -6768,7 +6456,6 @@
     if (role() === "tv" && page !== "tv") page = "tv";
     if (!moduleAllowed(page)) return toast("Seu perfil não possui acesso a este módulo.", "error");
     state.page = page;
-    document.body.classList.toggle("tv-route", page === "tv");
     if (page === "ai-assistant") window.OpsControlAI?.render?.();
     const targetPage = $(`#page-${page}`);
     if (!targetPage) return toast("A página solicitada não está disponível.", "error");
@@ -7080,8 +6767,6 @@
         if (!isAdmin()) throw new Error("Somente administradores podem criar usuários.");
         const payload = Object.fromEntries(new FormData(form));
         if (String(payload.password || "").length < 8) throw new Error("A senha precisa ter pelo menos 8 caracteres.");
-        const username = String(payload.username || "").trim().toLowerCase();
-        if (!/^[a-z0-9._-]{3,40}$/.test(username)) throw new Error("Use de 3 a 40 letras, números, ponto, hífen ou sublinhado no usuário.");
         const tempClient = window.supabase.createClient(state.config.url, state.config.key, {
           auth: { persistSession: false, autoRefreshToken: false, storageKey: `opscontrol-create-${Date.now()}` }
         });
@@ -7097,7 +6782,6 @@
           await new Promise(resolve => setTimeout(resolve, 300));
           const { error: updateError } = await state.client.from("profiles").update({
             full_name: payload.full_name,
-            username,
             role: payload.role,
             department: payload.department || null,
             active: true
@@ -7105,92 +6789,6 @@
           profileUpdated = !updateError;
         }
         if (!profileUpdated) throw new Error("A conta foi criada, mas o perfil ainda não ficou disponível para configuração.");
-      }
-
-      if (form.id === "ddsSessionForm") {
-        if (!canManageLearning()) throw new Error("Seu perfil não pode gerenciar DDS.");
-        const payload = Object.fromEntries(new FormData(form));
-        const row = {
-          title: payload.title?.trim(), topic: payload.topic?.trim() || null,
-          scheduled_at: payload.scheduled_at ? new Date(payload.scheduled_at).toISOString() : null,
-          duration_minutes: Number(payload.duration_minutes || 15), instructor: payload.instructor?.trim() || null,
-          location: payload.location?.trim() || null, status: payload.status, notes: payload.notes?.trim() || null,
-          updated_by: state.user.id
-        };
-        if (!row.title || !row.scheduled_at) throw new Error("Informe o título, a data e o horário do DDS.");
-        const query = form.dataset.id
-          ? state.client.from("dds_sessions").update(row).eq("id", form.dataset.id).select("id").single()
-          : state.client.from("dds_sessions").insert({ ...row, created_by: state.user.id }).select("id").single();
-        const { data, error } = await query;
-        if (error) throw error;
-        if (!data?.id) throw new Error("O Supabase não confirmou o DDS.");
-      }
-
-      if (form.id === "ddsAttendanceForm") {
-        if (!canManageLearning()) throw new Error("Seu perfil não pode registrar presença.");
-        const rows = [...form.querySelectorAll("[data-user-id]")].map(item => {
-          const status = item.querySelector("[data-attendance-status]")?.value || "Não convocado";
-          return {
-            session_id: form.dataset.sessionId, user_id: item.dataset.userId, status,
-            signed_at: status === "Presente" ? new Date().toISOString() : null,
-            updated_by: state.user.id, created_by: state.user.id
-          };
-        });
-        const { error } = await state.client.from("dds_attendance").upsert(rows, { onConflict: "session_id,user_id" });
-        if (error) throw error;
-      }
-
-      if (form.id === "courseForm") {
-        if (!canManageLearning()) throw new Error("Seu perfil não pode gerenciar cursos.");
-        const payload = Object.fromEntries(new FormData(form));
-        const row = {
-          title: payload.title?.trim(), description: payload.description?.trim() || null,
-          provider: payload.provider?.trim() || null, workload_hours: Number(payload.workload_hours || 0),
-          validity_months: Number(payload.validity_months || 0), status: payload.status, updated_by: state.user.id
-        };
-        if (!row.title) throw new Error("Informe o nome do curso.");
-        const query = form.dataset.id
-          ? state.client.from("courses").update(row).eq("id", form.dataset.id).select("id").single()
-          : state.client.from("courses").insert({ ...row, created_by: state.user.id }).select("id").single();
-        const { data, error } = await query;
-        if (error) throw error;
-        if (!data?.id) throw new Error("O Supabase não confirmou o curso.");
-      }
-
-      if (form.id === "courseEnrollmentForm") {
-        if (!canManageLearning()) throw new Error("Seu perfil não pode gerenciar inscrições.");
-        const payload = Object.fromEntries(new FormData(form));
-        if (!payload.course_id || !payload.user_id) throw new Error("Selecione o curso e o colaborador.");
-        const row = {
-          course_id: payload.course_id, user_id: payload.user_id, status: payload.status,
-          completed_at: payload.completed_at ? new Date(`${payload.completed_at}T12:00:00`).toISOString() : null,
-          expires_at: payload.expires_at || null, score: payload.score === "" ? null : Number(payload.score),
-          updated_by: state.user.id, created_by: state.user.id
-        };
-        const { error } = await state.client.from("course_enrollments").upsert(row, { onConflict: "course_id,user_id" });
-        if (error) throw error;
-      }
-
-      if (form.id === "documentForm") {
-        if (!canManageDocuments()) throw new Error("Seu perfil não pode gerenciar documentos.");
-        const files = [...(form.querySelector('[name="attachment"]')?.files || [])];
-        const payload = Object.fromEntries(new FormData(form));
-        delete payload.attachment;
-        const row = {
-          title: payload.title?.trim(), category: payload.category, document_number: payload.document_number?.trim() || null,
-          revision: payload.revision?.trim() || null, issuer: payload.issuer?.trim() || null,
-          issue_date: payload.issue_date || null, expires_at: payload.expires_at || null,
-          status: payload.status, visibility_role: payload.visibility_role || "all", notes: payload.notes?.trim() || null,
-          updated_by: state.user.id
-        };
-        if (!row.title) throw new Error("Informe o título do documento.");
-        const query = form.dataset.id
-          ? state.client.from("documents").update(row).eq("id", form.dataset.id).select("id").single()
-          : state.client.from("documents").insert({ ...row, created_by: state.user.id }).select("id").single();
-        const { data, error } = await query;
-        if (error) throw error;
-        if (!data?.id) throw new Error("O Supabase não confirmou o documento.");
-        if (files.length) await uploadAttachments("document", data.id, files);
       }
 
 
@@ -7387,8 +6985,6 @@
       if (form.id === "userForm") {
         if (!isAdmin()) throw new Error("Somente o administrador pode alterar usuários.");
         const payload = Object.fromEntries(new FormData(form));
-        const username = String(payload.username || "").trim().toLowerCase();
-        if (!/^[a-z0-9._-]{3,40}$/.test(username)) throw new Error("Use de 3 a 40 letras, números, ponto, hífen ou sublinhado no usuário.");
         if (form.dataset.userId === state.user.id && payload.active !== "true") {
           throw new Error("Você não pode bloquear o próprio acesso.");
         }
@@ -7402,7 +6998,6 @@
         if (payload.role === "tv") Object.keys(permissions).forEach(key => permissions[key] = key === "tv");
         const { error } = await state.client.from("profiles").update({
           full_name: payload.full_name,
-          username,
           role: payload.role,
           department: payload.department || null,
           active: payload.active === "true",
@@ -7451,15 +7046,6 @@
       return;
     }
 
-    if (button.id === "togglePasswordBtn") {
-      const input = $("#loginPassword");
-      const visible = input?.type === "text";
-      if (input) input.type = visible ? "password" : "text";
-      button.setAttribute("aria-pressed", String(!visible));
-      button.setAttribute("aria-label", visible ? "Mostrar senha" : "Ocultar senha");
-      return;
-    }
-    if (button.id === "forgotPasswordBtn") return recoverPassword();
     if (button.id === "loginBtn") return login();
     if (button.id === "logoutBtn") return logout();
     if (button.id === "menuBtn") {
@@ -7793,39 +7379,6 @@
         toast(`Erro ao atualizar volume: ${error.message}`, "error");
       }
       return;
-    }
-    if (action === "new-dds") {
-      if (!canManageLearning()) return toast("Seu perfil não pode programar DDS.", "error");
-      return openModal("Programar DDS", ddsSessionForm(), "DDS E CURSOS");
-    }
-    if (action === "edit-dds") {
-      const item = (state.data.ddsSessions || []).find(row => row.id === button.dataset.ddsId);
-      if (!item) return toast("DDS não encontrado.", "error");
-      return openModal(`Editar DDS — ${item.title}`, ddsSessionForm(item), "DDS E CURSOS");
-    }
-    if (action === "dds-attendance") {
-      const item = (state.data.ddsSessions || []).find(row => row.id === button.dataset.ddsId);
-      if (!item) return toast("DDS não encontrado.", "error");
-      return openModal(`Presença — ${item.title}`, ddsAttendanceForm(item), "DDS E CURSOS");
-    }
-    if (action === "new-course") {
-      if (!canManageLearning()) return toast("Seu perfil não pode cadastrar cursos.", "error");
-      return openModal("Cadastrar curso", courseForm(), "DDS E CURSOS");
-    }
-    if (action === "edit-course") {
-      const item = (state.data.courses || []).find(row => row.id === button.dataset.courseId);
-      if (!item) return toast("Curso não encontrado.", "error");
-      return openModal(`Editar curso — ${item.title}`, courseForm(item), "DDS E CURSOS");
-    }
-    if (action === "enroll-course") return openModal("Inscrever colaborador", courseEnrollmentForm(button.dataset.courseId || ""), "DDS E CURSOS");
-    if (action === "new-document") {
-      if (!canManageDocuments()) return toast("Seu perfil não pode cadastrar documentos.", "error");
-      return openModal("Cadastrar documento", documentForm(), "DOCUMENTOS");
-    }
-    if (action === "edit-document") {
-      const item = (state.data.documents || []).find(row => row.id === button.dataset.documentId);
-      if (!item) return toast("Documento não encontrado.", "error");
-      return openModal(`Editar documento — ${item.title}`, documentForm(item), "DOCUMENTOS");
     }
     if (action === "new-operation") return openModal("Nova operação", operationForm(), "OPERAÇÃO");
     if (action === "new-vessel-registry") { if (!canManageVesselRegistry()) return toast("Seu perfil não pode cadastrar embarcações.", "error"); return openModal("Cadastrar embarcação", vesselRegistryForm(), "EMBARCAÇÃO"); }
@@ -8207,12 +7760,6 @@
       return openModal(`Atualizar conteúdo — ${tank.name}`, tankForm(tank, false), "TANCAGEM");
     }
 
-    if (button.dataset.tankDetail) {
-      const tank = state.data.tanks.find(item => item.id === button.dataset.tankDetail);
-      if (!tank) return toast("Ativo não localizado.", "error");
-      return openTankDetailDrawer(tank);
-    }
-
     if (button.dataset.editTankStructure) {
       if (!isAdmin()) return toast("Somente o administrador pode editar a estrutura.", "error");
       const tank = state.data.tanks.find(x => x.id === button.dataset.editTankStructure);
@@ -8452,9 +7999,6 @@
   $("#loginPassword").addEventListener("keydown", event => {
     if (event.key === "Enter") login();
   });
-  $("#loginEmail").addEventListener("keydown", event => {
-    if (event.key === "Enter") $("#loginPassword")?.focus();
-  });
 
 
   document.addEventListener("focusout", async event => {
@@ -8512,6 +8056,6 @@
     window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(console.error));
   }
 
-  if ($("#rememberLogin")) $("#rememberLogin").checked = localStorage.getItem(LOGIN_REMEMBER_KEY) !== "false";
+  $("#connectionHint").textContent = "Acesse com seu e-mail e senha cadastrados.";
   restoreSession();
 })();

@@ -1,12 +1,12 @@
 {
-  "name": "OPSControl IA — B-Port LMP",
+  "name": "OpsControl IA Pro — B-Port LMP",
   "short_name": "OpsControl",
   "start_url": "./index.html#dashboard",
   "scope": "./",
   "display": "standalone",
   "orientation": "any",
-  "background_color": "#07111f",
-  "theme_color": "#07111f",
+  "background_color": "#f4f7fb",
+  "theme_color": "#0b1f3a",
   "description": "Controle operacional profissional para a B-Port LMP.",
   "icons": [
     {
@@ -42,7 +42,7 @@
       ]
     },
     {
-      "name": "Planta e Tancagem",
+      "name": "Tanques e Silos",
       "short_name": "Tancagem",
       "description": "Abrir inventário da planta",
       "url": "./index.html#tanks",
@@ -68,10 +68,10 @@
       ]
     },
     {
-      "name": "Passagem de Turno",
+      "name": "Passagem de Serviço",
       "short_name": "Passagem",
-      "description": "Abrir passagem de turno",
-      "url": "./index.html#handover",
+      "description": "Abrir relatórios e passagem",
+      "url": "./index.html#reports",
       "icons": [
         {
           "src": "assets/icon.svg",
@@ -94,5 +94,5 @@
       ]
     }
   ],
-  "version": "20260721-figma-native-2"
+  "version": "20260719-v33-12-14-1-client-tickets"
 }

@@ -1,4 +1,4 @@
-const CACHE="opscontrol-20260722-interface-runtime-1";
+const CACHE="opscontrol-20260722-tv-control-room-1";
 const FILES=[
   "./",
   "./index.html",
@@ -12,6 +12,7 @@ const FILES=[
   "./design-upgrade.css?v=20260721-control-center-1",
   "./tank-cards-reference.css?v=20260721-reference-cards-1",
   "./interface-ops-v2.css?v=20260722-ops-v2-1",
+  "./tv-control-room.css?v=20260722-tv-control-room-1",
   "./js/config.js?v=20260722-security-1",
   "./js/app.js?v=20260722-security-1",
   "./js/assistente-integrado.js?v=20260722-security-1",
@@ -21,6 +22,7 @@ const FILES=[
   "./js/design-stability.js?v=20260721-original-tanks-1",
   "./js/tank-cards-reference.js?v=20260721-reference-cards-1",
   "./js/interface-ops-v2.js?v=20260722-ops-v2-1",
+  "./js/tv-control-room.js?v=20260722-tv-control-room-1",
   "./manifest.json",
   "./assets/icon.svg",
   "./vendor/qrcode.js"
@@ -57,6 +59,7 @@ self.addEventListener("fetch", event => {
     url.pathname.endsWith("/design-upgrade.css") ||
     url.pathname.endsWith("/tank-cards-reference.css") ||
     url.pathname.endsWith("/interface-ops-v2.css") ||
+    url.pathname.endsWith("/tv-control-room.css") ||
     url.pathname.endsWith("/js/app.js") ||
     url.pathname.endsWith("/js/assistente-integrado.js") ||
     url.pathname.endsWith("/js/config.js") ||
@@ -65,7 +68,8 @@ self.addEventListener("fetch", event => {
     url.pathname.endsWith("/js/design-upgrade.js") ||
     url.pathname.endsWith("/js/design-stability.js") ||
     url.pathname.endsWith("/js/tank-cards-reference.js") ||
-    url.pathname.endsWith("/js/interface-ops-v2.js")
+    url.pathname.endsWith("/js/interface-ops-v2.js") ||
+    url.pathname.endsWith("/js/tv-control-room.js")
   );
 
   if (appFile) {

@@ -45,6 +45,9 @@ jobs:
       - name: Run responsive tests
         run: npm run test:responsive
 
+      - name: Run environment isolation tests
+        run: npm run test:environment
+
       - name: Run security tests
         run: node tests/security.spec.mjs
 
@@ -62,6 +65,7 @@ jobs:
           runtime_css = Path('interface-runtime.css').read_text(encoding='utf-8')
           runtime_js = Path('js/interface-runtime.js').read_text(encoding='utf-8')
           service_worker = Path('sw.js').read_text(encoding='utf-8')
+          config_js = Path('js/config.js').read_text(encoding='utf-8')
 
           css_refs = re.findall(r"@import\s+url\(['\"]?([^'\")?]+)", runtime_css)
           js_refs = re.findall(r'"([A-Za-z0-9._/-]+\.js\?v=[^"]+)"', runtime_js)
@@ -79,12 +83,18 @@ jobs:
           required = [
             Path('final-interface.css'),
             Path('interface-fix.css'),
+            Path('homologation.css'),
             Path('js/ui-polish.js'),
             Path('js/interface-runtime.js'),
+            Path('tests/environment.spec.mjs'),
           ]
           for path in required:
             if not path.exists():
               errors.append(f'Missing required interface file: {path}')
+
+          for token in ['production', 'staging', 'opscontrol_environment']:
+            if token not in config_js:
+              errors.append(f'Missing environment guard token in config: {token}')
 
           forbidden = [
             'design-upgrade.css',
@@ -105,7 +115,7 @@ jobs:
             print('\n'.join(f'- {error}' for error in errors))
             sys.exit(1)
 
-          print(f'Validated {len(css_refs)} CSS imports and {len(js_refs)} JS modules.')
+          print(f'Validated {len(css_refs)} CSS imports, {len(js_refs)} JS modules and environment isolation files.')
 
       - name: Upload responsive test evidence
         if: always()

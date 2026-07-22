@@ -1,4 +1,4 @@
-const CACHE="opscontrol-20260722-tank-availability-1";
+const CACHE="opscontrol-20260722-truck-workflow-1";
 const FILES=[
   "./",
   "./index.html",
@@ -18,6 +18,7 @@ const FILES=[
   "./role-dashboard.css?v=20260722-role-dashboard-1",
   "./operations-analytics.css?v=20260722-operations-analytics-1",
   "./operation-products-extension.css?v=20260722-operation-products-extension-1",
+  "./truck-workflow-extension.css?v=20260722-truck-workflow-1",
   "./alert-center-v2.css?v=20260722-alert-center-v2-1",
   "./app-states.css?v=20260722-app-states-1",
   "./js/config.js?v=20260722-security-1",
@@ -32,6 +33,7 @@ const FILES=[
   "./js/role-dashboard.js?v=20260722-role-dashboard-1",
   "./js/operations-analytics.js?v=20260722-operations-analytics-1",
   "./js/operation-products-extension.js?v=20260722-operation-products-extension-1",
+  "./js/truck-workflow-extension.js?v=20260722-truck-workflow-1",
   "./js/alert-center-v2.js?v=20260722-alert-center-v2-1",
   "./js/app-states.js?v=20260722-app-states-1",
   "./manifest.json",
@@ -77,6 +79,7 @@ self.addEventListener("fetch", event => {
     url.pathname.endsWith("/role-dashboard.css") ||
     url.pathname.endsWith("/operations-analytics.css") ||
     url.pathname.endsWith("/operation-products-extension.css") ||
+    url.pathname.endsWith("/truck-workflow-extension.css") ||
     url.pathname.endsWith("/alert-center-v2.css") ||
     url.pathname.endsWith("/app-states.css") ||
     url.pathname.endsWith("/js/app.js") ||
@@ -91,6 +94,7 @@ self.addEventListener("fetch", event => {
     url.pathname.endsWith("/js/role-dashboard.js") ||
     url.pathname.endsWith("/js/operations-analytics.js") ||
     url.pathname.endsWith("/js/operation-products-extension.js") ||
+    url.pathname.endsWith("/js/truck-workflow-extension.js") ||
     url.pathname.endsWith("/js/alert-center-v2.js") ||
     url.pathname.endsWith("/js/app-states.js")
   );

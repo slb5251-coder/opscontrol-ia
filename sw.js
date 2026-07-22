@@ -1,4 +1,4 @@
-const CACHE="opscontrol-20260722-final-audit-1";
+const CACHE="opscontrol-20260722-staging-db-1";
 const FILES=[
   "./",
   "./index.html",
@@ -18,6 +18,7 @@ const FILES=[
   "./operations-analytics.css?v=20260722-operations-analytics-1",
   "./alert-center-v2.css?v=20260722-alert-center-v2-1",
   "./app-states.css?v=20260722-app-states-1",
+  "./homologation.css?v=20260722-staging-db-1",
   "./js/config.js?v=20260722-security-1",
   "./js/app.js?v=20260722-security-1",
   "./js/assistente-integrado.js?v=20260722-security-1",
@@ -72,6 +73,7 @@ self.addEventListener("fetch", event => {
     url.pathname.endsWith("/operations-analytics.css") ||
     url.pathname.endsWith("/alert-center-v2.css") ||
     url.pathname.endsWith("/app-states.css") ||
+    url.pathname.endsWith("/homologation.css") ||
     url.pathname.endsWith("/js/app.js") ||
     url.pathname.endsWith("/js/assistente-integrado.js") ||
     url.pathname.endsWith("/js/config.js") ||

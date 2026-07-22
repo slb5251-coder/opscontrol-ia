@@ -56,6 +56,14 @@
   .app-state-banner span{font-size:9px}
   .app-state-banner .btn{min-height:34px;flex:0 0 auto;padding:7px 9px;font-size:9px}
   .app-state-error-card{padding:19px!important}
+  :root[data-connection-state="offline"] #page-tanks .tank-mobile-toolbar,
+  :root[data-connection-state="error"] #page-tanks .tank-mobile-toolbar,
+  :root[data-connection-state="syncing"] #page-tanks .tank-mobile-toolbar,
+  :root[data-connection-state="online"] #page-tanks .tank-mobile-toolbar{top:116px}
+  :root[data-connection-state="offline"] #page-tanks .tancagem-phase-block,
+  :root[data-connection-state="error"] #page-tanks .tancagem-phase-block,
+  :root[data-connection-state="syncing"] #page-tanks .tancagem-phase-block,
+  :root[data-connection-state="online"] #page-tanks .tancagem-phase-block{scroll-margin-top:174px}
 }
 
 :root[data-theme="dark"] .app-state-banner.state-offline{border-color:#5e4826;background:#2b2316;color:#f1cf8f}

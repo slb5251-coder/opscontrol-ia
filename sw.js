@@ -1,4 +1,4 @@
-const CACHE="opscontrol-20260721-ai-4";
+const CACHE="opscontrol-20260721-figma-final-1";
 const FILES=[
   "./",
   "./index.html",
@@ -7,6 +7,7 @@ const FILES=[
   "./opscontrol-ui.css?v=20260721-ui-consolidada-1",
   "./figma-interface.css?v=20260721-icons-3",
   "./assistente-integrado.css?v=20260721-ai-2",
+  "./figma-final.css?v=20260721-final-1",
   "./interface-fix.css?v=20260721-interface-fix-1",
   "./design-upgrade.css?v=20260721-control-center-1",
   "./tank-cards-reference.css?v=20260721-reference-cards-1",
@@ -19,6 +20,7 @@ const FILES=[
   "./js/tank-cards-reference.js?v=20260721-reference-cards-1",
   "./manifest.json",
   "./assets/icon.svg",
+  "./assets/figma/login-reference.png",
   "./vendor/qrcode.js"
 ];
 
@@ -48,6 +50,7 @@ self.addEventListener("fetch", event => {
     url.pathname.endsWith("/opscontrol-ui.css") ||
     url.pathname.endsWith("/figma-interface.css") ||
     url.pathname.endsWith("/assistente-integrado.css") ||
+    url.pathname.endsWith("/figma-final.css") ||
     url.pathname.endsWith("/interface-fix.css") ||
     url.pathname.endsWith("/design-upgrade.css") ||
     url.pathname.endsWith("/tank-cards-reference.css") ||

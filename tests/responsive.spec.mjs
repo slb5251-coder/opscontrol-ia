@@ -145,8 +145,23 @@ try {
     await page.screenshot({ path: resolve(outputDir, `responsive-${width}.png`), fullPage: true });
 
     await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: 'domcontentloaded' });
-    const loginOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 2);
-    record(width, 'login sem overflow global', !loginOverflow);
+    await page.waitForTimeout(80);
+    const loginAudit = await page.evaluate(() => ({
+      overflow: document.documentElement.scrollWidth > document.documentElement.clientWidth + 2,
+      controls: Boolean(document.querySelector('#loginForm') && document.querySelector('#togglePasswordBtn') && document.querySelector('#rememberLogin') && document.querySelector('#forgotPasswordBtn')),
+      honestMetrics: !document.querySelector('.login-ops-metrics')?.textContent.includes('18') && !document.querySelector('.login-ops-metrics')?.textContent.includes('15'),
+      dialogAccessible: document.querySelector('#modal')?.getAttribute('aria-modal') === 'true'
+    }));
+    record(width, 'login sem overflow global', !loginAudit.overflow);
+    record(width, 'login com controles completos', loginAudit.controls);
+    record(width, 'login sem métricas operacionais fixas', loginAudit.honestMetrics);
+    record(width, 'diálogo acessível', loginAudit.dialogAccessible);
+    await page.click('#togglePasswordBtn');
+    record(width, 'mostrar senha funcional', await page.$eval('#loginPassword', input => input.type === 'text'));
+    await page.click('#togglePasswordBtn');
+    record(width, 'ocultar senha funcional', await page.$eval('#loginPassword', input => input.type === 'password'));
+    await page.click('#loginBtn');
+    record(width, 'validação de credenciais vazias', await page.$eval('#loginMessage', element => !element.classList.contains('hidden') && element.textContent.includes('Preencha')));
     await page.screenshot({ path: resolve(outputDir, `login-${width}.png`), fullPage: true });
 
     const assistantAudit = await page.evaluate(() => {

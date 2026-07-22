@@ -4,7 +4,11 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test:responsive": "node tests/responsive.spec.mjs"
+    "lint": "node scripts/validate-static.mjs",
+    "typecheck": "node scripts/check-js.mjs",
+    "test": "npm run test:responsive && node tests/security.spec.mjs",
+    "test:responsive": "node tests/responsive.spec.mjs",
+    "build": "node scripts/build.mjs"
   },
   "devDependencies": {
     "playwright": "1.55.0"

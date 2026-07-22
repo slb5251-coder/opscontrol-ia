@@ -24,13 +24,30 @@ jobs:
           node-version: 20
 
       - name: Install dependencies
-        run: npm install
+        run: npm ci
+
+      - name: Lint and static validation
+        run: npm run lint
+
+      - name: Type and syntax check
+        run: npm run typecheck
+
+      - name: Production build
+        run: npm run build
 
       - name: Install Chromium
         run: npx playwright install --with-deps chromium
 
       - name: Run responsive tests
         run: npm run test:responsive
+
+      - name: Upload functional preview
+        uses: actions/upload-artifact@v4
+        with:
+          name: opscontrol-preview-${{ github.sha }}
+          path: dist/
+          if-no-files-found: error
+          retention-days: 14
 
       - name: Upload screenshots and report
         if: always()

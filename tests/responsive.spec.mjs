@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 const outputDir = resolve(root, 'test-results');
-const widths = [390, 768, 1024, 1366];
+const widths = [390, 1024, 1280, 1440, 1920];
+const heights = { 390: 844, 1024: 768, 1280: 800, 1440: 900, 1920: 1080 };
 const mime = {
   '.html': 'text/html; charset=utf-8',
   '.css': 'text/css; charset=utf-8',
@@ -50,7 +51,7 @@ function record(width, check, ok, detail = '') {
 
 try {
   for (const width of widths) {
-    const context = await browser.newContext({ viewport: { width, height: width <= 768 ? 900 : 820 } });
+    const context = await browser.newContext({ viewport: { width, height: heights[width] } });
     const page = await context.newPage();
 
     await page.route('**/*', async route => {
@@ -147,6 +148,14 @@ try {
     await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: 'domcontentloaded' });
     const loginOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 2);
     record(width, 'login sem overflow global', !loginOverflow);
+    const loginAudit = await page.evaluate(() => ({
+      hasPasswordToggle: Boolean(document.querySelector('#togglePasswordBtn')),
+      hasRemember: Boolean(document.querySelector('#rememberLogin')),
+      hasRecovery: Boolean(document.querySelector('#forgotPasswordBtn')),
+      hasOffshoreReference: getComputedStyle(document.querySelector('.login-hero')).backgroundImage.includes('login-reference.png')
+    }));
+    record(width, 'login com controles funcionais', loginAudit.hasPasswordToggle && loginAudit.hasRemember && loginAudit.hasRecovery);
+    record(width, 'login usa referência offshore aprovada', width <= 820 || loginAudit.hasOffshoreReference);
     await page.screenshot({ path: resolve(outputDir, `login-${width}.png`), fullPage: true });
 
     const assistantAudit = await page.evaluate(() => {

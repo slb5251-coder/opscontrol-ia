@@ -4,7 +4,12 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "test:responsive": "node tests/responsive.spec.mjs"
+    "lint": "node --check js/app.js && node --check js/assistente-integrado.js && node --check js/ui-polish.js && node scripts/validate-static.mjs",
+    "typecheck": "node --check js/app.js && node --check js/assistente-integrado.js && node --check js/ui-polish.js",
+    "test": "npm run test:responsive && npm run test:final",
+    "test:responsive": "node tests/responsive.spec.mjs",
+    "test:final": "node tests/final-ui.spec.mjs",
+    "build": "node scripts/build.mjs"
   },
   "devDependencies": {
     "playwright": "1.55.0"

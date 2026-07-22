@@ -1,18 +1,25 @@
-name: Validate Interface
+name: Validate OPSControl
 
 on:
   push:
-    branches: [main]
+    branches: [main, homologacao]
   pull_request:
-    branches: [main]
+    branches: [main, homologacao]
   workflow_dispatch:
 
 permissions:
   contents: read
 
+concurrency:
+  group: validate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  validate:
+  quality:
+    name: Lint, testes e build
     runs-on: ubuntu-latest
+    timeout-minutes: 25
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -21,18 +28,30 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: '22'
+          cache: npm
 
-      - name: Validate JavaScript syntax
-        shell: bash
-        run: |
-          set -euo pipefail
-          while IFS= read -r -d '' file; do
-            echo "Checking $file"
-            node --check "$file"
-          done < <(find js -type f -name '*.js' -print0)
-          node --check sw.js
+      - name: Install dependencies
+        run: npm ci
 
-      - name: Validate interface references and CSS balance
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Validate static files
+        run: npm run lint
+
+      - name: Validate JavaScript
+        run: npm run typecheck
+
+      - name: Run responsive tests
+        run: npm run test:responsive
+
+      - name: Run security tests
+        run: node tests/security.spec.mjs
+
+      - name: Build application
+        run: npm run build
+
+      - name: Validate runtime references and CSS balance
         shell: python
         run: |
           from pathlib import Path
@@ -67,7 +86,11 @@ jobs:
             if not path.exists():
               errors.append(f'Missing required interface file: {path}')
 
-          forbidden = ['design-upgrade.css', 'js/design-upgrade.js', 'js/design-stability.js']
+          forbidden = [
+            'design-upgrade.css',
+            'js/design-upgrade.js',
+            'js/design-stability.js',
+          ]
           combined = runtime_css + runtime_js + service_worker
           for item in forbidden:
             if item in combined:
@@ -82,4 +105,13 @@ jobs:
             print('\n'.join(f'- {error}' for error in errors))
             sys.exit(1)
 
-          print(f'Validated {len(css_refs)} runtime CSS imports and {len(js_refs)} runtime JS modules.')
+          print(f'Validated {len(css_refs)} CSS imports and {len(js_refs)} JS modules.')
+
+      - name: Upload responsive test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: responsive-test-results-${{ github.run_number }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14

@@ -3,6 +3,7 @@
 
   const scriptUrl = document.currentScript?.src || new URL("js/interface-runtime.js", document.baseURI).href;
   const scripts = [
+    ["observability", "system-observability.js?v=20260722-observability-1"],
     ["tank-cards-reference", "tank-cards-reference.js?v=20260722-mobile-tanks-1"],
     ["ops-v2", "interface-ops-v2.js?v=20260722-ops-v2-1"],
     ["tv-control-room", "tv-control-room.js?v=20260722-tv-control-room-1"],

@@ -3,8 +3,8 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-  <meta name="theme-color" content="#0b1f3a">
-  <title>OpsControl IA Pro</title>
+  <meta name="theme-color" content="#07111f">
+  <title>OPSControl IA</title>
   <link rel="manifest" href="manifest.json">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="app.css?v=20260719-v33-12-14-1-client-tickets">
@@ -12,56 +12,56 @@
   <link rel="stylesheet" href="opscontrol-ui.css?v=20260721-ui-consolidada-1">
   <link rel="stylesheet" href="figma-interface.css?v=20260721-icons-3">
   <link rel="stylesheet" href="assistente-integrado.css?v=20260721-ai-2">
+  <link rel="stylesheet" href="figma-final.css?v=20260721-final-1">
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
 </head>
 <body>
-  <section id="loginView" class="login-view">
-    <div class="login-hero">
-      <div class="login-hero-copy">
-        <span class="hero-badge">B-PORT LMP</span>
-        <h1>OpsControl IA</h1>
-        <p>Centro de controle operacional para fluidos, granéis, logística, QHSE e manutenção.</p>
+  <section id="loginView" class="login-view" aria-labelledby="loginTitle">
+    <div class="login-hero" aria-label="Embarcação offshore navegando junto ao terminal industrial">
+      <div class="login-hero-live">
+        <span class="login-live-dot" aria-hidden="true"></span>
+        <span>Centro operacional conectado</span>
       </div>
-
-      <section class="login-ops-overview" aria-label="Visão geral da planta">
-        <header><span aria-hidden="true"></span><strong>Centro de controle operacional</strong></header>
-        <div class="login-ops-metrics">
-          <article><strong>18</strong><span>Tanques WBM</span></article>
-          <article><strong>15</strong><span>Tanques SBM</span></article>
-          <article><strong>9</strong><span>Silos de granel</span></article>
-          <article><strong>24/7</strong><span>Operação integrada</span></article>
-        </div>
-        <div class="login-process" aria-label="Fluxo operacional">
-          <div><b>1</b><span>Recebimento</span></div><i aria-hidden="true"></i>
-          <div><b>2</b><span>Armazenamento</span></div><i aria-hidden="true"></i>
-          <div><b>3</b><span>Fabricação</span></div><i aria-hidden="true"></i>
-          <div><b>4</b><span>Bombeio</span></div>
-        </div>
-      </section>
-
-      <small class="login-hero-foot">Operações mais seguras, rastreáveis e conectadas.</small>
+      <div class="login-sea-motion" aria-hidden="true"><i></i><i></i><i></i></div>
+      <div class="login-wake" aria-hidden="true"></div>
+      <p class="sr-only">Operação offshore integrada, segura e rastreável em tempo real.</p>
     </div>
     <div class="login-panel">
-      <div class="login-card">
-        <div class="logo-mark">OC</div>
-        <h2>Entrar no sistema</h2>
-        <p id="connectionHint">Acesse com seu e-mail e senha cadastrados.</p>
-        <label for="loginEmail">E-mail</label>
+      <main class="login-card">
+        <div class="login-brand" aria-label="OPSControl IA">
+          <span class="logo-mark">OC</span>
+          <div><strong>OPSControl IA</strong><small>INTELLIGENT OPERATIONS</small></div>
+        </div>
+        <div class="login-heading">
+          <span>ACESSO OPERACIONAL</span>
+          <h1 id="loginTitle">Bem-vindo</h1>
+          <p id="connectionHint">Entre com suas credenciais para acessar o centro de controle.</p>
+        </div>
+        <label for="loginEmail">E-mail ou usuário</label>
         <div class="login-field">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><rect x="3" y="5" width="18" height="14" rx="2"></rect><path d="m3 7 9 6 9-6"></path></svg>
-          <input id="loginEmail" type="email" placeholder="nome@empresa.com" autocomplete="email">
+          <input id="loginEmail" type="text" placeholder="nome@empresa.com" autocomplete="username" autocapitalize="none" spellcheck="false">
         </div>
         <label for="loginPassword">Senha</label>
-        <div class="login-field">
+        <div class="login-field login-password-field">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg>
-          <input id="loginPassword" type="password" placeholder="Sua senha" autocomplete="current-password">
+          <input id="loginPassword" type="password" placeholder="Digite sua senha" autocomplete="current-password">
+          <button id="togglePasswordBtn" type="button" class="login-field-action" aria-label="Mostrar senha" aria-pressed="false">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" aria-hidden="true"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6z"></path><circle cx="12" cy="12" r="2.7"></circle></svg>
+          </button>
         </div>
-        <button id="loginBtn" class="btn primary full">Entrar <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14"></path><path d="m13 6 6 6-6 6"></path></svg></button>
-        <div id="loginMessage" class="message hidden"></div>
-        <div class="login-security"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8.7-7 10-4-1.3-7-5.5-7-10V6l7-3z"></path><path d="m8.5 12 2.2 2.2 4.8-5"></path></svg><span>Acesso seguro e monitorado</span></div>
-      </div>
+        <div class="login-options">
+          <label class="login-remember"><input id="rememberLogin" type="checkbox" checked><span>Manter conectado</span></label>
+          <button id="forgotPasswordBtn" type="button" class="login-link">Esqueci minha senha</button>
+        </div>
+        <button id="loginBtn" class="btn primary full login-submit"><span>Acessar OPSControl</span><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true"><path d="M5 12h14"></path><path d="m13 6 6 6-6 6"></path></svg></button>
+        <div id="loginMessage" class="message hidden" role="alert" aria-live="polite"></div>
+        <div class="login-divider"><span>AMBIENTE SEGURO</span></div>
+        <div class="login-security"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" aria-hidden="true"><path d="M12 3l7 3v5c0 4.5-3 8.7-7 10-4-1.3-7-5.5-7-10V6l7-3z"></path><path d="m8.5 12 2.2 2.2 4.8-5"></path></svg><span>Autenticação protegida, acesso monitorado e sessão criptografada.</span></div>
+      </main>
+      <footer class="login-footer"><span>OPSControl IA • B-Port LMP</span><span>v33.12</span></footer>
     </div>
   </section>
 
@@ -95,24 +95,28 @@
           <input id="sidebarSearch" type="search" placeholder="Buscar módulo" aria-label="Buscar módulo">
         </div>
         <nav>
-          <button class="nav-item active" data-page="dashboard"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13h8V3H3z"></path><path d="M13 21h8v-6h-8z"></path><path d="M13 11h8V3h-8z"></path><path d="M3 21h8v-6H3z"></path></svg></span><span class="nav-label">Dashboard</span></button>
+          <button class="nav-item active" data-page="dashboard"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 13h8V3H3z"></path><path d="M13 21h8v-6h-8z"></path><path d="M13 11h8V3h-8z"></path><path d="M3 21h8v-6H3z"></path></svg></span><span class="nav-label">Visão Geral</span></button>
           <button class="nav-item" data-page="tv"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="13" rx="2"></rect><path d="M8 21h8"></path><path d="M12 17v4"></path><path d="M7 9h4v4H7z"></path><path d="M14 9h3"></path><path d="M14 12h3"></path></svg></span><span class="nav-label">Painel TV</span></button>
           <button class="nav-item" data-page="quality"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8.7-7 10-4-1.3-7-5.5-7-10V6l7-3z"></path><path d="M8.5 12l2.2 2.2 4.8-5"></path></svg></span><span class="nav-label">Qualidade dos Dados</span></button>
           <button class="nav-item" data-page="sanitation"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h16"></path><path d="M7 5v14h10V5"></path><path d="M9 9h6"></path><path d="M9 13h6"></path><path d="M9 17h4"></path></svg></span><span class="nav-label">Saneamento de Dados</span></button>
           <button class="nav-item" data-page="operations"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v15"></path><path d="M8 7l4-4 4 4"></path><path d="M5 21h14"></path><path d="M4 17c2.5 0 3.5 1 5 1s2.5-1 4-1 2.5 1 4 1 2.5-1 3-1"></path></svg></span><span class="nav-label">Operações</span></button>
-          <button class="nav-item" data-page="vessel-registry"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18h18"></path><path d="M5 18l2-8h10l2 8"></path><path d="M9 10V6h6v4"></path><path d="M7 21h10"></path></svg></span><span class="nav-label">Cadastro de Embarcações</span></button>
-          <button class="nav-item" data-page="tanks"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4h10"></path><path d="M7 20h10"></path><path d="M8 4v16"></path><path d="M16 4v16"></path><path d="M8 9h8"></path><path d="M8 15h8"></path></svg></span><span class="nav-label">Tanques e Silos</span></button>
-          <button class="nav-item" data-page="fluids"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v5.5L5.4 15a5 5 0 0 0 4.6 7h4a5 5 0 0 0 4.6-7L14 7.5V2"></path><path d="M8 2h8"></path><path d="M8 14h8"></path></svg></span><span class="nav-label">Fluidos e Granéis</span></button>
+          <button class="nav-item" data-page="vessel-registry"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M3 18h18"></path><path d="M5 18l2-8h10l2 8"></path><path d="M9 10V6h6v4"></path><path d="M7 21h10"></path></svg></span><span class="nav-label">Programação de Embarcações</span></button>
+          <button class="nav-item" data-page="tanks"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M7 4h10"></path><path d="M7 20h10"></path><path d="M8 4v16"></path><path d="M16 4v16"></path><path d="M8 9h8"></path><path d="M8 15h8"></path></svg></span><span class="nav-label">Planta e Tancagem</span></button>
+          <button class="nav-item" data-page="fluids"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v5.5L5.4 15a5 5 0 0 0 4.6 7h4a5 5 0 0 0 4.6-7L14 7.5V2"></path><path d="M8 2h8"></path><path d="M8 14h8"></path></svg></span><span class="nav-label">Inventários e Movimentações</span></button>
           <button class="nav-item" data-page="chemical-catalog"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="16" rx="2"></rect><path d="M8 8h8"></path><path d="M8 12h8"></path><path d="M8 16h5"></path></svg></span><span class="nav-label">Catálogo Químico</span></button>
           <button class="nav-item" data-page="chemicals"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 2v7.5L5 18a3 3 0 0 0 2.6 4.5h8.8A3 3 0 0 0 19 18l-5-8.5V2"></path><path d="M8 2h8"></path><path d="M8.5 14h7"></path></svg></span><span class="nav-label">Inventário Químico</span></button>
-          <button class="nav-item" data-page="trucks"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 17h4"></path><path d="M3 6h11v9H3z"></path><path d="M14 9h3l4 4v2h-7z"></path><circle cx="7.5" cy="18" r="1.5"></circle><circle cx="17.5" cy="18" r="1.5"></circle></svg></span><span class="nav-label">Carretas</span></button>
+          <button class="nav-item" data-page="trucks"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M10 17h4"></path><path d="M3 6h11v9H3z"></path><path d="M14 9h3l4 4v2h-7z"></path><circle cx="7.5" cy="18" r="1.5"></circle><circle cx="17.5" cy="18" r="1.5"></circle></svg></span><span class="nav-label">Controle de Carretas</span></button>
           <button class="nav-item" data-page="client-tickets"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 5h6l2 2h8v12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2z"></path><path d="M8 12h8"></path><path d="M8 16h5"></path></svg></span><span class="nav-label">Tickets de Clientes</span></button>
           <button class="nav-item" data-page="qhse"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l7 3v5c0 4.5-3 8.7-7 10-4-1.3-7-5.5-7-10V6l7-3z"></path><path d="M9.5 12.5l1.8 1.8 3.7-4"></path></svg></span><span class="nav-label">QHSE</span></button>
-          <button class="nav-item" data-page="maintenance"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.3 2.3-2-2z"></path></svg></span><span class="nav-label">Manutenção</span></button>
+          <button class="nav-item" data-page="maintenance"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.3 2.3-2-2z"></path></svg></span><span class="nav-label">Equipamentos e Manutenção</span></button>
+          <button class="nav-item" data-page="dds"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19V5a2 2 0 0 1 2-2h11a2 2 0 0 1 2 2v14"></path><path d="M4 17h15"></path><path d="M8 7h7"></path><path d="M8 11h5"></path></svg></span><span class="nav-label">DDS e Cursos</span></button>
+          <button class="nav-item" data-page="documents"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M7 3h7l5 5v13H7z"></path><path d="M14 3v5h5"></path><path d="M10 13h6"></path><path d="M10 17h5"></path></svg></span><span class="nav-label">Documentos e Certificados</span></button>
           <button class="nav-item" data-page="certificates"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3h8l5 5v11a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"></path><path d="M16 3v5h5"></path><path d="M9 13h6"></path><path d="M9 17h4"></path></svg></span><span class="nav-label">Certificados</span></button>
-          <button class="nav-item" data-page="alerts"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 7h18s-3 0-3-7"></path><path d="M10.5 20a1.5 1.5 0 0 0 3 0"></path></svg></span><span class="nav-label">Alertas e Chat</span></button>
-          <button class="nav-item" data-page="ai-assistant"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z"></path><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15z"></path></svg></span><span class="nav-label">Assistente IA</span></button>
+          <button class="nav-item" data-page="alerts"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 7h18s-3 0-3-7"></path><path d="M10.5 20a1.5 1.5 0 0 0 3 0"></path></svg></span><span class="nav-label">Alertas e Comunicação</span></button>
+          <button class="nav-item" data-page="ai-assistant"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z"></path><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15z"></path></svg></span><span class="nav-label">Assistente OPS IA</span></button>
           <button class="nav-item" data-page="reports"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M4 20V10"></path><path d="M10 20V4"></path><path d="M16 20v-7"></path><path d="M22 20v-3"></path></svg></span><span class="nav-label">Relatórios</span></button>
+          <button class="nav-item" data-page="handover"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M7 7h10"></path><path d="m14 4 3 3-3 3"></path><path d="M17 17H7"></path><path d="m10 14-3 3 3 3"></path></svg></span><span class="nav-label">Passagem de Turno</span></button>
+          <button class="nav-item" data-page="users"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="9" cy="8" r="3"></circle><path d="M3 20c.5-4 2.5-6 6-6s5.5 2 6 6"></path><path d="M17 8h4"></path><path d="M19 6v4"></path></svg></span><span class="nav-label">Usuários e Permissões</span></button>
           <button class="nav-item" data-page="audit"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l2 2 4-4"></path><path d="M5 3h14v18H5z"></path><path d="M8 7h8"></path><path d="M8 17h8"></path></svg></span><span class="nav-label">Auditoria</span></button>
           <button class="nav-item" data-page="settings"><span class="nav-icon" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 0 1 0 2.8 2 2 0 0 1-2.8 0l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 0 1-4 0v-.2a1.7 1.7 0 0 0-1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 0 1 0-4h.2a1.7 1.7 0 0 0 1.5-1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 0 1 4 0v.2a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9c0 .7.4 1.3 1 1.5h.2a2 2 0 0 1 0 4h-.2a1.7 1.7 0 0 0-1.5 1z"></path></svg></span><span class="nav-label">Configurações</span></button>
         </nav>
@@ -141,6 +145,10 @@
         <section id="page-alerts" class="page"></section>
         <section id="page-ai-assistant" class="page page-ai-integrated"></section>
         <section id="page-reports" class="page"></section>
+        <section id="page-handover" class="page"></section>
+        <section id="page-dds" class="page"></section>
+        <section id="page-documents" class="page"></section>
+        <section id="page-users" class="page"></section>
         <section id="page-audit" class="page"></section>
         <section id="page-settings" class="page"></section>
       </main>

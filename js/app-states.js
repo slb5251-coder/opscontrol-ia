@@ -119,7 +119,7 @@
       }
     });
 
-    const cards = $$(".reference-tank-card", page);
+    const cards = $$(".tank-card", page);
     const visible = cards.filter(card => !card.hidden && !card.closest("[hidden]")).length;
     const result = $("[data-tank-filter-result]", page);
     if (result) result.dataset.visibleCount = String(visible);

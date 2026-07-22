@@ -1,4 +1,4 @@
-const CACHE="opscontrol-20260722-truck-workflow-1";
+const CACHE="opscontrol-20260722-truck-workflow-compat-1";
 const FILES=[
   "./",
   "./index.html",
@@ -34,6 +34,7 @@ const FILES=[
   "./js/operations-analytics.js?v=20260722-operations-analytics-1",
   "./js/operation-products-extension.js?v=20260722-operation-products-extension-1",
   "./js/truck-workflow-extension.js?v=20260722-truck-workflow-1",
+  "./js/truck-workflow-compat.js?v=20260722-truck-workflow-compat-1",
   "./js/alert-center-v2.js?v=20260722-alert-center-v2-1",
   "./js/app-states.js?v=20260722-app-states-1",
   "./manifest.json",
@@ -95,6 +96,7 @@ self.addEventListener("fetch", event => {
     url.pathname.endsWith("/js/operations-analytics.js") ||
     url.pathname.endsWith("/js/operation-products-extension.js") ||
     url.pathname.endsWith("/js/truck-workflow-extension.js") ||
+    url.pathname.endsWith("/js/truck-workflow-compat.js") ||
     url.pathname.endsWith("/js/alert-center-v2.js") ||
     url.pathname.endsWith("/js/app-states.js")
   );

@@ -14,13 +14,11 @@
   function parseNumber(value) {
     const raw = clean(value).replace(/[^\d,.-]/g, "");
     if (!raw) return 0;
-    const comma = raw.lastIndexOf(",");
-    const dot = raw.lastIndexOf(".");
-    const normalizedValue = comma > dot
-      ? raw.replace(/\./g, "").replace(",", ".")
-      : comma >= 0
-        ? raw.replace(",", ".")
-        : raw;
+    const hasComma = raw.includes(",");
+    const hasDot = raw.includes(".");
+    let normalizedValue = raw;
+    if (hasComma) normalizedValue = raw.replace(/\./g, "").replace(",", ".");
+    else if (hasDot) normalizedValue = raw.replace(/\./g, "");
     const number = Number(normalizedValue);
     return Number.isFinite(number) ? number : 0;
   }

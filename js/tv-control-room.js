@@ -13,6 +13,10 @@
     return String(value).replace(/\s+/g, " ").trim();
   }
 
+  function setText(element, value) {
+    if (element && element.textContent !== value) element.textContent = value;
+  }
+
   function activeSlideLabel(screen) {
     const active = $(".tv-dots button.active", screen);
     return normalize(active?.textContent || "Visão operacional").replace(/^\d+\.\s*/, "");
@@ -81,10 +85,10 @@
     });
 
     const rotationButton = $("[data-tv-control-rotation]", screen);
-    if (rotationButton) rotationButton.textContent = rotationLabel(screen);
+    setText(rotationButton, rotationLabel(screen));
 
     const fullscreenButton = $("[data-tv-control-fullscreen]", screen);
-    if (fullscreenButton) fullscreenButton.textContent = document.fullscreenElement ? "Sair da tela cheia" : "Tela cheia";
+    setText(fullscreenButton, document.fullscreenElement ? "Sair da tela cheia" : "Tela cheia");
   }
 
   function syncStatusRail(screen) {
@@ -93,13 +97,13 @@
 
     const connection = connectionStatus();
     const alertCount = Number(normalize($("#alertCount")?.textContent || "0")) || 0;
-    $('[data-tv-status="view"] strong', rail).textContent = activeSlideLabel(screen);
-    $('[data-tv-status="connection"] strong', rail).textContent = connection.text;
+    setText($('[data-tv-status="view"] strong', rail), activeSlideLabel(screen));
+    setText($('[data-tv-status="connection"] strong', rail), connection.text);
     $('[data-tv-status="connection"]', rail).classList.toggle("is-warning", !connection.healthy);
     $('[data-tv-status="connection"]', rail).classList.toggle("is-online", connection.healthy);
-    $('[data-tv-status="alerts"] strong', rail).textContent = `${alertCount} pendente${alertCount === 1 ? "" : "s"}`;
+    setText($('[data-tv-status="alerts"] strong', rail), `${alertCount} pendente${alertCount === 1 ? "" : "s"}`);
     $('[data-tv-status="alerts"]', rail).classList.toggle("is-warning", alertCount > 0);
-    $('[data-tv-status="rotation"] strong', rail).textContent = rotationLabel(screen);
+    setText($('[data-tv-status="rotation"] strong', rail), rotationLabel(screen));
   }
 
   function applyScreenClass(screen) {
@@ -176,8 +180,12 @@
   function start() {
     schedule();
     const page = $(PAGE_SELECTOR);
-    if (page) new MutationObserver(schedule).observe(page, { childList: true, subtree: true, characterData: true });
-    new MutationObserver(schedule).observe(document.body, { childList: true, subtree: true });
+    if (page) new MutationObserver(schedule).observe(page, { childList: true, subtree: true });
+
+    const statusObserver = new MutationObserver(schedule);
+    [$("#syncBadge"), $("#alertCount")].filter(Boolean).forEach(element => {
+      statusObserver.observe(element, { childList: true, subtree: true, characterData: true });
+    });
     window.addEventListener("resize", schedule, { passive: true });
     document.addEventListener("fullscreenchange", schedule);
     document.addEventListener("visibilitychange", schedule);

@@ -10,16 +10,13 @@ Evitar que alterações incompletas, regressões visuais ou mudanças incompatí
 - `homologacao`: integração e validação antes da produção.
 - branches de trabalho: uma branch curta por correção ou funcionalidade.
 
-## Ambientes
+## Acesso ao ambiente
 
-- `production`: usa exclusivamente o Supabase de produção.
-- `staging`: usa exclusivamente uma branch ou projeto Supabase sem dados reais.
+A homologação é ativada com `?env=staging`. O frontend deve exibir uma faixa permanente de identificação e usar exclusivamente o projeto Supabase `opscontrol-ia-homologacao`.
 
-O ambiente é selecionado pelo parâmetro `?env=production` ou `?env=staging` e fica armazenado no navegador. Ao entrar em staging, a aplicação deve exibir uma faixa amarela permanente com a identificação **AMBIENTE DE HOMOLOGAÇÃO**.
+A produção é ativada com `?env=production` e permanece no projeto `opscontrol-ia-v2`.
 
-Enquanto a URL e a chave de staging não estiverem configuradas, o login deve permanecer bloqueado. Esse bloqueio é obrigatório para impedir que uma sessão de testes utilize produção por engano.
-
-Nunca preencher a configuração de staging com a URL ou a chave de produção. Para retornar à versão normal, usar o botão **Voltar para produção** ou abrir a aplicação com `?env=production`.
+Nunca liberar o login de staging quando a URL ou chave forem iguais às de produção.
 
 ## Fluxo obrigatório
 
@@ -41,13 +38,12 @@ Nunca preencher a configuração de staging com a URL ou a chave de produção. 
 - Não remover tabelas, colunas ou dados do Supabase sem snapshot e análise de uso.
 - Não considerar uma tela aprovada apenas porque está bonita; validar leitura, ação, erro, vazio, carregamento e responsividade.
 - Não realizar merge com check falhando ou sem execução dos testes.
-- Não testar escrita, exclusão ou permissões no banco de produção.
+- Não copiar dados operacionais de produção para homologação sem anonimização e necessidade comprovada.
+- Não criar usuários por inserção direta em `auth.users`; usar a API administrativa ou o painel do Supabase.
 
 ## Validação mínima
 
 - Login e recuperação de acesso.
-- Confirmação visual do ambiente ativo.
-- Bloqueio de staging sem banco separado.
 - Dashboard conforme o cargo.
 - Tanques e silos: leitura, atualização e histórico.
 - Operações: criação, andamento e conclusão.
@@ -56,6 +52,7 @@ Nunca preencher a configuração de staging com a URL ou a chave de produção. 
 - Celular em 390 px.
 - Painel TV em tela cheia.
 - Modo offline e retorno da conexão.
+- Confirmação visual de que o ambiente ativo é homologação.
 
 ## Rollback
 

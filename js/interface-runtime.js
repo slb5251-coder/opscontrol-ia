@@ -1,0 +1,39 @@
+(() => {
+  "use strict";
+
+  const scriptUrl = document.currentScript?.src || new URL("js/interface-runtime.js", document.baseURI).href;
+  const scripts = [
+    ["design-upgrade", "design-upgrade.js?v=20260721-control-center-1"],
+    ["design-stability", "design-stability.js?v=20260721-original-tanks-1"],
+    ["tank-cards-reference", "tank-cards-reference.js?v=20260721-reference-cards-1"],
+    ["ops-v2", "interface-ops-v2.js?v=20260722-ops-v2-1"]
+  ];
+
+  function loadScript(marker, relativePath) {
+    if (document.querySelector(`script[data-${marker}="true"]`)) return Promise.resolve();
+
+    return new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = new URL(relativePath, scriptUrl).href;
+      script.async = false;
+      script.setAttribute(`data-${marker}`, "true");
+      script.addEventListener("load", resolve, { once: true });
+      script.addEventListener("error", () => reject(new Error(`Falha ao carregar ${relativePath}`)), { once: true });
+      document.head.appendChild(script);
+    });
+  }
+
+  async function start() {
+    for (const [marker, relativePath] of scripts) {
+      try {
+        await loadScript(marker, relativePath);
+      } catch (error) {
+        console.error("[OpsControl UI]", error);
+      }
+    }
+    document.documentElement.dataset.interfaceRuntime = "ready";
+    document.dispatchEvent(new CustomEvent("opscontrol:interface-ready"));
+  }
+
+  start();
+})();

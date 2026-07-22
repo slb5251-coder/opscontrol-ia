@@ -134,7 +134,7 @@ try {
       await page.screenshot({ path:resolve(outputDir, 'dashboard-390.png'), fullPage:true });
     }
 
-    if (viewport.width === 1440) {
+    if (viewport.width === 1440 || viewport.width === 390) {
       for (const route of routes) {
         const activated = await page.evaluate(routeName => {
           const trigger = document.querySelector(`[data-page="${routeName}"], [data-page-link="${routeName}"], [data-mobile-page="${routeName}"]`);
@@ -144,14 +144,60 @@ try {
         await page.waitForTimeout(40);
         const state = await page.evaluate(routeName => ({
           active:document.querySelector(`#page-${routeName}`)?.classList.contains('active'),
-          error:Boolean(document.querySelector(`#page-${routeName} .module-error-card`))
+          error:Boolean(document.querySelector(`#page-${routeName} .module-error-card`)),
+          overflow:document.documentElement.scrollWidth > document.documentElement.clientWidth + 2,
+          widths:`${document.documentElement.scrollWidth}/${document.documentElement.clientWidth} x=${Math.round(scrollX)}`,
+          wide:[...document.querySelectorAll(`#page-${routeName} *`)].filter(element => element.getBoundingClientRect().right > innerWidth + 2).slice(0,5).map(element => `${element.tagName.toLowerCase()}.${element.className || '-'}@${Math.round(element.getBoundingClientRect().right)}`).join(', '),
+          internal:[...document.querySelectorAll(`#page-${routeName} *`)].filter(element => element.scrollWidth > element.clientWidth + 2).slice(0,5).map(element => `${element.tagName.toLowerCase()}.${element.className || '-'}:${element.scrollWidth}/${element.clientWidth}`).join(', ')
         }), route);
-        check(`rota ${route}`, activated && state.active && !state.error);
-        await page.screenshot({ path:resolve(outputDir, 'routes', `${route}.png`), fullPage:true });
+        check(`${viewport.width === 390 ? 'rota mobile' : 'rota'} ${route}`, activated && state.active && !state.error && !state.overflow, state.overflow ? `${state.widths} · ${state.wide} · ${state.internal}` : '');
+        if (viewport.width === 1440) await page.screenshot({ path:resolve(outputDir, 'routes', `${route}.png`), fullPage:true });
+        if (viewport.width === 390 && ['operations','vessel-registry','maintenance','qhse','documents','handover'].includes(route)) await page.screenshot({ path:resolve(outputDir, 'routes', `mobile-${route}.png`), fullPage:true });
       }
     }
 
     await page.evaluate(() => document.querySelector('[data-page="tanks"]')?.click());
+    if (viewport.width === 1440) {
+      const tankDefault = await page.evaluate(() => ({
+        cardsVisible:!document.querySelector('[data-tank-panel="cards"]')?.hidden,
+        mapHidden:document.querySelector('[data-tank-panel="map"]')?.hidden,
+        detailButtons:document.querySelectorAll('.asset-card-link[data-tank-detail]').length,
+        cards:document.querySelectorAll('.native-asset-card').length
+      }));
+      check('tancagem sem mapa empilhado', tankDefault.cardsVisible && tankDefault.mapHidden);
+      check('todos os ativos com acesso aos detalhes', tankDefault.cards > 0 && tankDefault.detailButtons === tankDefault.cards);
+      await page.click('[data-tank-view="map"]');
+      const mapView = await page.evaluate(() => ({
+        cardsHidden:document.querySelector('[data-tank-panel="cards"]')?.hidden,
+        mapVisible:!document.querySelector('[data-tank-panel="map"]')?.hidden,
+        selected:document.querySelector('[data-tank-view="map"]')?.getAttribute('aria-selected')
+      }));
+      check('mapa da planta como visualização exclusiva', mapView.cardsHidden && mapView.mapVisible && mapView.selected === 'true');
+      await page.screenshot({ path:resolve(outputDir, 'plant-map-1440.png'), fullPage:true });
+      await page.click('[data-tank-view="cards"]');
+
+      await page.evaluate(() => document.querySelector('[data-page="operations"]')?.click());
+      check('cronograma operacional completo', await page.locator('.operation-stage-track > span').count() === 8);
+      await page.evaluate(() => document.querySelector('[data-page="vessel-registry"]')?.click());
+      const initialWeek = await page.locator('.schedule-toolbar > div:first-child > strong').textContent();
+      await page.click('[data-vessel-week="1"]');
+      const nextWeek = await page.locator('.schedule-toolbar > div:first-child > strong').textContent();
+      check('navegação semanal de embarcações funcional', initialWeek !== nextWeek);
+      await page.click('[data-vessel-jump="agenda"]');
+      check('agenda operacional funcional', await page.locator('[data-vessel-section="agenda"]:visible').count() === 1);
+      await page.evaluate(() => document.querySelector('[data-page="maintenance"]')?.click());
+      check('manutenção com vazio acionável', await page.locator('.maintenance-empty-state [data-action="new-equipment"]').count() === 1 && await page.locator('.maintenance-schedule-empty [data-action="new-maintenance-order"]').count() === 1);
+      await page.evaluate(() => document.querySelector('[data-page="qhse"]')?.click());
+      check('QHSE não inventa indicador ausente', (await page.locator('.qhse-hero').textContent()).includes('SEM MARCO CADASTRADO'));
+      await page.evaluate(() => document.querySelector('[data-page="documents"]')?.click());
+      await page.fill('[data-document-filter="query"]', 'documento inexistente');
+      check('busca de documentos funcional', await page.locator('.document-filter-empty:visible').count() === 1);
+      await page.fill('[data-document-filter="query"]', 'bombeio');
+      check('busca de documentos restaura resultados', await page.locator('[data-document-card]:visible').count() === 1);
+      await page.click('[data-document-category="certificado"]');
+      check('filtro de categoria de documentos funcional', await page.locator('[data-document-card]:visible').count() === 0);
+      await page.evaluate(() => document.querySelector('[data-page="tanks"]')?.click());
+    }
     await page.screenshot({ path:resolve(outputDir, `tancagem-${viewport.width}.png`), fullPage:true });
     if (viewport.width === 1920) {
       await page.evaluate(() => document.querySelector('[data-mobile-page="tv"]')?.click());

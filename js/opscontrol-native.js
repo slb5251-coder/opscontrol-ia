@@ -6,6 +6,7 @@
   const compactDate = new Intl.DateTimeFormat("pt-BR", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
   let currentContext = null;
   let selectedAlertId = "";
+  let vesselWeekOffset = 0;
 
   const esc = (value = "") => String(value).replace(/[&<>"']/g, char => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[char]));
   const arr = value => Array.isArray(value) ? value : [];
@@ -21,6 +22,10 @@
     if (!value) return "—";
     const date = new Date(String(value).length === 10 ? `${value}T12:00:00` : value);
     return Number.isNaN(date.getTime()) ? "—" : date.toLocaleDateString("pt-BR");
+  };
+  const timeOnly = value => {
+    const date = value ? new Date(value) : null;
+    return date && !Number.isNaN(date.getTime()) ? date.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "—";
   };
   const relative = value => {
     if (!value) return "Sem atualização";
@@ -137,12 +142,14 @@
     const silo = normalize(asset.kind).includes("silo");
     const [status, variant] = tankStatus(asset, percentage);
     const liquidClass = silo ? "bulk" : normalize(asset.product).includes("sbm") ? "sbm" : "liquid";
-    return `<article class="native-asset-card ${silo ? "silo" : "tank"} ${variant}" style="--asset-level:${percentage}%" data-tank-search="${esc(`${asset.name} ${asset.product} ${asset.client}`.toLowerCase())}" data-tank-phase="${esc(normalize(asset.phase))}" data-tank-kind="${silo ? "silo" : "tank"}" data-tank-product="${esc(normalize(asset.product))}" data-tank-status="${esc(normalize(asset.status))}">
+    const responsible = profileName(asset.updated_by);
+    return `<article class="native-asset-card ${silo ? "silo" : "tank"} ${variant}" style="--asset-level:${percentage}%" data-tank-search="${esc(`${asset.name} ${asset.product} ${asset.client}`.toLowerCase())}" data-tank-phase="${esc(normalize(asset.phase))}" data-tank-kind="${silo ? "silo" : "tank"}" data-tank-product="${esc(normalize(asset.product))}" data-tank-status="${esc(normalize(`${asset.status} ${status}`))}">
       <header><strong>${esc(asset.name)}</strong>${badge(status, variant)}</header>
       <button class="asset-visual ${liquidClass}" type="button" data-tank-detail="${esc(asset.id)}" aria-label="Abrir detalhes de ${esc(asset.name)}"><i style="height:${percentage}%"></i><b>${Math.round(percentage)}%</b></button>
       <dl><div><dt>PRODUTO</dt><dd>${esc(asset.product || "Vazio")}</dd></div><div><dt>CLIENTE</dt><dd>${esc(asset.client || "Sem cliente")}</dd></div><div><dt>${silo ? "QUANTIDADE" : "VOLUME"}</dt><dd>${integer.format(asset.volume)}/${integer.format(asset.capacity)} ${esc(asset.unit)}</dd></div></dl>
-      <footer><span>AN: ${esc(profileName(asset.updated_by).split(" ").map(part => part[0]).join("").slice(0, 2).toUpperCase() || "—")}</span><span>Atualizado ${relative(asset.updated_at)}</span></footer>
+      <footer><span title="Responsável: ${esc(responsible)}">Resp. ${esc(responsible.split(" ").map(part => part[0]).join("").slice(0, 2).toUpperCase() || "—")}</span><span>Atualizado ${relative(asset.updated_at)}</span></footer>
       <div class="mobile-asset-level"><i><b></b></i><span><strong>${Math.round(percentage)}% Cheio</strong><em>${integer.format(asset.volume)} ${esc(asset.unit)}</em></span></div>
+      <button class="asset-card-link" type="button" data-tank-detail="${esc(asset.id)}" aria-label="Ver dados, histórico e movimentações de ${esc(asset.name)}">Ver detalhes</button>
     </article>`;
   }
 
@@ -162,15 +169,24 @@
     const products = [...new Set(assets.map(item => item.product).filter(Boolean))];
     page("tanks", `<div class="native-tanks-page">
       ${header("Controle de Tancagem", "Níveis, produtos e disponibilidade dos ativos em tempo real", `${actionButton("Transferir", "new-tank-transfer", "secondary", "network")}<button class="btn secondary" data-export="tanks">${svg("bars")}<span>Exportar</span></button>`)}
-      <div class="native-filter-bar"><div class="native-tabs"><button class="active" data-native-tank-tab="all">Todos</button>${phaseNames.map((phase, index) => `<button data-native-tank-tab="${esc(normalize(phase))}">${esc(phase.replace("Phase #", "Phase "))}</button>`).join("")}<button data-native-tank-availability="true">Disponíveis</button></div><label>Filtro de produto<select data-tank-filter="product"><option value="">Todos</option>${products.map(item => `<option value="${esc(normalize(item))}">${esc(item)}</option>`).join("")}</select></label><label>Filtro de status<select data-tank-filter="status"><option value="">Todos</option><option value="disponivel">Disponível</option><option value="manutencao">Manutenção</option></select></label><button class="view-switch active" aria-label="Visualização em grade">${svg("dashboard")}</button></div>
-      ${phaseNames.map((phase, phaseIndex) => { const phaseAssets = assets.filter(item => item.phase === phase); const tanks = phaseAssets.filter(item => !normalize(item.kind).includes("silo")); const silos = phaseAssets.filter(item => normalize(item.kind).includes("silo")); const regular = tanks.filter(item => !normalize(item.kind).includes("mix") && !/^M-/.test(item.name)); const mix = tanks.filter(item => normalize(item.kind).includes("mix") || /^M-/.test(item.name)); return `<section class="asset-phase" data-native-phase="${esc(normalize(phase))}"><h2><i class="${phaseIndex ? "amber" : "blue"}"></i>${esc(phase.replace("Phase", "FASE"))} — ${phaseIndex ? "FLUIDOS BASE SINTÉTICA (SBM)" : "FLUIDOS BASE ÁGUA (WBM)"}</h2><div class="asset-card-grid">${regular.length ? regular.map(assetCard).join("") : empty("Nenhum tanque nesta fase")}</div>${mix.length ? `<h3>Tanques de Mistura (Mix Tanks)</h3><div class="mix-card-grid">${mix.map(assetCard).join("")}</div>` : ""}${silos.length ? `<h3>Silos de Granéis</h3><div class="silo-card-grid">${silos.map(assetCard).join("")}</div>` : ""}</section>`; }).join("")}
-      ${plantMap(assets)}
+      <div class="native-filter-bar"><div class="native-tabs"><button class="active" data-native-tank-tab="all">Todos</button>${phaseNames.map(phase => `<button data-native-tank-tab="${esc(normalize(phase))}">${esc(phase.replace("Phase #", "Phase "))}</button>`).join("")}<button data-native-tank-availability="true">Disponíveis</button></div><label>Produto<select data-tank-filter="product"><option value="">Todos</option>${products.map(item => `<option value="${esc(normalize(item))}">${esc(item)}</option>`).join("")}</select></label><label>Status<select data-tank-filter="status"><option value="">Todos</option><option value="disponivel">Disponível</option><option value="desatualizado">Desatualizado</option><option value="manutencao">Manutenção</option><option value="limite alto">Limite alto</option></select></label><div class="tank-view-switch" role="tablist" aria-label="Visualização da tancagem"><button class="view-switch active" type="button" data-tank-view="cards" role="tab" aria-selected="true" aria-label="Visualização em cartões">${svg("dashboard")}</button><button class="view-switch" type="button" data-tank-view="map" role="tab" aria-selected="false" aria-label="Mapa da planta">${svg("network")}</button></div></div>
+      <div class="tank-view-panel" data-tank-panel="cards">
+        ${phaseNames.map((phase, phaseIndex) => { const phaseAssets = assets.filter(item => item.phase === phase); const tanks = phaseAssets.filter(item => !normalize(item.kind).includes("silo")); const silos = phaseAssets.filter(item => normalize(item.kind).includes("silo")); const regular = tanks.filter(item => !normalize(item.kind).includes("mix") && !/^M-/.test(item.name)); const mix = tanks.filter(item => normalize(item.kind).includes("mix") || /^M-/.test(item.name)); return `<section class="asset-phase" data-native-phase="${esc(normalize(phase))}"><h2><i class="${phaseIndex ? "amber" : "blue"}"></i>${esc(phase.replace("Phase", "FASE"))} — ${phaseIndex ? "FLUIDOS BASE SINTÉTICA (SBM)" : "FLUIDOS BASE ÁGUA (WBM)"}</h2><div class="asset-card-grid">${regular.length ? regular.map(assetCard).join("") : empty("Nenhum tanque nesta fase")}</div>${mix.length ? `<h3>Tanques de Mistura (Mix Tanks)</h3><div class="mix-card-grid">${mix.map(assetCard).join("")}</div>` : ""}${silos.length ? `<h3>Silos de Granéis</h3><div class="silo-card-grid">${silos.map(assetCard).join("")}</div>` : ""}</section>`; }).join("")}
+      </div>
+      <div class="tank-view-panel" data-tank-panel="map" hidden>${plantMap(assets)}</div>
     </div>`);
   }
 
   function operationRow(item) {
     const progress = operationProgress(item);
     return `<article class="operation-list-row"><span class="operation-type">${svg("sliders")}</span><div><strong>${esc(item.service_order || item.activity || "Operação")}</strong><small>${esc(item.client || "—")} · ${esc(item.vessel || "—")}</small></div><div><span>PRODUTO</span><strong>${esc(item.product || "—")}</strong></div><div><span>PROGRESSO</span><strong>${Math.round(progress)}%</strong><i><b style="width:${progress}%"></b></i></div><div>${badge(item.status)}</div><button class="btn secondary small" data-edit-operation="${esc(item.id)}">Detalhes</button></article>`;
+  }
+
+  function operationTimeline(operation, progress) {
+    const stages = ["Preparação", "Alinhamento", "Teste de Pressão", "Início Bombeio", "Bombeio", "Flush", "Término", "Liberação"];
+    const currentStage = progress >= 100 ? stages.length - 1 : Math.min(stages.length - 2, Math.floor(progress / 100 * (stages.length - 1)));
+    const stageStatus = index => index < currentStage ? "Concluída" : index === currentStage ? (progress > 0 ? "Em curso" : "Pronta") : "Pendente";
+    return `<article class="native-card operation-timeline-card"><header><div><strong>Cronograma Operacional</strong><small>Etapas vinculadas ao progresso real da operação</small></div><span>${Math.round(progress)}% executado</span></header><div class="operation-stage-track">${stages.map((label, index) => `<span class="${index < currentStage ? "done" : ""} ${index === currentStage ? "current" : ""}"><i>${index < currentStage ? "✓" : index + 1}</i><strong>${esc(label)}</strong><small>${index === 0 && operation.start_at ? timeOnly(operation.start_at) : stageStatus(index)}</small></span>`).join("")}</div>${finite(operation.paused_minutes) > 0 ? `<footer class="operation-pause-note">${svg("alert")}<span><strong>Pausa registrada</strong>${finite(operation.paused_minutes)} min acumulados nesta operação</span></footer>` : `<footer class="operation-pause-note clear">${svg("check")}<span><strong>Fluxo contínuo</strong>Sem pausas registradas</span></footer>`}</article>`;
   }
 
   function renderOperations() {
@@ -184,9 +200,9 @@
       ${current ? `<section class="operation-live-banner"><div><strong>OS ${esc(current.service_order || "Sem número")}</strong>${badge(current.status, "info")}</div><div><span>INÍCIO<strong>${isoTime(current.start_at)}</strong></span><span>TEMPO DECORRIDO<strong>${current.start_at ? `${Math.max(0, Math.floor((Date.now() - new Date(current.start_at).getTime()) / 3600000))}h` : "—"}</strong></span><span>PROGRESSO<strong>${Math.round(progress)}%</strong></span></div></section>
       <div class="operation-live-grid"><div><article class="native-card operation-client-strip"><span>${svg("ship")}</span><div><small>CLIENTE</small><strong>${esc(current.client || "—")}</strong></div><div><small>EMBARCAÇÃO</small><strong>${esc(current.vessel || "—")}</strong></div><div><small>PRODUTO</small><strong>${esc(current.product || "—")}</strong></div><div><small>DESTINO</small><strong>${esc(route.destination)}</strong></div></article>
       <article class="native-card flow-diagram"><header><strong>Diagrama de Fluxo & Ativos</strong></header><div><span>${svg("tank")}<strong>${esc(route.source)}</strong><small>Nível ${Math.round(pct(tankById(current.source_tank_id)?.volume, tankById(current.source_tank_id)?.capacity))}%</small></span><i></i><span class="active">${svg("cog")}<strong>Bomba P-02</strong><small>Ativa</small></span><i></i><span>${svg("network")}<strong>Linha operacional</strong><small>Pressurizada</small></span><i></i><span>${svg("ship")}<strong>${esc(route.destination)}</strong><small>Destino</small></span></div><footer><span>PROGRAMADO<strong>${integer.format(current.planned)} ${esc(current.unit)}</strong></span><span>REALIZADO<strong class="green-text">${integer.format(current.executed)} ${esc(current.unit)}</strong></span><span>RESTANTE<strong class="amber-text">${integer.format(Math.max(0, finite(current.planned) - finite(current.executed)))} ${esc(current.unit)}</strong></span></footer></article>
-      <article class="native-card live-progress"><header><strong>Progresso do Bombeio</strong><b>${Math.round(progress)}% Concluído</b></header><div class="native-progress"><i style="width:${progress}%"></i></div><div><span>VAZÃO ATUAL<strong>${number.format(current.flow_rate)} <small>${esc(current.flow_rate_unit || `${current.unit}/h`)}</small></strong></span><span>VAZÃO MÉDIA<strong>${number.format(current.flow_rate)} <small>${esc(current.flow_rate_unit || `${current.unit}/h`)}</small></strong></span><span>PAUSAS<strong>${finite(current.paused_minutes)} <small>min</small></strong></span><span>TEMPERATURA<strong>—</strong></span></div></article></div>
+      <article class="native-card live-progress"><header><strong>Progresso do Bombeio</strong><b>${Math.round(progress)}% Concluído</b></header><div class="native-progress"><i style="width:${progress}%"></i></div><div><span>VAZÃO ATUAL<strong>${number.format(current.flow_rate)} <small>${esc(current.flow_rate_unit || `${current.unit}/h`)}</small></strong></span><span>VAZÃO MÉDIA<strong>${number.format(current.flow_rate)} <small>${esc(current.flow_rate_unit || `${current.unit}/h`)}</small></strong></span><span>PAUSAS<strong>${finite(current.paused_minutes)} <small>min</small></strong></span><span>TEMPERATURA<strong>—</strong></span></div></article>${operationTimeline(current, progress)}</div>
       <aside class="operation-side"><article class="native-card"><header><strong>Equipe de Turno</strong></header>${arr(data().users).slice(0, 4).map(user => `<div class="team-row"><span>${esc(user.name.split(" ").map(p => p[0]).join("").slice(0, 2))}</span><div><strong>${esc(user.name)}</strong><small>${esc(user.department || user.role)}</small></div></div>`).join("") || empty("Equipe não cadastrada")}</article><article class="native-card observation-log"><header><strong>Log de Observações</strong></header>${events.map(event => `<div><strong>${esc(profileName(event.created_by))}</strong><time>${isoTime(event.created_at)}</time><p>${esc(event.notes || event.description || event.event_type || "Atualização operacional")}</p></div>`).join("") || empty("Sem eventos registrados")}</article><button class="btn warning full" data-edit-operation="${esc(current.id)}">Registrar parada</button><button class="btn secondary full" data-edit-operation="${esc(current.id)}">Atualizar vazão</button><button class="btn primary full" data-edit-operation="${esc(current.id)}">Finalizar operação</button></aside></div>` : empty("Nenhuma operação em andamento", "Cadastre ou inicie uma operação para acompanhar o fluxo em tempo real.")}
-      <section class="native-list-section"><header><h2>Histórico e Programação</h2><button class="btn secondary" data-export="operations">Exportar CSV</button></header><div>${operations.length ? operations.map(operationRow).join("") : empty("Nenhuma operação cadastrada")}</div></section>
+      <section class="native-list-section"><header><div><h2>Operações Programadas e Histórico</h2><small>Registros reais sincronizados com o Supabase</small></div><button class="btn secondary" data-export="operations">Exportar CSV</button></header><div>${operations.length ? operations.map(operationRow).join("") : empty("Nenhuma operação cadastrada")}</div></section>
     </div>`);
   }
 
@@ -203,14 +219,24 @@
 
   function renderVessels() {
     const vessels = vesselItems().slice().sort((a, b) => new Date(a.eta || a.etb || 0) - new Date(b.eta || b.etb || 0));
-    const conflicts = vessels.filter((item, index) => vessels.some((other, otherIndex) => otherIndex !== index && item.berth && other.berth === item.berth && Math.abs(new Date(item.eta || 0) - new Date(other.eta || 0)) < 6 * 3600000));
-    const days = Array.from({ length: 7 }, (_, index) => { const date = new Date(); date.setHours(12, 0, 0, 0); date.setDate(date.getDate() + index); return date; });
+    const berthKey = item => normalize(item?.berth).match(/(?:pier|berco)\s*#?\s*([12])/)?.[1] || (/^[12]$/.test(normalize(item?.berth)) ? normalize(item.berth) : "");
+    const conflicts = vessels.filter((item, index) => berthKey(item) && vessels.some((other, otherIndex) => otherIndex !== index && berthKey(item) === berthKey(other) && Math.abs(new Date(item.eta || 0) - new Date(other.eta || 0)) < 6 * 3600000));
+    const weekStart = new Date();
+    weekStart.setHours(0, 0, 0, 0);
+    weekStart.setDate(weekStart.getDate() - ((weekStart.getDay() + 6) % 7) + vesselWeekOffset * 7);
+    const days = Array.from({ length: 7 }, (_, index) => { const date = new Date(weekStart); date.setDate(date.getDate() + index); return date; });
+    const weekEnd = new Date(days[6]);
+    weekEnd.setHours(23, 59, 59, 999);
+    const weekVessels = vessels.filter(item => { const eta = new Date(item.eta || item.etb || 0); return !Number.isNaN(eta.getTime()) && eta >= weekStart && eta <= weekEnd; });
+    const assignedWeekVessels = weekVessels.filter(item => berthKey(item));
+    const unassignedWeekVessels = weekVessels.filter(item => !berthKey(item));
     page("vessel-registry", `<div class="native-vessels-page">
       ${header("Programação de Embarcações", "Escalas, janelas de atracação e abastecimento", `${actionButton("Cadastrar embarcação", "new-vessel-registry", "secondary", "ship")}${actionButton("Programar embarcação", "new-vessel", "primary", "ship")}`)}
-      <div class="schedule-toolbar"><div><button>← Semana</button><strong>${days[0].toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} — ${days[6].toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}</strong><button>Próxima →</button></div><div class="native-tabs"><button class="active">Timeline</button><button>Tabela</button><button>Agenda</button></div><div><select><option>Pier: Todos</option></select><select><option>Status: Ativos</option></select></div></div>
-      ${conflicts.length ? `<div class="native-alert-banner danger">${svg("alert")}<strong>Conflito detectado:</strong><span>${conflicts.length} programação(ões) utilizam a mesma janela de píer.</span><button>Resolver conflito</button></div>` : ""}
-      <section class="native-card pier-schedule"><header><strong>Visualização de Ocupação dos Píeres</strong></header><div class="pier-calendar-head"><span></span>${days.map(day => `<span>${day.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit" }).toUpperCase()}</span>`).join("")}</div>${["Pier 1", "Pier 2"].map(pier => `<div class="pier-calendar-row"><strong>${pier}</strong>${days.map(day => { const vessel = vessels.find(item => (normalize(item.berth).includes(pier.slice(-1)) || item.berth === pier) && new Date(item.eta || item.etb || 0).toDateString() === day.toDateString()); return `<span>${vessel ? `<button class="${tone(vessel.status)}" data-edit-vessel="${esc(vessel.id)}">${esc(vessel.vesselName)}</button>` : ""}</span>`; }).join("")}</div>`).join("")}</section>
-      <section class="vessel-list"><h2>Embarcações Programadas</h2>${vessels.length ? vessels.map(item => `<article><span class="vessel-anchor ${tone(item.status)}">${svg("ship")}</span><div><strong>${esc(item.vesselName)}</strong><small>${esc(item.client || "—")} · ${esc(item.product || item.operationType || "—")}</small></div><div><span>LOCALIZAÇÃO</span><strong>${esc(item.berth || "A definir")}</strong></div><div><span>VOLUME / DURAÇÃO</span><strong>${integer.format(item.plannedQuantity)} ${esc(item.unit || "")}</strong></div><div><span>JANELA ESTIMADA</span><strong>${item.eta ? isoTime(item.eta) : "Sem ETA"}</strong></div>${badge(item.status)}<button class="btn secondary small" data-edit-vessel="${esc(item.id)}">Detalhes</button></article>`).join("") : empty("Nenhuma embarcação programada")}</section>
+      <div class="schedule-toolbar"><div><button type="button" data-vessel-week="-1" aria-label="Semana anterior">← Semana</button><strong>${days[0].toLocaleDateString("pt-BR", { day: "2-digit", month: "short" })} — ${days[6].toLocaleDateString("pt-BR", { day: "2-digit", month: "short", year: "numeric" })}</strong><button type="button" data-vessel-week="1" aria-label="Próxima semana">Próxima →</button><button type="button" data-vessel-week="0">Hoje</button></div><div class="native-tabs" aria-label="Atalhos da programação"><button class="active" type="button" data-vessel-jump="timeline">Timeline</button><button type="button" data-vessel-jump="table">Tabela</button><button type="button" data-vessel-jump="agenda">Agenda</button></div><div><select aria-label="Filtrar píer"><option>Pier: Todos</option><option>Pier 1</option><option>Pier 2</option></select><select aria-label="Filtrar status"><option>Status: Ativos</option><option>Todos</option></select></div></div>
+      ${conflicts.length ? `<div class="native-alert-banner danger">${svg("alert")}<strong>Conflito detectado:</strong><span>${conflicts.length} programação(ões) utilizam a mesma janela de píer.</span><button type="button" data-vessel-jump="table">Revisar conflito</button></div>` : unassignedWeekVessels.length ? `<div class="native-alert-banner warning schedule-health-banner">${svg("alert")}<strong>Píer pendente</strong><span>${unassignedWeekVessels.length} programação(ões) desta semana ainda precisam de definição de berço.</span><button type="button" data-vessel-jump="table">Revisar</button></div>` : `<div class="native-alert-banner success schedule-health-banner">${svg("check")}<strong>Janelas sem conflito</strong><span>${weekVessels.length ? `${weekVessels.length} embarcação(ões) programada(s) na semana exibida.` : "Nenhuma ocupação prevista nesta semana."}</span></div>`}
+      <section class="native-card pier-schedule" data-vessel-section="timeline"><header><div><strong>Visualização de Ocupação dos Píeres</strong><small>Semana operacional · ${assignedWeekVessels.length} janela(s) com píer definido</small></div><span class="pier-live-key"><i></i>Dados sincronizados</span></header><div class="pier-calendar-head"><span></span>${days.map(day => `<span>${day.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit" }).toUpperCase()}</span>`).join("")}</div>${["Pier 1", "Pier 2"].map(pier => `<div class="pier-calendar-row"><strong>${pier}</strong>${days.map(day => { const vessel = assignedWeekVessels.find(item => berthKey(item) === pier.slice(-1) && new Date(item.eta || item.etb || 0).toDateString() === day.toDateString()); return `<span class="${vessel ? "occupied" : "available"}">${vessel ? `<button class="${tone(vessel.status)}" data-edit-vessel="${esc(vessel.id)}" title="${esc(vessel.vesselName)} · ${timeOnly(vessel.eta || vessel.etb)}">${esc(vessel.vesselName)}<small>${timeOnly(vessel.eta || vessel.etb)}</small></button>` : `<i aria-hidden="true"></i>`}</span>`; }).join("")}</div>`).join("")}</section>
+      <section class="vessel-list" data-vessel-section="table"><header><div><h2>Embarcações Programadas</h2><small>Lista consolidada de escalas e janelas</small></div><span>${vessels.length} registro(s)</span></header>${vessels.length ? vessels.map(item => `<article><span class="vessel-anchor ${tone(item.status)}">${svg("ship")}</span><div><strong>${esc(item.vesselName)}</strong><small>${esc(item.client || "—")} · ${esc(item.product || item.operationType || "—")}</small></div><div><span>LOCALIZAÇÃO</span><strong>${esc(item.berth || "A definir")}</strong></div><div><span>VOLUME PROGRAMADO</span><strong>${integer.format(item.plannedQuantity)} ${esc(item.unit || "")}</strong></div><div><span>JANELA ESTIMADA</span><strong>${item.eta ? `${dateOnly(item.eta)} · ${timeOnly(item.eta)}` : "Sem ETA"}</strong></div>${badge(item.status)}<button class="btn secondary small" data-edit-vessel="${esc(item.id)}">Detalhes</button></article>`).join("") : empty("Nenhuma embarcação programada", "Use “Programar embarcação” para registrar a primeira janela operacional.")}</section>
+      <section class="vessel-agenda native-card" data-vessel-section="agenda" hidden><header><div><strong>Agenda Operacional</strong><small>Próximas escalas em ordem cronológica</small></div></header>${vessels.length ? vessels.slice(0, 6).map(item => `<button type="button" data-edit-vessel="${esc(item.id)}"><time><strong>${item.eta ? timeOnly(item.eta) : "—"}</strong><small>${item.eta ? dateOnly(item.eta) : "Sem data"}</small></time><span><strong>${esc(item.vesselName)}</strong><small>${esc(item.berth || "Píer a definir")} · ${esc(item.product || item.operationType || "Operação")}</small></span>${badge(item.status)}</button>`).join("") : empty("Agenda sem escalas")}</section>
     </div>`);
   }
 
@@ -297,17 +323,36 @@
     const openOrders = orders.filter(item => !["conclu", "fech", "cancel"].some(term => normalize(item.status).includes(term)));
     const unavailable = equipment.filter(item => isCritical(item.status));
     const maintenance = equipment.filter(item => normalize(item.status).includes("manutenc"));
+    const groupLabel = category => {
+      const value = normalize(category);
+      if (value.includes("bomb")) return "Bombas de Transferência";
+      if (value.includes("compress") || value.includes("mistur") || value.includes("mix")) return "Compressores & Misturadores";
+      return category || "Outros Equipamentos";
+    };
+    const groups = equipment.reduce((result, item) => {
+      const label = groupLabel(item.category);
+      if (!result.has(label)) result.set(label, []);
+      result.get(label).push(item);
+      return result;
+    }, new Map());
+    const equipmentCard = item => {
+      const open = openOrders.find(order => order.equipment_id === item.id);
+      const overdue = item.next_maintenance_date && new Date(item.next_maintenance_date) < new Date();
+      const health = isCritical(item.status) ? 0 : open && isCritical(open.priority) ? 35 : overdue ? 60 : normalize(item.status).includes("manutenc") ? 45 : 95;
+      return `<article class="equipment-card ${tone(item.status)}"><header><span>${svg("cog")}</span><div><strong>${esc(item.name)}</strong><small>${esc(item.category || "Equipamento")}</small></div>${badge(open?.priority || "Crit. média", open && isCritical(open.priority) ? "danger" : "neutral")}</header><dl><div><dt>Localização</dt><dd>${esc(item.location || "Não informada")}</dd></div><div><dt>Horímetro</dt><dd>${integer.format(item.hourmeter)} h</dd></div><div><dt>Próxima preventiva</dt><dd class="${overdue ? "red-text" : ""}">${item.next_maintenance_date ? dateOnly(item.next_maintenance_date) : "Não programada"}</dd></div></dl><footer>${badge(item.status)}<span>Saúde: ${health}%</span><i><em style="width:${health}%"></em></i></footer><div class="equipment-card-actions"><button type="button" data-new-order-equipment="${esc(item.id)}">Abrir OS</button><button type="button" data-edit-equipment="${esc(item.id)}">Detalhes</button></div></article>`;
+    };
     page("maintenance", `<div class="native-maintenance-page">
       ${header("Status de Equipamentos e OS Ativas", "Disponibilidade, criticidade e programação preventiva", `${actionButton("Novo equipamento", "new-equipment", "secondary", "wrench")}${actionButton("Nova OS", "new-maintenance-order", "primary", "file")}`)}
       <section class="maintenance-kpis"><article><span>Equipamentos Operacionais</span><strong>${equipment.length - unavailable.length - maintenance.length} / ${equipment.length}</strong>${svg("cog")}</article><article><span>Ordens de Serviço Abertas</span><strong>${openOrders.length} OS</strong>${svg("bars")}</article><article><span>Aguardando Peças</span><strong>${openOrders.filter(item => normalize(item.status).includes("peca")).length}</strong>${svg("package")}</article><article class="danger"><span>Fora de Serviço</span><strong>${unavailable.length}</strong>${svg("alert")}</article></section>
-      <section class="equipment-section"><h2>BOMBAS, COMPRESSORES & MISTURADORES</h2><div class="equipment-grid">${equipment.length ? equipment.map(item => { const open = openOrders.find(order => order.equipment_id === item.id); const health = isCritical(item.status) ? 0 : normalize(item.status).includes("manutenc") ? 40 : 95; return `<article class="equipment-card ${tone(item.status)}"><header><span>${svg("cog")}</span><div><strong>${esc(item.name)}</strong><small>${esc(item.category || "Equipamento")}</small></div>${badge(open?.priority || "Crit. média", open && isCritical(open.priority) ? "danger" : "neutral")}</header><dl><div><dt>Localização</dt><dd>${esc(item.location || "—")}</dd></div><div><dt>Horímetro</dt><dd>${integer.format(item.hourmeter)} h</dd></div><div><dt>Próxima preventiva</dt><dd>${dateOnly(item.next_maintenance_date)}</dd></div></dl><footer>${badge(item.status)}<span>Saúde: ${health}%</span><i><em style="width:${health}%"></em></i></footer></article>`; }).join("") : empty("Nenhum equipamento cadastrado")}</div></section>
-      <section class="native-table-card preventive-table"><header><strong>Cronograma de Manutenção (Próximos Eventos)</strong><button class="btn secondary small" data-page-link="maintenance">Ver agenda completa</button></header><div class="native-table-scroll"><table class="native-table"><thead><tr><th>Data prevista</th><th>Equipamento</th><th>Descrição do serviço</th><th>Responsável</th><th>Criticidade</th><th>Status</th></tr></thead><tbody>${orders.length ? orders.slice(0, 8).map(item => `<tr><td><strong>${dateOnly(item.due_date)}</strong></td><td class="blue-text">${esc(equipment.find(eq => eq.id === item.equipment_id)?.name || "—")}</td><td>${esc(item.title || item.description || "—")}</td><td>${esc(item.responsible || "—")}</td><td>${badge(item.priority)}</td><td>${badge(item.status)}</td></tr>`).join("") : `<tr><td colspan="6">${empty("Nenhuma OS cadastrada")}</td></tr>`}</tbody></table></div></section>
+      <div class="equipment-groups">${equipment.length ? [...groups.entries()].map(([label, items]) => `<section class="equipment-section"><h2>${esc(label.toUpperCase())}<span>${items.length} ativo(s)</span></h2><div class="equipment-grid">${items.map(equipmentCard).join("")}</div></section>`).join("") : `<section class="maintenance-empty-state">${svg("wrench")}<div><strong>Nenhum equipamento cadastrado</strong><span>Cadastre o primeiro ativo para controlar disponibilidade, horímetro e preventivas.</span></div><button class="btn primary" type="button" data-action="new-equipment">Novo equipamento</button></section>`}</div>
+      <section class="native-table-card preventive-table"><header><div><strong>Cronograma de Manutenção</strong><small>Próximos eventos e ordens de serviço</small></div><button class="btn secondary small" type="button" data-action="new-maintenance-order">Nova OS</button></header><div class="native-table-scroll"><table class="native-table"><thead><tr><th>Data prevista</th><th>Equipamento</th><th>Descrição do serviço</th><th>Responsável</th><th>Criticidade</th><th>Status</th></tr></thead><tbody>${orders.length ? orders.slice(0, 8).map(item => `<tr><td><strong>${dateOnly(item.due_date)}</strong></td><td class="blue-text">${esc(equipment.find(eq => eq.id === item.equipment_id)?.name || "Equipamento não localizado")}</td><td>${esc(item.title || item.description || "Sem descrição")}</td><td>${esc(item.responsible || (item.responsible_id ? profileName(item.responsible_id) : "Não definido"))}</td><td>${badge(item.priority)}</td><td>${badge(item.status)}</td></tr>`).join("") : `<tr><td colspan="6"><div class="maintenance-schedule-empty">${svg("bars")}<span><strong>Nenhuma ordem de serviço programada</strong><small>O cronograma será preenchido com as OS cadastradas no Supabase.</small></span><button class="btn primary small" type="button" data-action="new-maintenance-order">Criar primeira OS</button></div></td></tr>`}</tbody></table></div></section>
+      <section class="maintenance-mobile-schedule"><header><div><strong>Cronograma de Manutenção</strong><small>Próximos eventos e ordens de serviço</small></div><button class="btn secondary small" type="button" data-action="new-maintenance-order">Nova OS</button></header><div>${orders.length ? orders.slice(0, 8).map(item => `<article><header><time>${dateOnly(item.due_date)}</time>${badge(item.status)}</header><strong>${esc(equipment.find(eq => eq.id === item.equipment_id)?.name || "Equipamento não localizado")}</strong><p>${esc(item.title || item.description || "Sem descrição")}</p><footer><span>Responsável<strong>${esc(item.responsible || (item.responsible_id ? profileName(item.responsible_id) : "Não definido"))}</strong></span><span>Criticidade${badge(item.priority)}</span></footer></article>`).join("") : `<div class="maintenance-mobile-empty">${svg("bars")}<strong>Nenhuma ordem de serviço programada</strong><span>Crie uma OS para iniciar o cronograma preventivo.</span><button class="btn primary" type="button" data-action="new-maintenance-order">Criar primeira OS</button></div>`}</div></section>
     </div>`);
   }
 
   function accidentFreeDays() {
     const incident = arr(data().qhse).filter(item => ["incidente", "acidente"].some(term => normalize(item.type).includes(term))).sort((a, b) => new Date(b.date || b.created_at || 0) - new Date(a.date || a.created_at || 0))[0];
-    if (!incident) return 0;
+    if (!incident) return null;
     return Math.max(0, Math.floor((Date.now() - new Date(incident.date || incident.created_at).getTime()) / 86400000));
   }
 
@@ -319,12 +364,13 @@
     const expiring = arr(data().certificates).filter(item => { if (!item.expires_at) return false; const days = (new Date(item.expires_at).getTime() - Date.now()) / 86400000; return days >= 0 && days <= 30; });
     const enrollments = arr(data().courseEnrollments);
     const teams = [...new Set(arr(data().users).map(item => item.department || "Equipe operacional"))];
+    const safetyDays = accidentFreeDays();
     page("qhse", `<div class="native-qhse-page">
       ${header("Painel de Segurança, Saúde e Meio Ambiente", "Indicadores, inspeções e conformidade da base", actionButton("Novo registro QHSE", "new-qhse", "primary", "shield"))}
-      <section class="qhse-hero"><div>${svg("shield")}<span>RECORDE DE SEGURANÇA DA BASE<strong>${integer.format(accidentFreeDays())} <small>DIAS SEM ACIDENTES</small></strong><em>Calculado a partir do último incidente registrado</em></span></div><aside><strong>ESTATÍSTICAS ANUAIS</strong><span>Incidentes registrados<b>${records.filter(item => normalize(item.type).includes("incident")).length}</b></span><span>Quase-acidentes reportados<b>${records.filter(item => normalize(item.type).includes("quase")).length}</b></span><span>Desvios identificados<b>${records.filter(item => normalize(item.type).includes("desvio")).length}</b></span><span>Ações pendentes<b class="red-text">${pending.length}</b></span></aside></section>
+      <section class="qhse-hero"><div class="${safetyDays === null ? "unavailable" : ""}">${svg("shield")}<span>RECORDE DE SEGURANÇA DA BASE<strong>${safetyDays === null ? "—" : integer.format(safetyDays)} <small>${safetyDays === null ? "SEM MARCO CADASTRADO" : "DIAS SEM ACIDENTES"}</small></strong><em>${safetyDays === null ? "Cadastre o primeiro marco QHSE para iniciar o indicador." : "Calculado a partir do último incidente registrado"}</em></span></div><aside><strong>ESTATÍSTICAS ANUAIS</strong><span>Incidentes registrados<b>${records.filter(item => normalize(item.type).includes("incident")).length}</b></span><span>Quase-acidentes reportados<b>${records.filter(item => normalize(item.type).includes("quase")).length}</b></span><span>Desvios identificados<b>${records.filter(item => normalize(item.type).includes("desvio")).length}</b></span><span>Ações pendentes<b class="red-text">${pending.length}</b></span></aside></section>
       <section class="qhse-kpis"><article><span>INSPEÇÕES DE CAMPO</span><strong>${inspections.filter(item => normalize(item.status).includes("conclu")).length}/${inspections.length}</strong><small>programadas e realizadas</small></article><article><span>PTs ATIVAS (Permissões)</span><strong>${records.filter(item => normalize(item.type).includes("permiss")).length} Ativas</strong><small>trabalhos de risco</small></article><article class="danger"><span>AÇÕES QHSE VENCIDAS</span><strong>${pending.filter(item => item.due_at && new Date(item.due_at) < new Date()).length} Pendentes</strong><small>necessitam fechamento</small></article><article><span>PRÓXIMA AUDITORIA</span><strong>${records.find(item => normalize(item.type).includes("auditoria")) ? dateOnly(records.find(item => normalize(item.type).includes("auditoria")).date) : "Não programada"}</strong><small>agenda de conformidade</small></article></section>
-      <div class="qhse-main-grid"><article class="native-card daily-dds"><header><strong>DDS do Dia (Diálogo Diário de Segurança)</strong>${arr(data().ddsSessions)[0] ? badge(arr(data().ddsSessions)[0].status) : ""}</header>${arr(data().ddsSessions)[0] ? `<div><strong>${esc(arr(data().ddsSessions)[0].title)}</strong><small>Apresentador: ${esc(arr(data().ddsSessions)[0].instructor || "—")} · Participantes: ${arr(data().ddsAttendance).filter(item => item.sessionId === arr(data().ddsSessions)[0].id).length}</small></div>` : empty("Nenhum DDS programado")}</article><article class="native-card expiring-certificates"><header>${svg("alert")}<strong>${expiring.length} certificação(ões) expirando nos próximos 30 dias</strong></header>${expiring.slice(0, 4).map(item => `<span><strong>${esc(item.title)}</strong><small>${esc(item.owner || "—")}</small><time>${dateOnly(item.expires_at)}</time></span>`).join("") || empty("Nenhum certificado próximo do vencimento")}</article></div>
-      <section class="native-card training-status"><header><strong>Status de Conclusão de Treinamentos Obrigatórios por Equipe</strong></header><div>${teams.map(team => { const users = arr(data().users).filter(item => (item.department || "Equipe operacional") === team); const related = enrollments.filter(item => users.some(user => user.id === item.userId)); const done = related.filter(item => normalize(item.status).includes("conclu")).length; const percentage = related.length ? done / related.length * 100 : 0; return `<article><span>${esc(team)}<strong>${Math.round(percentage)}%</strong></span><i><em style="width:${percentage}%"></em></i></article>`; }).join("") || empty("Equipes não cadastradas")}</div></section>
+      <div class="qhse-main-grid"><article class="native-card daily-dds"><header><strong>DDS do Dia (Diálogo Diário de Segurança)</strong>${arr(data().ddsSessions)[0] ? badge(arr(data().ddsSessions)[0].status) : ""}</header>${arr(data().ddsSessions)[0] ? `<div><strong>${esc(arr(data().ddsSessions)[0].title)}</strong><small>Apresentador: ${esc(arr(data().ddsSessions)[0].instructor || "—")} · Participantes: ${arr(data().ddsAttendance).filter(item => item.sessionId === arr(data().ddsSessions)[0].id).length}</small></div>` : empty("Nenhum DDS programado")}</article><article class="native-card expiring-certificates ${expiring.length ? "warning" : "clear"}"><header>${expiring.length ? svg("alert") : svg("check")}<strong>${expiring.length ? `${expiring.length} certificação(ões) expirando nos próximos 30 dias` : "Certificações sem vencimentos próximos"}</strong></header>${expiring.slice(0, 4).map(item => `<span><strong>${esc(item.title)}</strong><small>${esc(item.owner || "—")}</small><time>${dateOnly(item.expires_at)}</time></span>`).join("") || empty("Nenhum certificado próximo do vencimento")}</article></div>
+      <section class="native-card training-status"><header><strong>Status de Conclusão de Treinamentos Obrigatórios por Equipe</strong></header><div>${teams.map(team => { const users = arr(data().users).filter(item => (item.department || "Equipe operacional") === team); const related = enrollments.filter(item => users.some(user => user.id === item.userId)); const done = related.filter(item => normalize(item.status).includes("conclu")).length; const percentage = related.length ? done / related.length * 100 : 0; return `<article class="${related.length ? "" : "no-data"}"><span>${esc(team)}<strong>${related.length ? `${Math.round(percentage)}%` : "Sem dados"}</strong></span><i><em style="width:${percentage}%"></em></i></article>`; }).join("") || empty("Equipes não cadastradas")}</div></section>
     </div>`);
   }
 
@@ -344,11 +390,12 @@
   function renderDocuments() {
     const documents = arr(data().documents).filter(item => !item.visibilityRole || item.visibilityRole === "all" || currentContext?.isAdmin?.());
     const expiring = documents.filter(item => { if (!item.expiresAt) return false; const days = (new Date(item.expiresAt).getTime() - Date.now()) / 86400000; return days >= 0 && days <= 30; });
+    const statuses = [...new Set(documents.map(item => item.status).filter(Boolean))];
     page("documents", `<div class="native-documents-page">
       ${header("Gerenciador de Documentos e Certificados", "Biblioteca operacional, licenças, laudos e vencimentos", actionButton("Novo documento", "new-document", "primary", "file"))}
       ${expiring.length ? `<div class="native-alert-banner warning">${svg("alert")}<strong>Atenção:</strong><span>${expiring.length} documento(s) expiram nos próximos 30 dias. Programe as renovações.</span><button>Verificar</button></div>` : ""}
-      <div class="document-toolbar"><label>${svg("search")}<input placeholder="Buscar documento por nome..."></label><span>Categoria:</span><div class="native-tabs"><button class="active">Todos</button><button>Certificados</button><button>Licenças</button><button>Laudos</button><button>FISPQ</button></div><select><option>Todos Status</option></select></div>
-      <section class="document-grid">${documents.length ? documents.map(item => `<article class="document-card"><header><span>${svg("file")}</span>${badge(item.category, "info")}</header><small>${esc(item.documentNumber || "SEM NÚMERO")}</small><h3>${esc(item.title)}</h3><p>${esc(item.issuer || "Emissor não informado")} · Revisão ${esc(item.revision || "—")}</p><footer><span>Emissão<strong>${dateOnly(item.issueDate)}</strong></span><span>Validade<strong>${dateOnly(item.expiresAt)}</strong></span>${badge(item.status)}<button data-action="edit-document" data-document-id="${esc(item.id)}">Abrir</button></footer></article>`).join("") : empty("Nenhum documento disponível")}</section>
+      <div class="document-toolbar"><label>${svg("search")}<input data-document-filter="query" placeholder="Buscar documento por nome..."></label><span>Categoria:</span><div class="native-tabs"><button class="active" type="button" data-document-category="all">Todos</button><button type="button" data-document-category="certificado">Certificados</button><button type="button" data-document-category="licenca">Licenças</button><button type="button" data-document-category="laudo">Laudos</button><button type="button" data-document-category="fispq">FISPQ</button></div><select data-document-filter="status" aria-label="Filtrar status"><option value="">Todos Status</option>${statuses.map(item => `<option value="${esc(normalize(item))}">${esc(item)}</option>`).join("")}</select></div>
+      <section class="document-grid">${documents.length ? `${documents.map(item => `<article class="document-card" data-document-card data-document-search="${esc(normalize(`${item.title} ${item.documentNumber} ${item.issuer}`))}" data-document-category-value="${esc(normalize(item.category))}" data-document-status-value="${esc(normalize(item.status))}"><header><span>${svg("file")}</span>${badge(item.category, "info")}</header><small>${esc(item.documentNumber || "SEM NÚMERO")}</small><h3>${esc(item.title)}</h3><p>${esc(item.issuer || "Emissor não informado")} · Revisão ${esc(item.revision || "—")}</p><footer><span>Emissão<strong>${dateOnly(item.issueDate)}</strong></span><span>Validade<strong>${dateOnly(item.expiresAt)}</strong></span>${badge(item.status)}<button data-action="edit-document" data-document-id="${esc(item.id)}">Abrir</button></footer></article>`).join("")}<div class="document-filter-empty" hidden>${empty("Nenhum documento corresponde aos filtros", "Ajuste a busca, categoria ou status.")}</div>` : empty("Nenhum documento disponível", "Cadastre documentos e certificados sem usar dados de demonstração.")}</section>
       <section class="native-card expiry-schedule"><header><div><strong>Cronograma de Vencimentos</strong><small>Próximas renovações estipuladas</small></div></header><div>${documents.filter(item => item.expiresAt).sort((a, b) => new Date(a.expiresAt) - new Date(b.expiresAt)).slice(0, 6).map(item => `<article class="${new Date(item.expiresAt) < new Date() ? "danger" : ""}"><time><strong>${new Date(item.expiresAt).getDate().toString().padStart(2, "0")}</strong>${new Date(item.expiresAt).toLocaleDateString("pt-BR", { month: "short" }).toUpperCase()}</time><span><strong>${esc(item.title)}</strong><small>${esc(item.status || "Renovação programada")}</small></span></article>`).join("") || empty("Sem vencimentos programados")}</div></section>
     </div>`);
   }
@@ -438,7 +485,8 @@
   function renderTvSchedule() {
     const vessels = vesselItems().filter(item => new Date(item.eta || item.etb || 0) >= new Date(Date.now() - 12 * 3600000)).slice(0, 4);
     const equipment = arr(data().equipment);
-    return `${tvHeader("PAINEL TV — PROGRAMAÇÃO E MANUTENÇÃO")}<main class="tv-schedule-grid"><section><h2>PROGRAMAÇÃO OPERACIONAL — PRÓXIMAS 24H</h2>${vessels.length ? vessels.map(item => `<article><time>${item.eta ? new Date(item.eta).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "—"}<small>PREVISTO</small></time><span><strong>${esc(item.vesselName)}</strong><small>${esc(item.product || item.operationType || "—")} · ${integer.format(item.plannedQuantity)} ${esc(item.unit)}</small></span><b>${badge(item.status)}</b></article>`).join("") : empty("Sem programação nas próximas 24h")}</section><aside><article><h2>ESTADO DE EQUIPAMENTOS CRÍTICOS</h2><div class="tv-equipment-totals"><span>${equipment.filter(item => !isCritical(item.status)).length} OPERACIONAIS</span><span>${equipment.filter(item => isCritical(item.status) || normalize(item.status).includes("manutenc")).length} INDISPONÍVEIS</span></div>${equipment.slice(0, 4).map(item => `<div class="tv-equipment-row"><strong>${esc(item.name)}</strong><span>${esc(item.status)}</span></div>`).join("") || empty("Sem equipamentos")}</article><article class="tv-qhse"><h2>SEGURANÇA E QHSE</h2><strong>${integer.format(accidentFreeDays())}<small>DIAS SEM ACIDENTES</small></strong><p>Indicador calculado pelos registros QHSE.</p></article></aside></main>${tvPersistent()}`;
+    const safetyDays = accidentFreeDays();
+    return `${tvHeader("PAINEL TV — PROGRAMAÇÃO E MANUTENÇÃO")}<main class="tv-schedule-grid"><section><h2>PROGRAMAÇÃO OPERACIONAL — PRÓXIMAS 24H</h2>${vessels.length ? vessels.map(item => `<article><time>${item.eta ? new Date(item.eta).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "—"}<small>PREVISTO</small></time><span><strong>${esc(item.vesselName)}</strong><small>${esc(item.product || item.operationType || "—")} · ${integer.format(item.plannedQuantity)} ${esc(item.unit)}</small></span><b>${badge(item.status)}</b></article>`).join("") : empty("Sem programação nas próximas 24h")}</section><aside><article><h2>ESTADO DE EQUIPAMENTOS CRÍTICOS</h2><div class="tv-equipment-totals"><span>${equipment.filter(item => !isCritical(item.status)).length} OPERACIONAIS</span><span>${equipment.filter(item => isCritical(item.status) || normalize(item.status).includes("manutenc")).length} INDISPONÍVEIS</span></div>${equipment.slice(0, 4).map(item => `<div class="tv-equipment-row"><strong>${esc(item.name)}</strong><span>${esc(item.status)}</span></div>`).join("") || empty("Sem equipamentos")}</article><article class="tv-qhse"><h2>SEGURANÇA E QHSE</h2><strong>${safetyDays === null ? "—" : integer.format(safetyDays)}<small>${safetyDays === null ? "SEM MARCO QHSE" : "DIAS SEM ACIDENTES"}</small></strong><p>${safetyDays === null ? "Indicador aguardando o primeiro registro." : "Indicador calculado pelos registros QHSE."}</p></article></aside></main>${tvPersistent()}`;
   }
 
   function renderTv() {
@@ -548,22 +596,89 @@
     };
   }
 
+  function applyTankFilters() {
+    const activeTab = document.querySelector("[data-native-tank-tab].active");
+    const availableOnly = Boolean(document.querySelector("[data-native-tank-availability].active"));
+    const phase = activeTab?.dataset.nativeTankTab || "all";
+    const product = document.querySelector('[data-tank-filter="product"]')?.value || "";
+    const status = document.querySelector('[data-tank-filter="status"]')?.value || "";
+    document.querySelectorAll("[data-native-phase]").forEach(section => {
+      const phaseMatches = phase === "all" || section.dataset.nativePhase === phase;
+      let visibleCards = 0;
+      section.querySelectorAll(".native-asset-card").forEach(card => {
+        const availableMatches = !availableOnly || ["disponivel", "operacional", "livre"].some(value => card.dataset.tankStatus.includes(value));
+        const productMatches = !product || card.dataset.tankProduct === product;
+        const statusMatches = !status || card.dataset.tankStatus.includes(status);
+        const visible = phaseMatches && availableMatches && productMatches && statusMatches;
+        card.hidden = !visible;
+        if (visible) visibleCards += 1;
+      });
+      section.hidden = !phaseMatches || visibleCards === 0;
+    });
+  }
+
+  function applyDocumentFilters() {
+    const query = normalize(document.querySelector('[data-document-filter="query"]')?.value);
+    const category = document.querySelector("[data-document-category].active")?.dataset.documentCategory || "all";
+    const status = document.querySelector('[data-document-filter="status"]')?.value || "";
+    let visibleCards = 0;
+    document.querySelectorAll("[data-document-card]").forEach(card => {
+      const visible = (!query || card.dataset.documentSearch.includes(query))
+        && (category === "all" || card.dataset.documentCategoryValue.includes(category))
+        && (!status || card.dataset.documentStatusValue.includes(status));
+      card.hidden = !visible;
+      if (visible) visibleCards += 1;
+    });
+    const emptyState = document.querySelector(".document-filter-empty");
+    if (emptyState) emptyState.hidden = visibleCards > 0;
+  }
+
   document.addEventListener("click", event => {
     const tab = event.target.closest("[data-native-tank-tab]");
     if (tab) {
-      const value = tab.dataset.nativeTankTab;
       document.querySelectorAll("[data-native-tank-tab], [data-native-tank-availability]").forEach(button => button.classList.toggle("active", button === tab));
-      document.querySelectorAll(".native-asset-card").forEach(card => { card.hidden = false; });
-      document.querySelectorAll("[data-native-phase]").forEach(section => { section.hidden = value !== "all" && section.dataset.nativePhase !== value; });
+      applyTankFilters();
       return;
     }
     const availability = event.target.closest("[data-native-tank-availability]");
     if (availability) {
       document.querySelectorAll("[data-native-tank-tab], [data-native-tank-availability]").forEach(button => button.classList.toggle("active", button === availability));
-      document.querySelectorAll("[data-native-phase]").forEach(section => { section.hidden = false; });
-      document.querySelectorAll(".native-asset-card").forEach(card => {
-        card.hidden = !["disponivel", "operacional", "livre"].some(value => card.dataset.tankStatus.includes(value));
+      applyTankFilters();
+      return;
+    }
+    const tankView = event.target.closest("[data-tank-view]");
+    if (tankView) {
+      const view = tankView.dataset.tankView;
+      document.querySelectorAll("[data-tank-view]").forEach(button => {
+        const active = button === tankView;
+        button.classList.toggle("active", active);
+        button.setAttribute("aria-selected", String(active));
       });
+      document.querySelectorAll("[data-tank-panel]").forEach(panel => { panel.hidden = panel.dataset.tankPanel !== view; });
+      return;
+    }
+    const weekButton = event.target.closest("[data-vessel-week]");
+    if (weekButton) {
+      const direction = Number(weekButton.dataset.vesselWeek);
+      vesselWeekOffset = direction === 0 ? 0 : vesselWeekOffset + direction;
+      renderVessels();
+      return;
+    }
+    const vesselJump = event.target.closest("[data-vessel-jump]");
+    if (vesselJump) {
+      const mode = vesselJump.dataset.vesselJump;
+      document.querySelectorAll(".schedule-toolbar [data-vessel-jump]").forEach(button => button.classList.toggle("active", button.dataset.vesselJump === mode));
+      document.querySelectorAll("[data-vessel-section]").forEach(section => {
+        section.hidden = mode === "timeline" ? section.dataset.vesselSection === "agenda" : section.dataset.vesselSection !== mode;
+      });
+      const target = document.querySelector(`[data-vessel-section="${mode === "timeline" ? "timeline" : mode}"]`);
+      target?.scrollIntoView({ behavior: window.matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block: "start" });
+      return;
+    }
+    const documentCategory = event.target.closest("[data-document-category]");
+    if (documentCategory) {
+      document.querySelectorAll("[data-document-category]").forEach(button => button.classList.toggle("active", button === documentCategory));
+      applyDocumentFilters();
       return;
     }
     const alert = event.target.closest("[data-native-alert-id]");
@@ -571,6 +686,15 @@
       selectedAlertId = alert.dataset.nativeAlertId;
       renderAlerts();
     }
+  });
+
+  document.addEventListener("change", event => {
+    if (event.target.matches("[data-tank-filter]")) applyTankFilters();
+    if (event.target.matches("[data-document-filter]")) applyDocumentFilters();
+  });
+
+  document.addEventListener("input", event => {
+    if (event.target.matches('[data-document-filter="query"]')) applyDocumentFilters();
   });
 
   window.OpsControlNativeUI = Object.freeze({ renderAll, renderPage, renderTv: context => renderPage("tv", context), assistantContext });

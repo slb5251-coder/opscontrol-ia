@@ -41,7 +41,7 @@
     $$(".design-nav-group").forEach(group => {
       const key = group.dataset.designGroup || "";
       const label = $(".design-nav-group-toggle span:nth-child(2)", group);
-      if (label && labels[key]) label.textContent = labels[key];
+      if (label && labels[key] && label.textContent !== labels[key]) label.textContent = labels[key];
 
       $$(".nav-item", group).forEach(item => {
         const text = $(".nav-label", item)?.textContent?.trim();
@@ -111,7 +111,8 @@
       cards.slice(4).forEach(card => strip.appendChild(card));
 
       const alertCount = Number($("#alertCount")?.textContent || 0);
-      const alertItem = document.createElement("div");
+      const alertItem = document.createElement("button");
+      alertItem.type = "button";
       alertItem.className = `ops-attention-item ${alertCount ? "is-warning" : "is-online"}`;
       alertItem.innerHTML = `<div><span>Alertas pendentes</span><strong>${alertCount ? "Revisar central de alertas" : "Nenhuma pendência crítica"}</strong></div><b>${alertCount}</b>`;
       alertItem.addEventListener("click", () => document.querySelector('[data-page="alerts"]')?.click());
@@ -130,8 +131,8 @@
     if (volumeCard) {
       const heading = $(".figma-card-heading h3", volumeCard);
       const description = $(".figma-card-heading p", volumeCard);
-      if (heading) heading.textContent = "Movimentação registrada";
-      if (description) description.textContent = "Evolução dos lançamentos operacionais nos últimos sete dias";
+      if (heading && heading.textContent !== "Movimentação registrada") heading.textContent = "Movimentação registrada";
+      if (description && description.textContent !== "Evolução dos lançamentos operacionais nos últimos sete dias") description.textContent = "Evolução dos lançamentos operacionais nos últimos sete dias";
 
       if (!$(".ops-chart-context", volumeCard)) {
         const note = document.createElement("div");
@@ -144,7 +145,7 @@
     const occupancyCard = $(".figma-occupancy-card", page);
     if (occupancyCard) {
       const description = $(".figma-card-heading p", occupancyCard);
-      if (description) description.textContent = "Ocupação dos tanques de fluidos cadastrados";
+      if (description && description.textContent !== "Ocupação dos tanques de fluidos cadastrados") description.textContent = "Ocupação dos tanques de fluidos cadastrados";
       if (!$(".ops-chart-context", occupancyCard)) {
         const note = document.createElement("div");
         note.className = "ops-chart-context";
@@ -251,7 +252,7 @@
   function start() {
     schedule();
     const observer = new MutationObserver(schedule);
-    observer.observe(document.body, { childList: true, subtree: true, characterData: true });
+    observer.observe(document.body, { childList: true, subtree: true });
     window.addEventListener("resize", schedule, { passive: true });
   }
 

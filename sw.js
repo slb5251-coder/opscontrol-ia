@@ -1,4 +1,4 @@
-const CACHE="opscontrol-20260722-multi-product-fix-2";
+const CACHE="opscontrol-20260722-operations-restored-1";
 const FILES=[
   "./",
   "./index.html",
@@ -8,8 +8,6 @@ const FILES=[
   "./figma-interface.css?v=20260722-security-1",
   "./assistente-integrado.css?v=20260722-security-1",
   "./interface-runtime.css?v=20260722-final-audit-1",
-  "./interface-runtime.css?v=20260722-multi-product-operations-1",
-  "./interface-runtime.css?v=20260722-multi-product-fix-1",
   "./interface-fix.css?v=20260722-final-audit-1",
   "./final-interface.css?v=20260722-final-audit-1",
   "./tank-cards-reference.css?v=20260722-mobile-tanks-1",
@@ -18,8 +16,6 @@ const FILES=[
   "./tv-control-room.css?v=20260722-tv-control-room-1",
   "./role-dashboard.css?v=20260722-role-dashboard-1",
   "./operations-analytics.css?v=20260722-operations-analytics-1",
-  "./multi-product-operations.css?v=20260722-multi-product-operations-1",
-  "./multi-product-operations.css?v=20260722-multi-product-fix-1",
   "./alert-center-v2.css?v=20260722-alert-center-v2-1",
   "./app-states.css?v=20260722-app-states-1",
   "./js/config.js?v=20260722-security-1",
@@ -27,16 +23,11 @@ const FILES=[
   "./js/assistente-integrado.js?v=20260722-security-1",
   "./js/ui-polish.js?v=20260722-security-1",
   "./js/interface-runtime.js?v=20260722-final-audit-1",
-  "./js/interface-runtime.js?v=20260722-multi-product-operations-1",
-  "./js/interface-runtime.js?v=20260722-multi-product-fix-1",
-  "./js/supabase-session-bridge.js?v=20260722-multi-product-fix-1",
   "./js/tank-cards-reference.js?v=20260722-mobile-tanks-1",
   "./js/interface-ops-v2.js?v=20260722-ops-v2-1",
   "./js/tv-control-room.js?v=20260722-tv-control-room-1",
   "./js/role-dashboard.js?v=20260722-role-dashboard-1",
   "./js/operations-analytics.js?v=20260722-operations-analytics-1",
-  "./js/multi-product-operations.js?v=20260722-multi-product-operations-1",
-  "./js/multi-product-operations.js?v=20260722-multi-product-fix-1",
   "./js/alert-center-v2.js?v=20260722-alert-center-v2-1",
   "./js/app-states.js?v=20260722-app-states-1",
   "./manifest.json",
@@ -54,7 +45,6 @@ self.addEventListener("activate", event => {
     const keys = await caches.keys();
     await Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key)));
     await self.clients.claim();
-
     const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
     await Promise.all(windows.map(client => client.navigate(client.url).catch(() => null)));
   })());
@@ -81,7 +71,6 @@ self.addEventListener("fetch", event => {
     url.pathname.endsWith("/tv-control-room.css") ||
     url.pathname.endsWith("/role-dashboard.css") ||
     url.pathname.endsWith("/operations-analytics.css") ||
-    url.pathname.endsWith("/multi-product-operations.css") ||
     url.pathname.endsWith("/alert-center-v2.css") ||
     url.pathname.endsWith("/app-states.css") ||
     url.pathname.endsWith("/js/app.js") ||
@@ -89,13 +78,11 @@ self.addEventListener("fetch", event => {
     url.pathname.endsWith("/js/config.js") ||
     url.pathname.endsWith("/js/ui-polish.js") ||
     url.pathname.endsWith("/js/interface-runtime.js") ||
-    url.pathname.endsWith("/js/supabase-session-bridge.js") ||
     url.pathname.endsWith("/js/tank-cards-reference.js") ||
     url.pathname.endsWith("/js/interface-ops-v2.js") ||
     url.pathname.endsWith("/js/tv-control-room.js") ||
     url.pathname.endsWith("/js/role-dashboard.js") ||
     url.pathname.endsWith("/js/operations-analytics.js") ||
-    url.pathname.endsWith("/js/multi-product-operations.js") ||
     url.pathname.endsWith("/js/alert-center-v2.js") ||
     url.pathname.endsWith("/js/app-states.js")
   );

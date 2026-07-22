@@ -1,0 +1,6 @@
+/* OpsControl IA — entrada única da camada visual operacional
+   Mantém a ordem oficial da cascata enquanto a consolidação física dos arquivos é feita por etapas. */
+@import url('./interface-fix.css?v=20260721-interface-fix-1');
+@import url('./design-upgrade.css?v=20260721-control-center-1');
+@import url('./tank-cards-reference.css?v=20260721-reference-cards-1');
+@import url('./interface-ops-v2.css?v=20260722-ops-v2-1');

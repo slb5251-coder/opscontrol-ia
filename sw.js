@@ -1,4 +1,4 @@
-const CACHE="opscontrol-20260722-mobile-states-1";
+const CACHE="opscontrol-20260722-final-audit-1";
 const FILES=[
   "./",
   "./index.html",
@@ -7,10 +7,10 @@ const FILES=[
   "./opscontrol-ui.css?v=20260722-security-1",
   "./figma-interface.css?v=20260722-security-1",
   "./assistente-integrado.css?v=20260722-security-1",
-  "./interface-runtime.css?v=20260722-mobile-states-1",
-  "./interface-fix.css?v=20260721-interface-fix-1",
-  "./design-upgrade.css?v=20260721-control-center-1",
-  "./tank-cards-reference.css?v=20260721-reference-cards-1",
+  "./interface-runtime.css?v=20260722-final-audit-1",
+  "./interface-fix.css?v=20260722-final-audit-1",
+  "./final-interface.css?v=20260722-final-audit-1",
+  "./tank-cards-reference.css?v=20260722-mobile-tanks-1",
   "./mobile-tank-experience.css?v=20260722-mobile-tanks-1",
   "./interface-ops-v2.css?v=20260722-ops-v2-1",
   "./tv-control-room.css?v=20260722-tv-control-room-1",
@@ -22,9 +22,7 @@ const FILES=[
   "./js/app.js?v=20260722-security-1",
   "./js/assistente-integrado.js?v=20260722-security-1",
   "./js/ui-polish.js?v=20260722-security-1",
-  "./js/interface-runtime.js?v=20260722-mobile-states-1",
-  "./js/design-upgrade.js?v=20260721-control-center-1",
-  "./js/design-stability.js?v=20260721-original-tanks-1",
+  "./js/interface-runtime.js?v=20260722-final-audit-1",
   "./js/tank-cards-reference.js?v=20260722-mobile-tanks-1",
   "./js/interface-ops-v2.js?v=20260722-ops-v2-1",
   "./js/tv-control-room.js?v=20260722-tv-control-room-1",
@@ -65,7 +63,7 @@ self.addEventListener("fetch", event => {
     url.pathname.endsWith("/assistente-integrado.css") ||
     url.pathname.endsWith("/interface-runtime.css") ||
     url.pathname.endsWith("/interface-fix.css") ||
-    url.pathname.endsWith("/design-upgrade.css") ||
+    url.pathname.endsWith("/final-interface.css") ||
     url.pathname.endsWith("/tank-cards-reference.css") ||
     url.pathname.endsWith("/mobile-tank-experience.css") ||
     url.pathname.endsWith("/interface-ops-v2.css") ||
@@ -79,8 +77,6 @@ self.addEventListener("fetch", event => {
     url.pathname.endsWith("/js/config.js") ||
     url.pathname.endsWith("/js/ui-polish.js") ||
     url.pathname.endsWith("/js/interface-runtime.js") ||
-    url.pathname.endsWith("/js/design-upgrade.js") ||
-    url.pathname.endsWith("/js/design-stability.js") ||
     url.pathname.endsWith("/js/tank-cards-reference.js") ||
     url.pathname.endsWith("/js/interface-ops-v2.js") ||
     url.pathname.endsWith("/js/tv-control-room.js") ||

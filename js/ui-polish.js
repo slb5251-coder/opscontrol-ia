@@ -2,8 +2,8 @@
   "use strict";
 
   const scriptUrl = document.currentScript?.src || new URL("js/ui-polish.js", document.baseURI).href;
-  const INTERFACE_STYLESHEET = new URL("../interface-runtime.css?v=20260722-runtime-1", scriptUrl).href;
-  const INTERFACE_SCRIPT = new URL("interface-runtime.js?v=20260722-runtime-1", scriptUrl).href;
+  const INTERFACE_STYLESHEET = new URL("../interface-runtime.css?v=20260722-mobile-states-1", scriptUrl).href;
+  const INTERFACE_SCRIPT = new URL("interface-runtime.js?v=20260722-mobile-states-1", scriptUrl).href;
   const TAB_CONTAINERS = [
     '[role="tablist"]',
     '.tabs',

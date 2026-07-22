@@ -8,6 +8,7 @@
     ["tv-control-room", "tv-control-room.js?v=20260722-tv-control-room-1"],
     ["role-dashboard", "role-dashboard.js?v=20260722-role-dashboard-1"],
     ["operations-analytics", "operations-analytics.js?v=20260722-operations-analytics-1"],
+    ["operation-products-extension", "operation-products-extension.js?v=20260722-operation-products-extension-1"],
     ["alert-center-v2", "alert-center-v2.js?v=20260722-alert-center-v2-1"],
     ["app-states", "app-states.js?v=20260722-app-states-1"]
   ];

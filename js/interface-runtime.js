@@ -9,7 +9,8 @@
     ["ops-v2", "interface-ops-v2.js?v=20260722-ops-v2-1"],
     ["tv-control-room", "tv-control-room.js?v=20260722-tv-control-room-1"],
     ["role-dashboard", "role-dashboard.js?v=20260722-role-dashboard-1"],
-    ["operations-analytics", "operations-analytics.js?v=20260722-operations-analytics-1"]
+    ["operations-analytics", "operations-analytics.js?v=20260722-operations-analytics-1"],
+    ["alert-center-v2", "alert-center-v2.js?v=20260722-alert-center-v2-1"]
   ];
 
   function loadScript(marker, relativePath) {

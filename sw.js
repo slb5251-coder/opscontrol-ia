@@ -1,4 +1,4 @@
-const CACHE="opscontrol-20260722-staging-db-1";
+const CACHE="opscontrol-20260722-observability-1";
 const FILES=[
   "./",
   "./index.html",
@@ -7,7 +7,7 @@ const FILES=[
   "./opscontrol-ui.css?v=20260722-security-1",
   "./figma-interface.css?v=20260722-security-1",
   "./assistente-integrado.css?v=20260722-security-1",
-  "./interface-runtime.css?v=20260722-final-audit-1",
+  "./interface-runtime.css?v=20260722-observability-1",
   "./interface-fix.css?v=20260722-final-audit-1",
   "./final-interface.css?v=20260722-final-audit-1",
   "./tank-cards-reference.css?v=20260722-mobile-tanks-1",
@@ -18,12 +18,14 @@ const FILES=[
   "./operations-analytics.css?v=20260722-operations-analytics-1",
   "./alert-center-v2.css?v=20260722-alert-center-v2-1",
   "./app-states.css?v=20260722-app-states-1",
+  "./system-health.css?v=20260722-observability-1",
   "./homologation.css?v=20260722-staging-db-1",
   "./js/config.js?v=20260722-security-1",
   "./js/app.js?v=20260722-security-1",
   "./js/assistente-integrado.js?v=20260722-security-1",
   "./js/ui-polish.js?v=20260722-security-1",
-  "./js/interface-runtime.js?v=20260722-final-audit-1",
+  "./js/interface-runtime.js?v=20260722-observability-1",
+  "./js/system-observability.js?v=20260722-observability-1",
   "./js/tank-cards-reference.js?v=20260722-mobile-tanks-1",
   "./js/interface-ops-v2.js?v=20260722-ops-v2-1",
   "./js/tv-control-room.js?v=20260722-tv-control-room-1",
@@ -73,12 +75,14 @@ self.addEventListener("fetch", event => {
     url.pathname.endsWith("/operations-analytics.css") ||
     url.pathname.endsWith("/alert-center-v2.css") ||
     url.pathname.endsWith("/app-states.css") ||
+    url.pathname.endsWith("/system-health.css") ||
     url.pathname.endsWith("/homologation.css") ||
     url.pathname.endsWith("/js/app.js") ||
     url.pathname.endsWith("/js/assistente-integrado.js") ||
     url.pathname.endsWith("/js/config.js") ||
     url.pathname.endsWith("/js/ui-polish.js") ||
     url.pathname.endsWith("/js/interface-runtime.js") ||
+    url.pathname.endsWith("/js/system-observability.js") ||
     url.pathname.endsWith("/js/tank-cards-reference.js") ||
     url.pathname.endsWith("/js/interface-ops-v2.js") ||
     url.pathname.endsWith("/js/tv-control-room.js") ||

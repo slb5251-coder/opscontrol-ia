@@ -11,6 +11,7 @@
     ["operations-analytics", "operations-analytics.js?v=20260722-operations-analytics-1"],
     ["operation-products-extension", "operation-products-extension.js?v=20260722-operation-products-extension-1"],
     ["truck-delete-extension", "truck-delete-extension.js?v=20260722-truck-delete-1"],
+    ["truck-open-days-cleanup", "truck-open-days-cleanup.js?v=20260722-truck-open-days-cleanup-1"],
     ["alert-center-v2", "alert-center-v2.js?v=20260722-alert-center-v2-1"],
     ["app-states", "app-states.js?v=20260722-app-states-1"]
   ];

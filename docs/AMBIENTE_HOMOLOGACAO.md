@@ -50,11 +50,33 @@ Essas estruturas continuam fora do frontend restaurado e não devem ser reintrod
 
 A homologação começa sem registros operacionais. Somente a estrutura fixa de tanques, silos, permissões e catálogos mínimos foi criada.
 
-O primeiro usuário criado recebe o papel `admin` pelo gatilho de inicialização. Usuários seguintes recebem o papel padrão e devem ser ajustados por um administrador.
+O primeiro usuário foi criado e confirmado em 22/07/2026. O gatilho de inicialização criou corretamente o perfil ativo com papel `admin`.
+
+Ainda não existe registro de primeiro login (`last_sign_in_at` está vazio). Portanto, autenticação pela interface e recuperação de senha continuam pendentes de validação manual.
 
 A criação automática do primeiro usuário não foi realizada porque o ambiente bloqueou a chamada externa à API administrativa. Uma Edge Function temporária chegou a ser preparada, mas foi neutralizada e passou a exigir JWT antes de qualquer uso. A extensão temporária `pg_net` também foi removida.
 
-O usuário inicial deve ser criado pelo painel do Supabase em **Authentication > Users > Add user**. Não inserir registros diretamente em `auth.users`.
+Usuários devem ser criados pela API administrativa ou pelo painel do Supabase. Não inserir registros diretamente em `auth.users`.
+
+## Smoke tests autenticados
+
+Os testes abaixo foram executados com o contexto do usuário administrador e dentro de transações revertidas:
+
+- recebimento de 200 bbl de Brine no TK-01;
+- operação de bombeio concluída com baixa automática de 100 bbl;
+- confirmação de saldo final temporário de 100 bbl no TK-01;
+- carreta Tank concluída com entrada automática de 50 bbl no TK-02;
+- confirmação de `stock_applied=true` na carreta;
+- alerta marcado como lido, atribuído e resolvido;
+- passagem de turno entregue e aprovada.
+
+Depois dos testes, o rollback foi confirmado:
+
+- zero operações;
+- zero carretas;
+- zero alertas;
+- zero aprovações de passagem;
+- TK-01 e TK-02 retornaram a 0 bbl.
 
 ## Limitações conhecidas
 
@@ -72,11 +94,18 @@ Também existem avisos de desempenho herdados da produção, principalmente índ
 
 ## Critério para promover à produção
 
-Antes de retirar o PR do modo rascunho:
+Concluído:
 
-1. criar e confirmar um usuário administrador de teste;
-2. validar login e recuperação de senha;
-3. testar um fluxo de tanque, operação, carreta, alerta e passagem de turno;
-4. conferir desktop, celular e Painel TV;
-5. confirmar os checks do GitHub Actions;
-6. registrar o ponto de rollback da `main`.
+1. usuário administrador criado e confirmado;
+2. fluxos transacionais de tanque, operação, carreta, alerta e passagem testados;
+3. checks do GitHub Actions aprovados;
+4. testes automatizados de desktop e celular aprovados.
+
+Pendente:
+
+1. validar o primeiro login pela interface;
+2. validar recuperação de senha;
+3. testar os mesmos fluxos manualmente no frontend autenticado;
+4. conferir o Painel TV autenticado;
+5. disponibilizar uma URL de preview separada ou executar o frontend localmente;
+6. registrar o ponto de rollback da `main` antes de qualquer merge.

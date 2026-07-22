@@ -46,11 +46,15 @@ Não foram incluídas funcionalidades criadas depois do ponto restaurado:
 
 Essas estruturas continuam fora do frontend restaurado e não devem ser reintroduzidas sem uma entrega própria.
 
-## Dados
+## Dados e autenticação
 
-A homologação começa sem usuários e sem registros operacionais. Somente a estrutura fixa de tanques, silos, permissões e catálogos mínimos foi criada.
+A homologação começa sem registros operacionais. Somente a estrutura fixa de tanques, silos, permissões e catálogos mínimos foi criada.
 
 O primeiro usuário criado recebe o papel `admin` pelo gatilho de inicialização. Usuários seguintes recebem o papel padrão e devem ser ajustados por um administrador.
+
+A criação automática do primeiro usuário não foi realizada porque o ambiente bloqueou a chamada externa à API administrativa. Uma Edge Function temporária chegou a ser preparada, mas foi neutralizada e passou a exigir JWT antes de qualquer uso. A extensão temporária `pg_net` também foi removida.
+
+O usuário inicial deve ser criado pelo painel do Supabase em **Authentication > Users > Add user**. Não inserir registros diretamente em `auth.users`.
 
 ## Limitações conhecidas
 

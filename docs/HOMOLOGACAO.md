@@ -10,11 +10,22 @@ Evitar que alterações incompletas, regressões visuais ou mudanças incompatí
 - `homologacao`: integração e validação antes da produção.
 - branches de trabalho: uma branch curta por correção ou funcionalidade.
 
+## Ambientes
+
+- `production`: usa exclusivamente o Supabase de produção.
+- `staging`: usa exclusivamente uma branch ou projeto Supabase sem dados reais.
+
+O ambiente é selecionado pelo parâmetro `?env=production` ou `?env=staging` e fica armazenado no navegador. Ao entrar em staging, a aplicação deve exibir uma faixa amarela permanente com a identificação **AMBIENTE DE HOMOLOGAÇÃO**.
+
+Enquanto a URL e a chave de staging não estiverem configuradas, o login deve permanecer bloqueado. Esse bloqueio é obrigatório para impedir que uma sessão de testes utilize produção por engano.
+
+Nunca preencher a configuração de staging com a URL ou a chave de produção. Para retornar à versão normal, usar o botão **Voltar para produção** ou abrir a aplicação com `?env=production`.
+
 ## Fluxo obrigatório
 
 1. Criar a alteração fora da `main`.
 2. Integrar primeiro em `homologacao`.
-3. Executar lint, typecheck, testes responsivos, segurança e build.
+3. Executar lint, typecheck, testes responsivos, isolamento de ambiente, segurança e build.
 4. Validar manualmente desktop, celular e Painel TV quando a mudança afetar interface.
 5. Validar usuário e permissões quando a mudança afetar autenticação ou cargos.
 6. Revisar migrations e políticas RLS quando a mudança afetar o Supabase.
@@ -30,10 +41,13 @@ Evitar que alterações incompletas, regressões visuais ou mudanças incompatí
 - Não remover tabelas, colunas ou dados do Supabase sem snapshot e análise de uso.
 - Não considerar uma tela aprovada apenas porque está bonita; validar leitura, ação, erro, vazio, carregamento e responsividade.
 - Não realizar merge com check falhando ou sem execução dos testes.
+- Não testar escrita, exclusão ou permissões no banco de produção.
 
 ## Validação mínima
 
 - Login e recuperação de acesso.
+- Confirmação visual do ambiente ativo.
+- Bloqueio de staging sem banco separado.
 - Dashboard conforme o cargo.
 - Tanques e silos: leitura, atualização e histórico.
 - Operações: criação, andamento e conclusão.

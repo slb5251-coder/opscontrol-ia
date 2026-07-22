@@ -78,57 +78,40 @@
   }
 
   function assistantMarkup() {
-    return `<div class="ocai-wrap" data-ocai-version="${VERSION}">
-      <section class="ocai-hero">
-        <div>
-          <span class="ocai-kicker">Assistente operacional</span>
-          <h1>IA integrada ao OpsControl</h1>
-          <p>Transforme informações do turno em passagens, relatórios, alertas e comunicações prontas para uso, sem sair do sistema.</p>
-        </div>
-        <div class="ocai-security">
-          <span class="ocai-security-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9"><rect x="5" y="10" width="14" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path></svg></span>
-          <strong>Conexão protegida</strong>
-          <small>OpenAI via Supabase Edge Function</small>
-        </div>
-      </section>
+    const live = window.OpsControlNativeUI?.assistantContext?.() || {};
+    return `<div class="ocai-wrap ocai-figma" data-ocai-version="${VERSION}">
+      <div class="ocai-assistant-layout">
+        <aside class="ocai-telemetry">
+          <div><span class="ocai-kicker">Contexto operacional real</span><h2>Resumo de Telemetria Ativa</h2></div>
+          <div class="ocai-telemetry-cards"><article><span>Vazão Atual</span><strong>${safeText(Number(live.flow || 0).toLocaleString("pt-BR"))}</strong><small>${safeText(live.flowUnit || "bbl/h")}</small></article><article><span>Ativos Disponíveis</span><strong>${safeText(live.availableAssets ?? 0)}/${safeText(live.totalAssets ?? 0)}</strong><small>tanques e silos</small></article></div>
+          <article class="ocai-live-operation"><span>OPERAÇÃO ATUAL</span><strong>${safeText(live.operation || "Nenhuma operação em andamento")}</strong><small>${safeText(live.criticalAlerts || 0)} alerta(s) crítico(s)</small></article>
+          <figure class="ocai-hydraulic-map"><img src="assets/figma/hydraulic-system.png" alt="Diagrama do sistema hidráulico da planta"></figure>
+        </aside>
 
-      <div class="ocai-status-row">
-        <span id="ocaiStatus" class="ocai-status">Verificando conexão</span>
-        <span class="ocai-hint">Use Ctrl + Enter para gerar.</span>
-      </div>
-
-      <section class="ocai-mode-section">
-        <div class="ocai-section-head"><div><h2>O que deseja fazer?</h2><p>Escolha o formato ideal para sua necessidade.</p></div></div>
-        <div class="ocai-mode-grid">
-          <button class="ocai-mode active" type="button" data-ocai-mode="handover" aria-pressed="true"><span class="ocai-mode-icon">${icon("handover")}</span><strong>Passagem de turno</strong><small>Organiza atividades e pendências.</small></button>
-          <button class="ocai-mode" type="button" data-ocai-mode="report" aria-pressed="false"><span class="ocai-mode-icon">${icon("report")}</span><strong>Relatório operacional</strong><small>Estrutura volumes, horários e fatos.</small></button>
-          <button class="ocai-mode" type="button" data-ocai-mode="alert" aria-pressed="false"><span class="ocai-mode-icon">${icon("alert")}</span><strong>Análise de alerta</strong><small>Avalia risco, prioridade e ação.</small></button>
-          <button class="ocai-mode" type="button" data-ocai-mode="assistant" aria-pressed="false"><span class="ocai-mode-icon">${icon("sparkles")}</span><strong>Assistente geral</strong><small>Redige e responde solicitações.</small></button>
-        </div>
-        <label class="ocai-context-toggle" for="ocaiIncludeContext">
-          <input id="ocaiIncludeContext" type="checkbox" checked>
-          <span class="ocai-context-icon">${icon("database")}</span>
-          <span><strong>Incluir contexto atual do OpsControl</strong><small>A IA consulta somente dados permitidos ao seu usuário: operações, tanques, carretas, alertas e manutenção.</small></span>
-        </label>
-      </section>
-
-      <div class="ocai-grid">
-        <section class="ocai-panel">
-          <div class="ocai-panel-head"><div><span class="ocai-label">ENTRADA</span><h2 id="ocaiInputTitle">Dados da passagem de turno</h2></div><button id="ocaiClear" class="ocai-ghost" type="button">Limpar</button></div>
-          <textarea id="ocaiPrompt" maxlength="30000" placeholder="${MODES.handover.placeholder}"></textarea>
-          <div class="ocai-input-foot"><span id="ocaiCounter" class="ocai-counter">0 / 30.000</span><button id="ocaiGenerate" class="ocai-generate" type="button">${icon("sparkles")}<span>Gerar com IA</span></button></div>
-          <div id="ocaiMessage" class="ocai-message ocai-hidden"></div>
-        </section>
-
-        <section class="ocai-panel">
-          <div class="ocai-panel-head"><div><span class="ocai-label">RESULTADO</span><h2>Conteúdo gerado</h2></div><button id="ocaiCopy" class="ocai-ghost" type="button" disabled>Copiar</button></div>
-          <div id="ocaiResult" class="ocai-result empty"><div class="ocai-empty-icon">${icon("brain")}</div><strong>O resultado aparecerá aqui</strong><span>Informe os dados e clique em “Gerar com IA”.</span></div>
-          <div class="ocai-actions"><button id="ocaiWhatsApp" type="button" disabled>WhatsApp</button><button id="ocaiEmail" type="button" disabled>E-mail</button><button id="ocaiPrint" type="button" disabled>Imprimir / PDF</button></div>
+        <section class="ocai-chat-shell">
+          <header><div class="ocai-core-mark">${icon("brain")}</div><div><strong>OPS IA Core</strong><small>Copiloto operacional ativo</small></div><span id="ocaiStatus" class="ocai-status">Verificando conexão</span></header>
+          <div class="ocai-chat-body">
+            <div class="ocai-chat-message assistant"><span>OPS IA</span><p>Estou conectado ao contexto permitido do OPSControl. Posso resumir a operação, organizar a passagem de turno, analisar alertas e redigir relatórios.</p></div>
+            <div id="ocaiResult" class="ocai-result empty"><div class="ocai-empty-icon">${icon("sparkles")}</div><strong>Como posso apoiar a operação?</strong><span>Escolha uma ação ou escreva sua solicitação abaixo.</span></div>
+          </div>
+          <footer class="ocai-chat-composer">
+            <div class="ocai-mode-grid">
+              <button class="ocai-mode active" type="button" data-ocai-mode="handover" aria-pressed="true">${icon("handover")}<strong>Passagem de turno</strong></button>
+              <button class="ocai-mode" type="button" data-ocai-mode="report" aria-pressed="false">${icon("report")}<strong>Relatório operacional</strong></button>
+              <button class="ocai-mode" type="button" data-ocai-mode="alert" aria-pressed="false">${icon("alert")}<strong>Alertas críticos</strong></button>
+              <button class="ocai-mode" type="button" data-ocai-mode="assistant" aria-pressed="false">${icon("sparkles")}<strong>Assistente geral</strong></button>
+            </div>
+            <label class="ocai-context-toggle" for="ocaiIncludeContext"><input id="ocaiIncludeContext" type="checkbox" checked><span class="ocai-context-icon">${icon("database")}</span><span><strong>Incluir contexto atual do OPSControl</strong><small>Somente dados permitidos ao usuário atual.</small></span></label>
+            <div class="ocai-composer-row"><div><span class="ocai-label">ENTRADA</span><h2 id="ocaiInputTitle">Dados da passagem de turno</h2></div><button id="ocaiClear" class="ocai-ghost" type="button">Limpar</button><textarea id="ocaiPrompt" maxlength="30000" placeholder="${MODES.handover.placeholder}"></textarea><button id="ocaiGenerate" class="ocai-generate" type="button">${icon("sparkles")}<span>Enviar</span></button></div>
+            <div class="ocai-composer-meta"><span id="ocaiCounter" class="ocai-counter">0 / 30.000</span><span>Confirmação humana obrigatória antes de qualquer intervenção física.</span></div>
+            <div id="ocaiMessage" class="ocai-message ocai-hidden"></div>
+            <div class="ocai-actions"><button id="ocaiCopy" type="button" disabled>Copiar</button><button id="ocaiWhatsApp" type="button" disabled>WhatsApp</button><button id="ocaiEmail" type="button" disabled>E-mail</button><button id="ocaiPrint" type="button" disabled>Imprimir / PDF</button></div>
+          </footer>
         </section>
       </div>
-
-      <section class="ocai-examples"><div class="ocai-section-head"><div><h2>Exemplos rápidos</h2><p>Toque em um exemplo para preencher o campo.</p></div></div><div id="ocaiExamples" class="ocai-example-grid"></div></section>
+      <section class="ocai-examples ocai-compact-examples"><div class="ocai-section-head"><div><h2>Exemplos rápidos</h2><p>Use um exemplo como ponto de partida.</p></div></div><div id="ocaiExamples" class="ocai-example-grid"></div></section>
     </div>`;
+
   }
 
   function setStatus(text, state = "") {

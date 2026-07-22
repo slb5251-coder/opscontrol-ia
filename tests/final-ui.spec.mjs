@@ -23,8 +23,12 @@ const server = createServer(async (request, response) => {
 
 await new Promise(done => server.listen(0, '127.0.0.1', done));
 await mkdir(outputDir, { recursive:true });
+await mkdir(resolve(outputDir, 'routes'), { recursive:true });
 const port = server.address().port;
-const browser = await chromium.launch({ headless:true });
+const browser = await chromium.launch({
+  headless:true,
+  executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined
+});
 const results = [];
 let failed = false;
 const check = (name, ok, detail = '') => { results.push({ name, ok, detail }); if (!ok) failed = true; };
@@ -84,7 +88,13 @@ const mockSupabase = ({ profile, tables }) => {
 };
 
 try {
-  const routes = ['dashboard','tanks','operations','vessel-registry','trucks','fluids','chemicals','maintenance','qhse','dds','documents','reports','handover','alerts','ai-assistant','users','settings','tv'];
+  const routes = ['dashboard','tanks','operations','vessel-registry','trucks','fluids','bulk-movements','inventory','chemicals','maintenance','qhse','dds','documents','reports','handover','alerts','ai-assistant','users','settings','tv'];
+  const approvedNavigation = [
+    'Visão Geral', 'Planta e Tancagem', 'Operações', 'Programação de Embarcações',
+    'Controle de Carretas', 'Movimentação de Fluidos', 'Movimentação de Granéis',
+    'Inventário', 'Manutenção', 'QHSE', 'DDS e Cursos', 'Documentos e Certificados',
+    'Relatórios', 'Alerta e Comunicação', 'Usuários e Permissões', 'Configurações'
+  ];
   const viewports = [{ width:390,height:844 },{ width:1024,height:768 },{ width:1280,height:800 },{ width:1440,height:900 },{ width:1920,height:1080 }];
   for (const viewport of viewports) {
     const context = await browser.newContext({ viewport });
@@ -97,35 +107,54 @@ try {
     await page.waitForSelector('#appView:not(.hidden)', { timeout:10000 });
     await page.waitForTimeout(300);
 
-    const shell = await page.evaluate(() => ({
+    const shell = await page.evaluate(approvedLabels => ({
       dark:document.documentElement.dataset.theme === 'dark',
       overflow:document.documentElement.scrollWidth > document.documentElement.clientWidth + 2,
-      legacyHidden:[...document.querySelectorAll('.legacy-nav')].every(item => getComputedStyle(item).display === 'none'),
+      styles:[...document.querySelectorAll('link[rel="stylesheet"]')].map(link => link.getAttribute('href')),
+      navigation:[...document.querySelectorAll('#sidebar nav > .nav-item .nav-label')].map(item => item.textContent.trim()),
+      noLegacyLayers:!document.querySelector('.legacy-nav, .nav-section-label, [data-nav-section-toggle]'),
+      contextualOutsideSidebar:!document.querySelector('#sidebar [data-page="ai-assistant"], #sidebar [data-page="tv"]'),
       map:Boolean(document.querySelector('.plant-map-card')),
-      newRoutes:['dds','documents','handover','users'].every(route => document.querySelector(`#page-${route}`)?.innerHTML.trim())
-    }));
+      newRoutes:['bulk-movements','inventory','dds','documents','handover','users'].every(route => document.querySelector(`#page-${route}`)?.innerHTML.trim()),
+      approvedNavigation:JSON.stringify([...document.querySelectorAll('#sidebar nav > .nav-item .nav-label')].map(item => item.textContent.trim())) === JSON.stringify(approvedLabels)
+    }), approvedNavigation);
     check(`${viewport.width}px tema final escuro`, shell.dark);
     check(`${viewport.width}px sem overflow global`, !shell.overflow);
-    check(`${viewport.width}px navegação simplificada`, shell.legacyHidden);
+    check(`${viewport.width}px stylesheet único do Figma`, shell.styles.length === 1 && shell.styles[0].startsWith('opscontrol-native.css'), shell.styles.join(', '));
+    check(`${viewport.width}px sem camadas legadas`, shell.noLegacyLayers);
+    check(`${viewport.width}px navegação exata do Figma`, shell.approvedNavigation, shell.navigation.join(' | '));
+    check(`${viewport.width}px IA e TV fora da sidebar`, shell.contextualOutsideSidebar);
     check(`${viewport.width}px mapa da planta`, shell.map);
     check(`${viewport.width}px novas rotas renderizadas`, shell.newRoutes);
 
     if (viewport.width === 1440) {
+      await page.screenshot({ path:resolve(outputDir, 'dashboard-1440.png'), fullPage:true });
+    }
+    if (viewport.width === 390) {
+      await page.screenshot({ path:resolve(outputDir, 'dashboard-390.png'), fullPage:true });
+    }
+
+    if (viewport.width === 1440) {
       for (const route of routes) {
-        await page.locator(`[data-page="${route}"]`).first().click();
+        const activated = await page.evaluate(routeName => {
+          const trigger = document.querySelector(`[data-page="${routeName}"], [data-page-link="${routeName}"], [data-mobile-page="${routeName}"]`);
+          trigger?.click();
+          return Boolean(trigger);
+        }, route);
         await page.waitForTimeout(40);
         const state = await page.evaluate(routeName => ({
           active:document.querySelector(`#page-${routeName}`)?.classList.contains('active'),
           error:Boolean(document.querySelector(`#page-${routeName} .module-error-card`))
         }), route);
-        check(`rota ${route}`, state.active && !state.error);
+        check(`rota ${route}`, activated && state.active && !state.error);
+        await page.screenshot({ path:resolve(outputDir, 'routes', `${route}.png`), fullPage:true });
       }
     }
 
     await page.evaluate(() => document.querySelector('[data-page="tanks"]')?.click());
     await page.screenshot({ path:resolve(outputDir, `tancagem-${viewport.width}.png`), fullPage:true });
     if (viewport.width === 1920) {
-      await page.evaluate(() => document.querySelector('[data-page="tv"]')?.click());
+      await page.evaluate(() => document.querySelector('[data-mobile-page="tv"]')?.click());
       const tv = await page.evaluate(() => ({
         route:document.body.classList.contains('tv-route'),
         operation:Boolean(document.querySelector('.tv-current-operation')),

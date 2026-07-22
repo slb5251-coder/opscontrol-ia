@@ -1,26 +1,16 @@
-const CACHE="opscontrol-20260721-figma-final-1";
+const CACHE="opscontrol-20260721-figma-native-2";
 const FILES=[
   "./",
   "./index.html",
-  "./app.css?v=20260719-v33-12-14-1-client-tickets",
-  "./v33.css?v=20260719-v33-12-14-1-client-tickets",
-  "./opscontrol-ui.css?v=20260721-ui-consolidada-1",
-  "./figma-interface.css?v=20260721-icons-3",
-  "./assistente-integrado.css?v=20260721-ai-2",
-  "./figma-final.css?v=20260721-final-1",
-  "./interface-fix.css?v=20260721-interface-fix-1",
-  "./design-upgrade.css?v=20260721-control-center-1",
-  "./tank-cards-reference.css?v=20260721-reference-cards-1",
-  "./js/config.js?v=20260721-ui-consolidada-1",
-  "./js/app.js?v=20260721-icons-3",
-  "./js/assistente-integrado.js?v=20260721-ai-2",
-  "./js/ui-polish.js?v=20260721-reference-cards-1",
-  "./js/design-upgrade.js?v=20260721-control-center-1",
-  "./js/design-stability.js?v=20260721-original-tanks-1",
-  "./js/tank-cards-reference.js?v=20260721-reference-cards-1",
+  "./opscontrol-native.css?v=20260721-native-2",
+  "./js/config.js?v=20260721-native-2",
+  "./js/opscontrol-native.js?v=20260721-native-2",
+  "./js/app.js?v=20260721-native-2",
+  "./js/assistente-integrado.js?v=20260721-native-2",
   "./manifest.json",
   "./assets/icon.svg",
   "./assets/figma/login-reference.png",
+  "./assets/figma/hydraulic-system.png",
   "./vendor/qrcode.js"
 ];
 
@@ -45,22 +35,11 @@ self.addEventListener("fetch", event => {
   const appFile = url.origin === self.location.origin && (
     url.pathname.endsWith("/") ||
     url.pathname.endsWith("/index.html") ||
-    url.pathname.endsWith("/app.css") ||
-    url.pathname.endsWith("/v33.css") ||
-    url.pathname.endsWith("/opscontrol-ui.css") ||
-    url.pathname.endsWith("/figma-interface.css") ||
-    url.pathname.endsWith("/assistente-integrado.css") ||
-    url.pathname.endsWith("/figma-final.css") ||
-    url.pathname.endsWith("/interface-fix.css") ||
-    url.pathname.endsWith("/design-upgrade.css") ||
-    url.pathname.endsWith("/tank-cards-reference.css") ||
+    url.pathname.endsWith("/opscontrol-native.css") ||
+    url.pathname.endsWith("/js/opscontrol-native.js") ||
     url.pathname.endsWith("/js/app.js") ||
     url.pathname.endsWith("/js/assistente-integrado.js") ||
-    url.pathname.endsWith("/js/config.js") ||
-    url.pathname.endsWith("/js/ui-polish.js") ||
-    url.pathname.endsWith("/js/design-upgrade.js") ||
-    url.pathname.endsWith("/js/design-stability.js") ||
-    url.pathname.endsWith("/js/tank-cards-reference.js")
+    url.pathname.endsWith("/js/config.js")
   );
 
   if (appFile) {

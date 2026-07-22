@@ -4,8 +4,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "lint": "node --check js/app.js && node --check js/assistente-integrado.js && node --check js/ui-polish.js && node scripts/validate-static.mjs",
-    "typecheck": "node --check js/app.js && node --check js/assistente-integrado.js && node --check js/ui-polish.js",
+    "lint": "node --check js/opscontrol-native.js && node --check js/app.js && node --check js/assistente-integrado.js && node scripts/validate-static.mjs",
+    "typecheck": "node --check js/opscontrol-native.js && node --check js/app.js && node --check js/assistente-integrado.js",
     "test": "npm run test:responsive && npm run test:final",
     "test:responsive": "node tests/responsive.spec.mjs",
     "test:final": "node tests/final-ui.spec.mjs",

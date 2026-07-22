@@ -5,9 +5,11 @@ import { fileURLToPath } from 'node:url';
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const html = await readFile(resolve(root, 'index.html'), 'utf8');
 const app = await readFile(resolve(root, 'js/app.js'), 'utf8');
+const native = await readFile(resolve(root, 'js/opscontrol-native.js'), 'utf8');
+const css = await readFile(resolve(root, 'opscontrol-native.css'), 'utf8');
 
 const requiredPages = [
-  'dashboard', 'tv', 'operations', 'vessel-registry', 'tanks', 'fluids', 'chemicals', 'trucks',
+  'dashboard', 'tv', 'operations', 'vessel-registry', 'tanks', 'fluids', 'bulk-movements', 'inventory', 'chemicals', 'trucks',
   'qhse', 'maintenance', 'dds', 'documents', 'alerts', 'ai-assistant', 'reports', 'handover',
   'users', 'settings'
 ];
@@ -28,10 +30,10 @@ for (const reference of new Set(references)) {
   catch { errors.push(`Arquivo referenciado não existe: ${reference}`); }
 }
 
-if (/service[_-]?role|sk-proj-|sk-[A-Za-z0-9]{20,}/i.test(app)) {
+if (/service[_-]?role|sk-proj-|sk-[A-Za-z0-9]{20,}/i.test(`${app}\n${native}`)) {
   errors.push('Possível segredo encontrado no bundle principal.');
 }
-if (!html.includes('prefers-reduced-motion') && !(await readFile(resolve(root, 'figma-final.css'), 'utf8')).includes('prefers-reduced-motion')) {
+if (!css.includes('prefers-reduced-motion')) {
   errors.push('Suporte a prefers-reduced-motion ausente.');
 }
 

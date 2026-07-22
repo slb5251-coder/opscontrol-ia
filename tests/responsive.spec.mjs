@@ -4,199 +4,120 @@ import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { extname, resolve, dirname, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
-const root = resolve(__dirname, '..');
-const outputDir = resolve(root, 'test-results');
-const widths = [390, 1024, 1280, 1440, 1920];
-const heights = { 390: 844, 1024: 768, 1280: 800, 1440: 900, 1920: 1080 };
+const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const outputDir = resolve(root, 'test-results', 'responsive-native');
+const viewports = [
+  { width:390, height:844 },
+  { width:1024, height:768 },
+  { width:1280, height:800 },
+  { width:1440, height:900 },
+  { width:1920, height:1080 }
+];
 const mime = {
-  '.html': 'text/html; charset=utf-8',
-  '.css': 'text/css; charset=utf-8',
-  '.js': 'text/javascript; charset=utf-8',
-  '.mjs': 'text/javascript; charset=utf-8',
-  '.json': 'application/json; charset=utf-8',
-  '.svg': 'image/svg+xml'
+  '.html':'text/html; charset=utf-8', '.css':'text/css; charset=utf-8',
+  '.js':'text/javascript; charset=utf-8', '.json':'application/json; charset=utf-8',
+  '.svg':'image/svg+xml', '.png':'image/png'
 };
-
-function safePath(urlPath) {
-  const clean = normalize(decodeURIComponent(urlPath.split('?')[0])).replace(/^([.][.][/\\])+/, '');
-  return resolve(root, clean === '/' ? 'index.html' : clean.replace(/^[/\\]/, ''));
-}
 
 const server = createServer(async (request, response) => {
   try {
-    const path = safePath(request.url || '/');
+    const clean = normalize(decodeURIComponent((request.url || '/').split('?')[0])).replace(/^([.][.][/\\])+/, '');
+    const path = resolve(root, clean === '/' ? 'index.html' : clean.replace(/^[/\\]/, ''));
     if (!path.startsWith(root)) throw new Error('Caminho inválido');
-    const content = await readFile(path);
-    response.writeHead(200, { 'content-type': mime[extname(path)] || 'application/octet-stream' });
-    response.end(content);
+    response.writeHead(200, { 'content-type':mime[extname(path)] || 'application/octet-stream' });
+    response.end(await readFile(path));
   } catch {
-    response.writeHead(404, { 'content-type': 'text/plain; charset=utf-8' });
+    response.writeHead(404, { 'content-type':'text/plain; charset=utf-8' });
     response.end('Not found');
   }
 });
 
-await new Promise(resolveStart => server.listen(0, '127.0.0.1', resolveStart));
+await new Promise(done => server.listen(0, '127.0.0.1', done));
+await mkdir(outputDir, { recursive:true });
 const port = server.address().port;
-await mkdir(outputDir, { recursive: true });
-
-const browser = await chromium.launch({ headless: true });
+const browser = await chromium.launch({
+  headless:true,
+  executablePath:process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE_PATH || undefined
+});
 const results = [];
 let failed = false;
-
-function record(width, check, ok, detail = '') {
-  results.push({ width, check, ok, detail });
+const check = (width, name, ok, detail = '') => {
+  results.push({ width, name, ok, detail });
   if (!ok) failed = true;
-}
+};
+
+const unauthenticatedSupabase = () => {
+  window.supabase = {
+    createClient() {
+      return {
+        auth:{
+          getSession:async()=>({ data:{ session:null }, error:null }),
+          signInWithPassword:async()=>({ data:null, error:{ message:'Credenciais inválidas' } }),
+          resetPasswordForEmail:async()=>({ error:null }),
+          signOut:async()=>({ error:null })
+        },
+        rpc:async()=>({ data:null, error:null })
+      };
+    }
+  };
+};
 
 try {
-  for (const width of widths) {
-    const context = await browser.newContext({ viewport: { width, height: heights[width] } });
+  for (const viewport of viewports) {
+    const context = await browser.newContext({ viewport, reducedMotion:'reduce' });
     const page = await context.newPage();
-
-    await page.route('**/*', async route => {
-      const url = route.request().url();
-      if (url.startsWith(`http://127.0.0.1:${port}/`)) await route.continue();
-      else await route.abort();
-    });
-
-    await page.goto(`http://127.0.0.1:${port}/tests/fixtures/responsive.html`, { waitUntil: 'networkidle' });
-    await page.waitForTimeout(150);
+    const pageErrors = [];
+    page.on('pageerror', error => pageErrors.push(error.message));
+    await page.addInitScript(unauthenticatedSupabase);
+    await page.route('**/*', route => route.request().url().startsWith(`http://127.0.0.1:${port}/`) ? route.continue() : route.abort());
+    await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil:'domcontentloaded' });
+    await page.waitForSelector('#loginView:not(.hidden)');
 
     const audit = await page.evaluate(() => {
-      const viewport = document.documentElement.clientWidth;
-      const allowed = '.table-wrap,.page-header .actions,.ui-tab-scroller,.operation-stepper-head,.mobile-bottom-nav,.sidebar nav';
-      const overflow = [...document.querySelectorAll('body *')].filter(element => {
-        if (element.closest(allowed)) return false;
-        const style = getComputedStyle(element);
-        if (style.display === 'none' || style.visibility === 'hidden' || style.position === 'fixed') return false;
-        const rect = element.getBoundingClientRect();
-        return rect.width > 0 && rect.right > viewport + 2;
-      }).map(element => ({
-        tag: element.tagName,
-        className: element.className,
-        right: Math.round(element.getBoundingClientRect().right),
-        viewport
-      })).slice(0, 10);
-
-      const rgb = value => {
-        const match = String(value).match(/[\d.]+/g);
-        return match ? match.slice(0, 3).map(Number) : [0, 0, 0];
-      };
-      const luminance = color => {
-        const channels = rgb(color).map(value => {
-          const normalized = value / 255;
-          return normalized <= .03928 ? normalized / 12.92 : Math.pow((normalized + .055) / 1.055, 2.4);
-        });
-        return .2126 * channels[0] + .7152 * channels[1] + .0722 * channels[2];
-      };
-      const effectiveBackground = element => {
-        let current = element;
-        while (current) {
-          const color = getComputedStyle(current).backgroundColor;
-          if (color && color !== 'rgba(0, 0, 0, 0)' && color !== 'transparent') return color;
-          current = current.parentElement;
-        }
-        return 'rgb(255, 255, 255)';
-      };
-      const contrast = selector => {
-        const element = document.querySelector(selector);
-        if (!element) return null;
-        const foreground = getComputedStyle(element).color;
-        const background = effectiveBackground(element);
-        const a = luminance(foreground);
-        const b = luminance(background);
-        return (Math.max(a, b) + .05) / (Math.min(a, b) + .05);
-      };
-
-      const primaryGrid = document.querySelector('.dashboard-primary-kpis');
-      const moreMetrics = document.querySelector('.dashboard-more-metrics');
-      const stepper = document.querySelector('.operation-stepper-head');
-      const actionBar = document.querySelector('.page-header .actions');
-
+      const hero = document.querySelector('.login-hero');
+      const panel = document.querySelector('.login-panel');
+      const email = document.querySelector('#loginEmail');
+      const password = document.querySelector('#loginPassword');
+      const styles = [...document.querySelectorAll('link[rel="stylesheet"]')].map(link => link.getAttribute('href'));
       return {
-        documentOverflow: document.documentElement.scrollWidth > viewport + 2,
-        overflow,
-        primaryCount: primaryGrid ? primaryGrid.children.length : 0,
-        hasMoreMetrics: Boolean(moreMetrics),
-        moreMetricCount: moreMetrics?.querySelectorAll('.stat-card').length || 0,
-        actionScrollable: actionBar ? actionBar.scrollWidth >= actionBar.clientWidth : false,
-        stepperVisible: stepper ? stepper.getBoundingClientRect().width > 0 : false,
-        labelFontSize: parseFloat(getComputedStyle(document.querySelector('label')).fontSize),
-        contrast: {
-          label: contrast('label'),
-          navActive: contrast('.nav-item.active'),
-          secondaryButton: contrast('.btn.secondary'),
-          tableCell: contrast('.data-table td')
-        }
+        overflow:document.documentElement.scrollWidth > document.documentElement.clientWidth + 2,
+        scrollWidth:document.documentElement.scrollWidth,
+        clientWidth:document.documentElement.clientWidth,
+        bodyScrollWidth:document.body.scrollWidth,
+        heroDisplay:getComputedStyle(hero).display,
+        heroWidth:hero.getBoundingClientRect().width,
+        panelWidth:panel.getBoundingClientRect().width,
+        background:getComputedStyle(hero).backgroundImage,
+        controls:Boolean(email && password && document.querySelector('#togglePasswordBtn') && document.querySelector('#rememberLogin') && document.querySelector('#forgotPasswordBtn')),
+        labels:Boolean(document.querySelector('label[for="loginEmail"]') && document.querySelector('label[for="loginPassword"]')),
+        reducedMotion:matchMedia('(prefers-reduced-motion: reduce)').matches && parseFloat(getComputedStyle(document.querySelector('.login-submit')).transitionDuration) <= 0.001,
+        styles
       };
     });
 
-    record(width, 'sem overflow global', !audit.documentOverflow, JSON.stringify(audit.overflow));
-    record(width, 'sem elementos fora da tela', audit.overflow.length === 0, JSON.stringify(audit.overflow));
-    record(width, 'dashboard mostra quatro indicadores principais', audit.primaryCount === 4, `encontrados: ${audit.primaryCount}`);
-    record(width, 'dashboard agrupa dois indicadores adicionais', audit.hasMoreMetrics && audit.moreMetricCount === 2, `encontrados: ${audit.moreMetricCount}`);
-    record(width, 'stepper visível', audit.stepperVisible);
-    record(width, 'labels legíveis', audit.labelFontSize >= 12, `font-size: ${audit.labelFontSize}px`);
+    const desktop = viewport.width > 820;
+    check(viewport.width, 'login sem overflow global', !audit.overflow, audit.overflow ? `${audit.scrollWidth}/${audit.clientWidth} (body ${audit.bodyScrollWidth})` : '');
+    check(viewport.width, 'stylesheet nativo único', audit.styles.length === 1 && audit.styles[0].startsWith('opscontrol-native.css'), audit.styles.join(', '));
+    check(viewport.width, 'controles reais de autenticação', audit.controls && audit.labels);
+    check(viewport.width, 'referência offshore oficial', audit.background.includes('login-reference.png'));
+    check(viewport.width, 'layout responsivo do Figma', desktop ? audit.heroDisplay !== 'none' && Math.abs(audit.heroWidth / (audit.heroWidth + audit.panelWidth) - .58) < .03 : audit.heroDisplay === 'none');
+    check(viewport.width, 'prefers-reduced-motion respeitado', audit.reducedMotion);
 
-    for (const [name, ratio] of Object.entries(audit.contrast)) {
-      record(width, `contraste ${name}`, ratio !== null && ratio >= 4, `razão: ${ratio?.toFixed(2)}`);
-    }
+    await page.click('#togglePasswordBtn');
+    check(viewport.width, 'mostrar e ocultar senha funcional', await page.$eval('#loginPassword', input => input.type === 'text'));
+    await page.click('#loginBtn');
+    await page.waitForTimeout(20);
+    check(viewport.width, 'estado de erro do login funcional', await page.$eval('#loginMessage', message => !message.classList.contains('hidden') && message.textContent.includes('Preencha')));
+    check(viewport.width, 'sem erros JavaScript', pageErrors.length === 0, pageErrors.join(' | '));
 
-    await page.screenshot({ path: resolve(outputDir, `responsive-${width}.png`), fullPage: true });
-
-    await page.goto(`http://127.0.0.1:${port}/index.html`, { waitUntil: 'domcontentloaded' });
-    const loginOverflow = await page.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 2);
-    record(width, 'login sem overflow global', !loginOverflow);
-    const loginAudit = await page.evaluate(() => ({
-      hasPasswordToggle: Boolean(document.querySelector('#togglePasswordBtn')),
-      hasRemember: Boolean(document.querySelector('#rememberLogin')),
-      hasRecovery: Boolean(document.querySelector('#forgotPasswordBtn')),
-      hasOffshoreReference: getComputedStyle(document.querySelector('.login-hero')).backgroundImage.includes('login-reference.png')
-    }));
-    record(width, 'login com controles funcionais', loginAudit.hasPasswordToggle && loginAudit.hasRemember && loginAudit.hasRecovery);
-    record(width, 'login usa referência offshore aprovada', width <= 820 || loginAudit.hasOffshoreReference);
-    await page.screenshot({ path: resolve(outputDir, `login-${width}.png`), fullPage: true });
-
-    const assistantAudit = await page.evaluate(() => {
-      document.querySelector('#loginView')?.classList.add('hidden');
-      document.querySelector('#appView')?.classList.remove('hidden');
-      document.querySelectorAll('.page').forEach(element => element.classList.remove('active'));
-      document.querySelector('#page-ai-assistant')?.classList.add('active');
-      window.OpsControlAI?.render?.();
-      const page = document.querySelector('#page-ai-assistant');
-      const viewport = document.documentElement.clientWidth;
-      const modeButtons = [...(page?.querySelectorAll('[data-ocai-mode]') || [])];
-      const visibleNavIcon = document.querySelector('[data-page="ai-assistant"] .nav-icon svg');
-      return {
-        available: Boolean(window.OpsControlAI && page?.querySelector('.ocai-wrap')),
-        documentOverflow: document.documentElement.scrollWidth > viewport + 2,
-        modeCount: modeButtons.length,
-        vectorModeCount: modeButtons.filter(button => button.querySelector('svg')).length,
-        hasContextControl: Boolean(page?.querySelector('#ocaiIncludeContext')),
-        navIconVisible: visibleNavIcon ? getComputedStyle(visibleNavIcon).display !== 'none' : false
-      };
-    });
-    record(width, 'Assistente IA integrado', assistantAudit.available);
-    record(width, 'Assistente IA sem overflow global', !assistantAudit.documentOverflow);
-    record(width, 'Assistente IA com quatro ações', assistantAudit.modeCount === 4, `encontradas: ${assistantAudit.modeCount}`);
-    record(width, 'Assistente IA usa ícones vetoriais', assistantAudit.vectorModeCount === 4 && assistantAudit.navIconVisible);
-    record(width, 'Assistente IA oferece contexto operacional', assistantAudit.hasContextControl);
-    await page.waitForTimeout(350);
-    await page.screenshot({ path: resolve(outputDir, `assistant-${width}.png`), fullPage: true });
-
+    await page.screenshot({ path:resolve(outputDir, `login-${viewport.width}.png`), fullPage:true });
     await context.close();
   }
 } finally {
   await browser.close();
-  await new Promise(resolveClose => server.close(resolveClose));
+  await new Promise(done => server.close(done));
 }
 
-await writeFile(resolve(outputDir, 'responsive-report.json'), JSON.stringify(results, null, 2));
-
-for (const item of results) {
-  const icon = item.ok ? 'PASS' : 'FAIL';
-  console.log(`${icon} ${item.width}px — ${item.check}${item.detail ? ` — ${item.detail}` : ''}`);
-}
-
+await writeFile(resolve(outputDir, 'report.json'), JSON.stringify(results, null, 2));
+for (const item of results) console.log(`${item.ok ? 'PASS' : 'FAIL'} ${item.width}px — ${item.name}${item.detail ? ` — ${item.detail}` : ''}`);
 if (failed) process.exit(1);

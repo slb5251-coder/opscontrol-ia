@@ -196,14 +196,16 @@
   }
 
   const MOBILE_PAGE_META = {
-    dashboard: ["Visão Geral", "Centro operacional"],
+    dashboard: ["Monitor Operacional", "Hoje"],
     quality: ["Qualidade dos Dados", "Conciliação e inconsistências"],
     sanitation: ["Saneamento de Dados", "Registros antigos e vínculos"],
     tv: ["Painel TV", "Exibição coletiva"],
     operations: ["Operações", "Serviços e movimentações"],
     "vessel-registry": ["Embarcações", "Programação marítima"],
-    tanks: ["Planta e Tancagem", "Tanques, silos e mapa"],
+    tanks: ["Painel de Tanques", "Total de ativos"],
     fluids: ["Movimentações", "Fluidos e granéis"],
+    "bulk-movements": ["Movimentação de Granéis", "Silos e bombeios"],
+    inventory: ["Inventário", "Estoque consolidado"],
     "chemical-catalog": ["Catálogo Químico", "Nomes e unidades oficiais"],
     chemicals: ["Inventário Químico", "Lotes, validade e saldo"],
     trucks: ["Controle de Carretas", "Entradas e saídas"],
@@ -223,14 +225,16 @@
   };
 
   const DESKTOP_PAGE_META = {
-    dashboard: ["Visão Geral", "Comando central e telemetria da planta"],
+    dashboard: ["Painel de Visão Geral", "Comando central e telemetria da planta"],
     quality: ["Qualidade dos Dados", "Conciliação e integridade dos registros"],
     sanitation: ["Saneamento de Dados", "Tratamento de vínculos e registros antigos"],
     tv: ["Painel TV", "Acompanhamento operacional em tempo real"],
     operations: ["Operações", "Programação e execução dos serviços"],
     "vessel-registry": ["Programação de Embarcações", "Cadastro, agenda e monitoramento marítimo"],
-    tanks: ["Planta e Tancagem", "Tanques, silos, níveis e mapa operacional"],
+    tanks: ["Controle de Tancagem", "Tanques, silos, níveis e mapa operacional"],
     fluids: ["Inventários e Movimentações", "Controle de fluidos, granéis e produtos"],
+    "bulk-movements": ["Movimentação de Granéis", "Recebimento, bombeio e silagem"],
+    inventory: ["Inventário", "Estoque consolidado da base"],
     "chemical-catalog": ["Catálogo Químico", "Padronização de produtos e unidades"],
     chemicals: ["Inventário Químico", "Lotes, validade e níveis de estoque"],
     trucks: ["Controle de Carretas", "Recebimentos, expedições e rastreabilidade"],
@@ -300,9 +304,18 @@
   function renderMobileShell() {
     if (!state.data) return;
 
-    const [title, subtitle] = MOBILE_PAGE_META[state.page] || [state.page, ""];
+    const [title, configuredSubtitle] = MOBILE_PAGE_META[state.page] || [state.page, ""];
+    const now = new Date();
+    const todayMonth = new Intl.DateTimeFormat("pt-BR", { month: "short" }).format(now).replace(".", "").replace(/^./, value => value.toUpperCase());
+    const today = `${String(now.getDate()).padStart(2, "0")} ${todayMonth}`;
+    const subtitle = state.page === "dashboard"
+      ? `Hoje, ${today}`
+      : state.page === "tanks"
+        ? `${state.data.tanks?.length || 0} Total`
+        : configuredSubtitle;
     if ($("#mobilePageTitle")) $("#mobilePageTitle").textContent = title;
     if ($("#mobilePageSubtitle")) $("#mobilePageSubtitle").textContent = subtitle;
+    if ($(".mobile-page-heading")) $(".mobile-page-heading").dataset.page = state.page;
 
     $$("[data-mobile-page]").forEach(button => {
       const page = button.dataset.mobilePage;
@@ -314,11 +327,12 @@
 
     const morePages = [
       ["vessel-registry", "Programação de Embarcações", "Agenda, IMO, MMSI e monitoramento"],
-      ["fluids", "Inventários e Movimentações", "Fluidos, granéis e produtos"],
-      ["chemicals", "Inventário Químico", "Lotes, validade e saldo"],
       ["trucks", "Controle de Carretas", "Entradas, saídas e rastreabilidade"],
+      ["fluids", "Movimentação de Fluidos", "Transferências e bombeios"],
+      ["bulk-movements", "Movimentação de Granéis", "Silos e recebimentos"],
+      ["inventory", "Inventário", "Estoque consolidado"],
       ["qhse", "QHSE", "Segurança, ações e ocorrências"],
-      ["maintenance", "Equipamentos e Manutenção", "Ativos e ordens de serviço"],
+      ["maintenance", "Manutenção", "Ativos e ordens de serviço"],
       ["dds", "DDS e Cursos", "Treinamentos e presença"],
       ["documents", "Documentos e Certificados", "Biblioteca e vencimentos"],
       ["reports", "Relatórios", "Indicadores e consolidações"],
@@ -329,8 +343,8 @@
       ["settings", "Configurações", "Perfil e sistema"],
       ["tv", "Painel TV", "Exibição coletiva"],
       ["quality", "Qualidade dos Dados", "Conciliação e inconsistências"],
-      ["sanitation", "Saneamento", "Correção segura de registros"],
       ["chemical-catalog", "Catálogo Químico", "Nomes e unidades oficiais"],
+      ["chemicals", "Inventário Químico", "Lotes, validade e saldo"],
       ["client-tickets", "Tickets de Clientes", "FDT, FRT, MDT e MRT"],
       ["certificates", "Certificados da Equipe", "Histórico detalhado"],
       ["audit", "Auditoria", "Alterações do sistema"]
@@ -880,7 +894,7 @@
   }
 
   function moduleAllowed(module) {
-    const aliases = { dds: "qhse", documents: "certificates", handover: "reports", users: "settings" };
+    const aliases = { dds: "qhse", documents: "certificates", handover: "reports", users: "settings", "bulk-movements": "fluids", inventory: "tanks" };
     if (aliases[module]) return moduleAllowed(aliases[module]);
     if (isAdmin() || module === "settings") return true;
     if (module === "ai-assistant") return role() !== "tv";
@@ -2043,47 +2057,17 @@
       avatarImage.src = profile.avatarUrl || "";
       avatarImage.alt = `Foto de ${profile.name}`;
     }
+    if ($("#sidebarUserInitials")) $("#sidebarUserInitials").textContent = userInitials(profile.name);
+    if ($("#sidebarUserName")) $("#sidebarUserName").textContent = profile.name;
+    if ($("#sidebarUserRole")) $("#sidebarUserRole").textContent = `${profile.role}${profile.department ? ` · ${profile.department}` : ""}`;
   }
 
   function decorateSidebarNavigation() {
     const nav = $("#sidebar nav");
     if (!nav) return;
-    // The approved navigation owns its grouping. Older progressive-enhancement
-    // code can run before the authenticated shell opens, so unwrap any group it
-    // may have created and prevent it from wrapping the final menu again.
-    nav.querySelectorAll(".design-nav-group").forEach(group => {
-      group.querySelectorAll(".nav-item").forEach(item => nav.appendChild(item));
-      group.remove();
-    });
-    nav.removeAttribute("data-design-grouped");
-    nav.dataset.finalNavigation = "true";
-    nav.querySelectorAll(".nav-section-label").forEach(item => item.remove());
-    const groups = [
-      ["overview", "CENTRO OPERACIONAL", ["dashboard", "tanks", "operations", "vessel-registry", "trucks"]],
-      ["management", "GESTÃO DA PLANTA", ["fluids", "chemicals", "maintenance", "qhse", "dds", "documents"]],
-      ["control", "CONTROLE E INFORMAÇÃO", ["reports", "handover", "alerts", "ai-assistant"]],
-      ["admin", "ADMINISTRAÇÃO", ["users", "settings", "tv"]]
-    ];
-    const primaryPages = new Set(groups.flatMap(([, , pages]) => pages));
-    nav.querySelectorAll(".nav-item").forEach(item => item.classList.toggle("legacy-nav", !primaryPages.has(item.dataset.page)));
-    groups.forEach(([key, label, pages]) => {
-      const section = document.createElement("button");
-      section.type = "button";
-      section.className = "nav-section-label";
-      section.dataset.navSectionToggle = key;
-      section.innerHTML = `<span>${label}</span><b aria-hidden="true">⌄</b>`;
-      nav.appendChild(section);
-      pages.forEach(page => {
-        const item = nav.querySelector(`[data-page="${page}"]`);
-        if (!item) return;
-        item.dataset.navSection = key;
-        nav.appendChild(item);
-      });
-    });
-    nav.querySelectorAll(".legacy-nav").forEach(item => nav.appendChild(item));
+    nav.dataset.nativeNavigation = "true";
     nav.querySelectorAll(".nav-item").forEach(item => {
       const label = item.querySelector(".nav-label")?.textContent?.trim() || "Módulo";
-      item.dataset.navTitle = label;
       item.title = label;
       item.setAttribute("aria-label", label);
     });
@@ -2104,7 +2088,7 @@
       badge.textContent = count > 99 ? "99+" : String(count);
       target.appendChild(badge);
     });
-    document.body.classList.toggle("sidebar-compact", localStorage.getItem("opscontrol_sidebar_compact") === "true");
+    document.body.classList.remove("sidebar-compact");
   }
 
   function openApp() {
@@ -2266,7 +2250,23 @@
     }
   }
 
+  function nativeUiContext() {
+    return { state, isAdmin, hasRole, moduleAllowed, role };
+  }
+
+  function renderNativePage(pageId) {
+    return window.OpsControlNativeUI?.renderPage?.(pageId, nativeUiContext()) === true;
+  }
+
   function renderAll() {
+    if (window.OpsControlNativeUI?.renderAll) {
+      window.OpsControlNativeUI.renderAll(nativeUiContext());
+      const manualUnread = (state.data.alerts || []).filter(x => !x.read).length;
+      const alertCount = $("#alertCount");
+      if (alertCount) alertCount.textContent = manualUnread + (state.data.systemAlerts || []).length;
+      renderMobileShell();
+      return;
+    }
     const modules = [
       ["Dashboard", "dashboard", renderDashboard],
       ["Qualidade dos Dados", "quality", renderQuality],
@@ -2518,6 +2518,7 @@
   }
 
   function renderTv() {
+    if (renderNativePage("tv")) return;
     const page = $("#page-tv");
     if (!page || !state.data) return;
     const totalSlides = 7;
@@ -2660,6 +2661,7 @@
   }
 
   function renderDashboard() {
+    if (renderNativePage("dashboard")) return;
     return renderFigmaDashboard();
   }
 
@@ -3103,6 +3105,7 @@
   }
 
   function renderQuality() {
+    if (renderNativePage("quality")) return;
     const issues = dataQualityIssues();
     const summary = reconciliationSummary();
     const critical = issues.filter(x => ["Crítica", "Alta"].includes(x.severity));
@@ -3142,6 +3145,7 @@
   }
 
   function renderSanitation() {
+    if (renderNativePage("sanitation")) return;
     const issues=sanitationIssues();
     const grouped=[...new Set(issues.map(item=>item.type))];
     $("#page-sanitation").innerHTML=header("Saneamento de Dados","Localize registros antigos sem vínculo e corrija sem alterar saldos.",`<button class="btn secondary" data-action="refresh">${uiIcon("refresh", "ui-icon btn-icon")} Reanalisar</button>`)+
@@ -3187,6 +3191,7 @@
   }
 
   function renderVesselRegistry() {
+    if (renderNativePage("vessel-registry")) return;
     const page = $("#page-vessel-registry");
     if (!page) return;
     const items = [...(state.data.vesselRegistry || [])].sort((a,b) => a.name.localeCompare(b.name, "pt-BR"));
@@ -3266,6 +3271,7 @@
   }
 
   function renderOperations() {
+    if (renderNativePage("operations")) return;
     const operations = filteredOperations();
     const active = operations.filter(op => ["Em andamento", "Paralisada"].includes(op.status));
     const programmed = operations.filter(op => op.status === "Programada");
@@ -3962,6 +3968,7 @@
   }
 
   function renderTanks() {
+    if (renderNativePage("tanks")) return;
     const all = state.data.tanks || [];
     const occupied = all.filter(item => Number(item.volume || 0) > 0).length;
     const maintenance = all.filter(item => String(item.status || "").toLowerCase().includes("manuten")).length;
@@ -4501,6 +4508,7 @@
   }
 
   function renderFluids() {
+    if (renderNativePage("fluids")) return;
     const products = state.data.fluids || [];
     const fluids = products.filter(item => !["granel", "insumo"].includes(String(item.type || "").toLowerCase()));
     const bulks = products.filter(item => ["granel", "insumo"].includes(String(item.type || "").toLowerCase()));
@@ -4550,6 +4558,7 @@
   }
 
   function renderChemicalCatalog() {
+    if (renderNativePage("chemical-catalog")) return;
     const products = groupedChemicalInventory();
     const active = products.filter(item => item.active).length;
     const rows = products.map(item => `<article class="card chemical-catalog-card ${item.active ? "" : "inactive"}">
@@ -4632,6 +4641,7 @@
   }
 
   function renderChemicalInventory() {
+    if (renderNativePage("chemicals")) return;
     const groups = groupedChemicalInventory();
     const lots = state.data.chemicals || [];
     const totalProducts = groups.length;
@@ -4852,6 +4862,7 @@
   }
 
   function renderTrucks() {
+    if (renderNativePage("trucks")) return;
     const allTrucks = state.data?.trucks || [];
     const duplicateIds = duplicateTruckInvoiceIds(allTrucks);
     const trucks = trucksForPage();
@@ -5038,6 +5049,7 @@
   }
 
   function renderClientTickets() {
+    if (renderNativePage("client-tickets")) return;
     const all = state.data?.clientTickets || [];
     const tickets = filteredClientTickets();
     const clients = [...new Set(all.map(item => item.client).filter(Boolean))].sort((a,b) => a.localeCompare(b));
@@ -5190,6 +5202,7 @@
   }
 
   function renderQhse() {
+    if (renderNativePage("qhse")) return;
     const canAddQhse = hasRole(["supervisor", "lider", "qhse", "operador"]);
     const records = state.data.qhse || [];
     const actionsList = state.data.actionItems || [];
@@ -5218,6 +5231,7 @@
   }
 
   function renderMaintenance() {
+    if (renderNativePage("maintenance")) return;
     const canManageMaintenance = hasRole(["supervisor", "lider", "mecanico"]);
     const equipment = state.data.equipment || [];
     const orders = state.data.maintenanceOrders || [];
@@ -5247,6 +5261,7 @@
   }
 
   function renderCertificates() {
+    if (renderNativePage("certificates")) return;
     const canManage = canManageCertificates();
     const certificates = state.data.certificates || [];
     const enriched = certificates.map(item => {
@@ -5277,6 +5292,7 @@
   }
 
   function renderAlerts() {
+    if (renderNativePage("alerts")) return;
     const manual = state.data.alerts || [];
     const automatic = state.data.systemAlerts || [];
     const messages = state.data.messages || [];
@@ -5601,6 +5617,7 @@
   }
 
   function renderReports() {
+    if (renderNativePage("reports")) return;
     const selection=ensureHandoverSelection(); const snapshot=handoverSnapshot(selection); const approval=selectedHandoverApproval(selection);
     const locked=approval?.status==="Aprovada"&&!hasRole(["supervisor"]);
     const operations = state.data.operations || [];
@@ -5695,6 +5712,7 @@
   }
 
   function renderDds() {
+    if (renderNativePage("dds")) return;
     const sessions = state.data.ddsSessions || [];
     const courses = state.data.courses || [];
     const enrollments = state.data.courseEnrollments || [];
@@ -5717,6 +5735,7 @@
   }
 
   function renderDocuments() {
+    if (renderNativePage("documents")) return;
     const allowed = (state.data.documents || []).filter(item => item.visibilityRole === "all" || item.visibilityRole === role() || isAdmin());
     const certificates = state.data.certificates || [];
     const tickets = state.data.clientTickets || [];
@@ -5729,6 +5748,7 @@
   }
 
   function renderHandover() {
+    if (renderNativePage("handover")) return;
     const selection = ensureHandoverSelection();
     const snapshot = handoverSnapshot(selection);
     const approval = selectedHandoverApproval(selection);
@@ -5739,6 +5759,7 @@
   }
 
   function renderUsers() {
+    if (renderNativePage("users")) return;
     const users = state.data.users || [];
     const active = users.filter(item => item.active).length;
     const roles = new Set(users.map(item => item.role)).size;
@@ -5756,6 +5777,7 @@
   }
 
   function renderAudit() {
+    if (renderNativePage("audit")) return;
     const page=$("#page-audit"); if(!page)return;
     if(!canViewAudit()){page.innerHTML=header("Auditoria","Acesso restrito.")+`<div class="card empty">Somente administração e supervisão podem consultar a auditoria.</div>`;return;}
     const auditLogs = state.data.auditLogs || [];
@@ -5804,6 +5826,7 @@
   }
 
   function renderSettings() {
+    if (renderNativePage("settings")) return;
     const users = state.data?.users || [];
     const activeUsers = users.filter(user => user.active).length;
     const inactiveUsers = users.length - activeUsers;

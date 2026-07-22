@@ -26,8 +26,8 @@
       },
       staging: {
         label: "Homologação",
-        supabaseUrl: "",
-        supabaseKey: ""
+        supabaseUrl: "https://idnbbesxdoeeiupwltxk.supabase.co",
+        supabaseKey: "sb_publishable_EEnG6ms_UaYloR4rQLeFgg_WH6jT7uJ"
       }
     },
     appName: "OpsControl IA Pro",
@@ -43,7 +43,7 @@
 
   const stylesheet = document.createElement("link");
   stylesheet.rel = "stylesheet";
-  stylesheet.href = "homologation.css?v=20260722-staging-guard-1";
+  stylesheet.href = "homologation.css?v=20260722-staging-db-1";
   document.head.appendChild(stylesheet);
 
   function returnToProduction() {
@@ -57,7 +57,11 @@
     if (document.getElementById("homologationBanner")) return;
 
     const staging = window.OPSCONTROL_CONFIG.environments.staging;
+    const production = window.OPSCONTROL_CONFIG.environments.production;
     const configured = Boolean(staging.supabaseUrl && staging.supabaseKey);
+    const isolated = configured
+      && staging.supabaseUrl !== production.supabaseUrl
+      && staging.supabaseKey !== production.supabaseKey;
 
     const banner = document.createElement("aside");
     banner.id = "homologationBanner";
@@ -66,14 +70,14 @@
     banner.innerHTML = `
       <div>
         <strong>AMBIENTE DE HOMOLOGAÇÃO</strong>
-        <span>${configured ? "Dados separados da produção" : "Banco de homologação ainda não configurado"}</span>
+        <span>${isolated ? "Dados e autenticação separados da produção" : "Configuração de homologação inválida"}</span>
       </div>
       <button type="button" data-return-production>Voltar para produção</button>`;
     document.body.prepend(banner);
 
     banner.querySelector("[data-return-production]")?.addEventListener("click", returnToProduction);
 
-    if (configured) return;
+    if (isolated) return;
 
     document.querySelectorAll("#loginForm input, #loginForm button").forEach(control => {
       control.disabled = true;
@@ -85,8 +89,8 @@
     blocker.innerHTML = `
       <div>
         <span>HOMOLOGAÇÃO BLOQUEADA</span>
-        <h1>Banco separado ainda não configurado</h1>
-        <p>O acesso foi bloqueado para impedir que testes utilizem os dados de produção por engano.</p>
+        <h1>Banco separado não está seguro</h1>
+        <p>O acesso foi bloqueado porque a configuração de homologação está ausente ou coincide com a produção.</p>
         <button type="button" data-return-production>Voltar para produção</button>
       </div>`;
     document.body.appendChild(blocker);

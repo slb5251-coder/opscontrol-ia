@@ -1,4 +1,4 @@
-const CACHE="opscontrol-20260722-multi-product-fix-1";
+const CACHE="opscontrol-20260722-multi-product-fix-2";
 const FILES=[
   "./",
   "./index.html",
@@ -50,12 +50,14 @@ self.addEventListener("install", event => {
 });
 
 self.addEventListener("activate", event => {
-  event.waitUntil(
-    Promise.all([
-      caches.keys().then(keys => Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key)))),
-      self.clients.claim()
-    ])
-  );
+  event.waitUntil((async () => {
+    const keys = await caches.keys();
+    await Promise.all(keys.filter(key => key !== CACHE).map(key => caches.delete(key)));
+    await self.clients.claim();
+
+    const windows = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+    await Promise.all(windows.map(client => client.navigate(client.url).catch(() => null)));
+  })());
 });
 
 self.addEventListener("fetch", event => {

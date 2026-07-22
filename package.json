@@ -6,9 +6,10 @@
   "scripts": {
     "lint": "node scripts/validate-static.mjs",
     "typecheck": "node scripts/check-js.mjs",
-    "test": "npm run test:responsive && npm run test:environment && node tests/security.spec.mjs",
+    "test": "npm run test:responsive && npm run test:environment && npm run test:observability && node tests/security.spec.mjs",
     "test:responsive": "node tests/responsive.spec.mjs",
     "test:environment": "node tests/environment.spec.mjs",
+    "test:observability": "node tests/observability.spec.mjs",
     "build": "node scripts/build.mjs"
   },
   "devDependencies": {

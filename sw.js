@@ -1,4 +1,4 @@
-const CACHE="opscontrol-20260722-role-dashboard-1";
+const CACHE="opscontrol-20260722-operations-analytics-1";
 const FILES=[
   "./",
   "./index.html",
@@ -14,6 +14,7 @@ const FILES=[
   "./interface-ops-v2.css?v=20260722-ops-v2-1",
   "./tv-control-room.css?v=20260722-tv-control-room-1",
   "./role-dashboard.css?v=20260722-role-dashboard-1",
+  "./operations-analytics.css?v=20260722-operations-analytics-1",
   "./js/config.js?v=20260722-security-1",
   "./js/app.js?v=20260722-security-1",
   "./js/assistente-integrado.js?v=20260722-security-1",
@@ -25,6 +26,7 @@ const FILES=[
   "./js/interface-ops-v2.js?v=20260722-ops-v2-1",
   "./js/tv-control-room.js?v=20260722-tv-control-room-1",
   "./js/role-dashboard.js?v=20260722-role-dashboard-1",
+  "./js/operations-analytics.js?v=20260722-operations-analytics-1",
   "./manifest.json",
   "./assets/icon.svg",
   "./vendor/qrcode.js"
@@ -63,6 +65,7 @@ self.addEventListener("fetch", event => {
     url.pathname.endsWith("/interface-ops-v2.css") ||
     url.pathname.endsWith("/tv-control-room.css") ||
     url.pathname.endsWith("/role-dashboard.css") ||
+    url.pathname.endsWith("/operations-analytics.css") ||
     url.pathname.endsWith("/js/app.js") ||
     url.pathname.endsWith("/js/assistente-integrado.js") ||
     url.pathname.endsWith("/js/config.js") ||
@@ -73,7 +76,8 @@ self.addEventListener("fetch", event => {
     url.pathname.endsWith("/js/tank-cards-reference.js") ||
     url.pathname.endsWith("/js/interface-ops-v2.js") ||
     url.pathname.endsWith("/js/tv-control-room.js") ||
-    url.pathname.endsWith("/js/role-dashboard.js")
+    url.pathname.endsWith("/js/role-dashboard.js") ||
+    url.pathname.endsWith("/js/operations-analytics.js")
   );
 
   if (appFile) {

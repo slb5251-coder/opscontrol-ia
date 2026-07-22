@@ -94,6 +94,7 @@ jobs:
             Path('tests/environment.spec.mjs'),
             Path('tests/observability.spec.mjs'),
             Path('supabase/migrations/20260722230000_observability_health_v1.sql'),
+            Path('supabase/migrations/20260722231500_observability_hardening_v1.sql'),
           ]
           for path in required:
             if not path.exists():

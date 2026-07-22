@@ -2,6 +2,9 @@
   "use strict";
 
   const VERSION = "20260722-final-audit-1";
+  const scriptUrl = document.currentScript?.src || new URL("js/ui-polish.js", document.baseURI).href;
+  const INTERFACE_STYLESHEET = new URL("../interface-runtime.css?v=20260722-final-audit-1", scriptUrl).href;
+  const INTERFACE_SCRIPT = new URL("interface-runtime.js?v=20260722-final-audit-1", scriptUrl).href;
   const MENU_STATE_KEY = "opscontrol_design_menu_groups";
   const MAX_MOBILE_ROWS = 100;
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -22,6 +25,24 @@
   let scheduled = false;
   let resizeTimer = null;
   let menuState = loadMenuState();
+
+  function ensureInterfaceStylesheet() {
+    if (document.querySelector('link[data-interface-runtime="true"]')) return;
+    const link = document.createElement("link");
+    link.rel = "stylesheet";
+    link.href = INTERFACE_STYLESHEET;
+    link.dataset.interfaceRuntime = "true";
+    document.head.appendChild(link);
+  }
+
+  function ensureInterfaceScript() {
+    if (document.querySelector('script[data-interface-runtime="true"]')) return;
+    const script = document.createElement("script");
+    script.src = INTERFACE_SCRIPT;
+    script.async = false;
+    script.dataset.interfaceRuntime = "true";
+    document.head.appendChild(script);
+  }
 
   function normalize(value = "") {
     return String(value)
@@ -484,6 +505,8 @@
   }
 
   function start() {
+    ensureInterfaceStylesheet();
+    ensureInterfaceScript();
     schedule();
     const observer = new MutationObserver(schedule);
     observer.observe(document.body, { childList: true, subtree: true });

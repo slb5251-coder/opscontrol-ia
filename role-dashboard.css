@@ -1,0 +1,70 @@
+/* OpsControl IA — dashboard personalizado por função */
+.role-dashboard-home{
+  --role-accent:#1768ff;
+  --role-soft:#eaf2ff;
+  display:grid;
+  gap:14px;
+  margin-bottom:2px;
+  padding:18px;
+  overflow:hidden;
+  border:1px solid #d8e2ed;
+  border-radius:18px;
+  background:linear-gradient(135deg,#fff,#f7faff);
+  box-shadow:0 9px 28px rgba(15,31,58,.065);
+}
+.role-dashboard-home.tone-indigo{--role-accent:#4f46e5;--role-soft:#eeecff}
+.role-dashboard-home.tone-green{--role-accent:#16824b;--role-soft:#e8f7ef}
+.role-dashboard-home.tone-amber{--role-accent:#b86a08;--role-soft:#fff3df}
+.role-dashboard-home.tone-red{--role-accent:#c93646;--role-soft:#fdebed}
+.role-dashboard-home.tone-navy{--role-accent:#173b6f;--role-soft:#eaf0f7}
+.role-dashboard-hero{display:flex;align-items:flex-start;justify-content:space-between;gap:22px}
+.role-dashboard-copy{min-width:0}
+.role-dashboard-copy>span{display:block;color:var(--role-accent);font-size:9px;font-weight:950;letter-spacing:.11em;text-transform:uppercase}
+.role-dashboard-copy h2{margin:5px 0 0;color:#17243a;font-size:25px;line-height:1.08;letter-spacing:-.035em}
+.role-dashboard-copy p{max-width:760px;margin:7px 0 0;color:#65758b;font-size:12px;line-height:1.55}
+.role-dashboard-identity{position:relative;min-width:150px;padding:11px 38px 11px 13px;border:1px solid #dbe4ee;border-radius:12px;background:#fff;box-shadow:0 4px 14px rgba(15,31,58,.04)}
+.role-dashboard-identity small{display:block;color:#7a899d;font-size:9px;font-weight:850;text-transform:uppercase;letter-spacing:.06em}
+.role-dashboard-identity strong{display:block;margin-top:4px;color:#26364d;font-size:12px}
+.role-dashboard-identity i{position:absolute;right:13px;top:50%;width:10px;height:10px;border-radius:50%;background:var(--role-accent);box-shadow:0 0 0 6px color-mix(in srgb,var(--role-accent) 13%,transparent);transform:translateY(-50%)}
+.role-dashboard-body{display:grid;grid-template-columns:minmax(0,1fr) minmax(390px,1.15fr);gap:14px}
+.role-dashboard-metrics,.role-dashboard-actions{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:10px}
+.role-dashboard-metric,.role-dashboard-action{min-width:0;border:1px solid #dbe4ee;border-radius:13px;background:#fff;color:#223149;text-align:left;cursor:pointer;transition:transform .18s ease,border-color .18s ease,box-shadow .18s ease}
+.role-dashboard-metric:hover,.role-dashboard-action:hover{transform:translateY(-2px);border-color:color-mix(in srgb,var(--role-accent) 50%,#dbe4ee);box-shadow:0 9px 20px rgba(15,31,58,.08)}
+.role-dashboard-metric{position:relative;min-height:92px;padding:13px 14px 12px;overflow:hidden}
+.role-dashboard-metric:before{content:"";position:absolute;left:0;top:0;bottom:0;width:4px;background:var(--role-accent)}
+.role-dashboard-metric span{display:block;color:#6f7f95;font-size:9px;font-weight:900;letter-spacing:.055em;text-transform:uppercase}
+.role-dashboard-metric strong{display:block;margin-top:8px;overflow:hidden;color:#17243a;font-size:21px;line-height:1.05;text-overflow:ellipsis;white-space:nowrap}
+.role-dashboard-metric small{display:block;margin-top:7px;color:var(--role-accent);font-size:9px;font-weight:850}
+.role-dashboard-action{min-height:92px;display:grid;grid-template-columns:38px minmax(0,1fr) auto;align-items:center;gap:10px;padding:12px}
+.role-dashboard-action>span{width:38px;height:38px;display:grid;place-items:center;border-radius:11px;background:var(--role-soft);color:var(--role-accent)}
+.role-dashboard-action svg{width:18px;height:18px}
+.role-dashboard-action div{min-width:0}
+.role-dashboard-action strong{display:block;color:#233249;font-size:12px}
+.role-dashboard-action small{display:block;margin-top:4px;color:#708097;font-size:9px;line-height:1.4}
+.role-dashboard-action b{color:var(--role-accent);font-size:18px}
+.figma-kpi.role-priority-kpi{border-color:color-mix(in srgb,var(--role-accent,#1768ff) 38%,#d8e2ed)!important;box-shadow:0 8px 24px rgba(15,31,58,.075)!important}
+.figma-dashboard[data-role-dashboard="operador"] .figma-kpi-grid,
+.figma-dashboard[data-role-dashboard="lider"] .figma-kpi-grid,
+.figma-dashboard[data-role-dashboard="logistica"] .figma-kpi-grid,
+.figma-dashboard[data-role-dashboard="mecanico"] .figma-kpi-grid,
+.figma-dashboard[data-role-dashboard="qhse"] .figma-kpi-grid,
+.figma-dashboard[data-role-dashboard="supervisor"] .figma-kpi-grid,
+.figma-dashboard[data-role-dashboard="admin"] .figma-kpi-grid{grid-template-columns:repeat(5,minmax(0,1fr))!important}
+@media(max-width:1380px){
+  .role-dashboard-body{grid-template-columns:1fr}
+  .figma-dashboard[data-role-dashboard] .figma-kpi-grid{grid-template-columns:repeat(3,minmax(0,1fr))!important}
+}
+@media(max-width:900px){
+  .role-dashboard-hero{flex-direction:column}
+  .role-dashboard-identity{width:100%}
+  .role-dashboard-metrics,.role-dashboard-actions{grid-template-columns:1fr}
+  .role-dashboard-action,.role-dashboard-metric{min-height:82px}
+  .figma-dashboard[data-role-dashboard] .figma-kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))!important}
+}
+@media(max-width:560px){
+  .role-dashboard-home{padding:14px;border-radius:15px}
+  .role-dashboard-copy h2{font-size:21px}
+  .role-dashboard-body{gap:10px}
+  .figma-dashboard[data-role-dashboard] .figma-kpi-grid{grid-template-columns:1fr 1fr!important}
+}
+@media(prefers-reduced-motion:reduce){.role-dashboard-metric,.role-dashboard-action{transition:none}}

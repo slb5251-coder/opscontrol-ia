@@ -59,25 +59,36 @@ try {
   await page.goto(`http://127.0.0.1:${port}/index.html?env=staging`, { waitUntil: 'domcontentloaded' });
   await page.waitForTimeout(250);
 
-  const staging = await page.evaluate(() => ({
-    environment: window.OPSCONTROL_ACTIVE_ENVIRONMENT,
-    storedEnvironment: localStorage.getItem('opscontrol_environment'),
-    htmlEnvironment: document.documentElement.dataset.opsEnvironment,
-    title: document.title,
-    banner: Boolean(document.querySelector('#homologationBanner')),
-    blocker: Boolean(document.querySelector('.staging-config-blocker')),
-    loginDisabled: Boolean(document.querySelector('#loginBtn')?.disabled),
-    productionUrlSelected: window.OPSCONTROL_CONFIG?.environments?.staging?.supabaseUrl === window.OPSCONTROL_CONFIG?.environments?.production?.supabaseUrl
-  }));
+  const staging = await page.evaluate(() => {
+    const stagingConfig = window.OPSCONTROL_CONFIG?.environments?.staging || {};
+    const productionConfig = window.OPSCONTROL_CONFIG?.environments?.production || {};
+    return {
+      environment: window.OPSCONTROL_ACTIVE_ENVIRONMENT,
+      storedEnvironment: localStorage.getItem('opscontrol_environment'),
+      htmlEnvironment: document.documentElement.dataset.opsEnvironment,
+      title: document.title,
+      banner: Boolean(document.querySelector('#homologationBanner')),
+      bannerText: document.querySelector('#homologationBanner')?.textContent || '',
+      blocker: Boolean(document.querySelector('.staging-config-blocker')),
+      loginDisabled: Boolean(document.querySelector('#loginBtn')?.disabled),
+      configured: Boolean(stagingConfig.supabaseUrl && stagingConfig.supabaseKey),
+      separateUrl: stagingConfig.supabaseUrl !== productionConfig.supabaseUrl,
+      separateKey: stagingConfig.supabaseKey !== productionConfig.supabaseKey,
+      stagingProject: stagingConfig.supabaseUrl
+    };
+  });
 
   assert(staging.environment === 'staging', 'parâmetro ativa homologação', staging.environment);
   assert(staging.storedEnvironment === 'staging', 'ambiente fica persistido', staging.storedEnvironment);
   assert(staging.htmlEnvironment === 'staging', 'HTML recebe identificação de homologação', staging.htmlEnvironment);
   assert(staging.title.startsWith('[HOMOLOGAÇÃO]'), 'título identifica homologação', staging.title);
   assert(staging.banner, 'faixa de homologação visível');
-  assert(staging.blocker, 'homologação sem banco fica bloqueada');
-  assert(staging.loginDisabled, 'login não usa produção por engano');
-  assert(!staging.productionUrlSelected, 'staging não herda URL de produção');
+  assert(staging.bannerText.includes('separados da produção'), 'faixa confirma isolamento de dados');
+  assert(staging.configured, 'Supabase de homologação está configurado');
+  assert(staging.separateUrl && staging.separateKey, 'credenciais de staging diferem da produção');
+  assert(staging.stagingProject.includes('idnbbesxdoeeiupwltxk'), 'staging aponta para o projeto correto', staging.stagingProject);
+  assert(!staging.blocker, 'homologação configurada não fica bloqueada');
+  assert(!staging.loginDisabled, 'login de homologação fica disponível');
   await page.screenshot({ path: resolve(outputDir, 'environment-staging.png'), fullPage: true });
 
   await page.goto(`http://127.0.0.1:${port}/index.html?env=production`, { waitUntil: 'domcontentloaded' });
@@ -91,7 +102,8 @@ try {
     banner: Boolean(document.querySelector('#homologationBanner')),
     blocker: Boolean(document.querySelector('.staging-config-blocker')),
     loginDisabled: Boolean(document.querySelector('#loginBtn')?.disabled),
-    configured: Boolean(window.OPSCONTROL_CONFIG?.environments?.production?.supabaseUrl && window.OPSCONTROL_CONFIG?.environments?.production?.supabaseKey)
+    configured: Boolean(window.OPSCONTROL_CONFIG?.environments?.production?.supabaseUrl && window.OPSCONTROL_CONFIG?.environments?.production?.supabaseKey),
+    productionProject: window.OPSCONTROL_CONFIG?.environments?.production?.supabaseUrl || ''
   }));
 
   assert(production.environment === 'production', 'parâmetro retorna à produção', production.environment);
@@ -101,6 +113,7 @@ try {
   assert(!production.banner && !production.blocker, 'produção não exibe bloqueios de homologação');
   assert(!production.loginDisabled, 'login de produção permanece disponível');
   assert(production.configured, 'produção continua configurada');
+  assert(production.productionProject.includes('bcnzdujfumswhpduxkfy'), 'produção permanece no projeto original', production.productionProject);
   await page.screenshot({ path: resolve(outputDir, 'environment-production.png'), fullPage: true });
 
   await context.close();

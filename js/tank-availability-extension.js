@@ -130,6 +130,9 @@
     ].filter(([, , summary]) => summary.equipment > 0);
     const pendingTotal = state.availability.reduce((sum, row) => sum + number(row.pending_reconciliation_count), 0);
     const criticalTotal = state.availability.filter(row => row.outgoing_overbooked || row.incoming_overbooked).length;
+    const signature = JSON.stringify({ groups, pendingTotal, criticalTotal });
+    if (section.dataset.tavSignature === signature) return;
+    section.dataset.tavSignature = signature;
 
     section.innerHTML = `<header><div><small>DISPONIBILIDADE OPERACIONAL</small><h2>Físico, reservado e disponível</h2></div><span class="tav-summary-state ${criticalTotal ? "critical" : pendingTotal ? "pending" : "ok"}">${criticalTotal ? `${criticalTotal} conflito(s)` : pendingTotal ? `${pendingTotal} conciliação(ões) pendente(s)` : "Sem conflitos"}</span></header>
       <div class="tav-summary-grid">${groups.map(([unit, label, summary]) => `<article>

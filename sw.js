@@ -1,4 +1,4 @@
-const CACHE="opscontrol-20260722-operation-products-extension-1";
+const CACHE="opscontrol-20260722-tank-availability-1";
 const FILES=[
   "./",
   "./index.html",
@@ -12,6 +12,7 @@ const FILES=[
   "./final-interface.css?v=20260722-final-audit-1",
   "./tank-cards-reference.css?v=20260722-mobile-tanks-1",
   "./mobile-tank-experience.css?v=20260722-mobile-tanks-1",
+  "./tank-availability-extension.css?v=20260722-tank-availability-1",
   "./interface-ops-v2.css?v=20260722-ops-v2-1",
   "./tv-control-room.css?v=20260722-tv-control-room-1",
   "./role-dashboard.css?v=20260722-role-dashboard-1",
@@ -25,6 +26,7 @@ const FILES=[
   "./js/ui-polish.js?v=20260722-security-1",
   "./js/interface-runtime.js?v=20260722-final-audit-1",
   "./js/tank-cards-reference.js?v=20260722-mobile-tanks-1",
+  "./js/tank-availability-extension.js?v=20260722-tank-availability-1",
   "./js/interface-ops-v2.js?v=20260722-ops-v2-1",
   "./js/tv-control-room.js?v=20260722-tv-control-room-1",
   "./js/role-dashboard.js?v=20260722-role-dashboard-1",
@@ -69,6 +71,7 @@ self.addEventListener("fetch", event => {
     url.pathname.endsWith("/final-interface.css") ||
     url.pathname.endsWith("/tank-cards-reference.css") ||
     url.pathname.endsWith("/mobile-tank-experience.css") ||
+    url.pathname.endsWith("/tank-availability-extension.css") ||
     url.pathname.endsWith("/interface-ops-v2.css") ||
     url.pathname.endsWith("/tv-control-room.css") ||
     url.pathname.endsWith("/role-dashboard.css") ||
@@ -82,6 +85,7 @@ self.addEventListener("fetch", event => {
     url.pathname.endsWith("/js/ui-polish.js") ||
     url.pathname.endsWith("/js/interface-runtime.js") ||
     url.pathname.endsWith("/js/tank-cards-reference.js") ||
+    url.pathname.endsWith("/js/tank-availability-extension.js") ||
     url.pathname.endsWith("/js/interface-ops-v2.js") ||
     url.pathname.endsWith("/js/tv-control-room.js") ||
     url.pathname.endsWith("/js/role-dashboard.js") ||

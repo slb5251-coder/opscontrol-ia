@@ -11,6 +11,7 @@
     ["operations-analytics", "operations-analytics.js?v=20260722-operations-analytics-1"],
     ["operation-products-extension", "operation-products-extension.js?v=20260722-operation-products-extension-1"],
     ["truck-workflow-extension", "truck-workflow-extension.js?v=20260722-truck-workflow-1"],
+    ["truck-workflow-compat", "truck-workflow-compat.js?v=20260722-truck-workflow-compat-1"],
     ["alert-center-v2", "alert-center-v2.js?v=20260722-alert-center-v2-1"],
     ["app-states", "app-states.js?v=20260722-app-states-1"]
   ];

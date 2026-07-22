@@ -1,4 +1,4 @@
-const CACHE="opscontrol-20260722-trucks-restored-delete-1";
+const CACHE="opscontrol-20260722-trucks-no-open-days-1";
 const FILES=[
   "./",
   "./index.html",
@@ -34,6 +34,7 @@ const FILES=[
   "./js/operations-analytics.js?v=20260722-operations-analytics-1",
   "./js/operation-products-extension.js?v=20260722-operation-products-extension-1",
   "./js/truck-delete-extension.js?v=20260722-truck-delete-1",
+  "./js/truck-open-days-cleanup.js?v=20260722-truck-open-days-cleanup-1",
   "./js/alert-center-v2.js?v=20260722-alert-center-v2-1",
   "./js/app-states.js?v=20260722-app-states-1",
   "./manifest.json",
@@ -95,6 +96,7 @@ self.addEventListener("fetch", event => {
     url.pathname.endsWith("/js/operations-analytics.js") ||
     url.pathname.endsWith("/js/operation-products-extension.js") ||
     url.pathname.endsWith("/js/truck-delete-extension.js") ||
+    url.pathname.endsWith("/js/truck-open-days-cleanup.js") ||
     url.pathname.endsWith("/js/alert-center-v2.js") ||
     url.pathname.endsWith("/js/app-states.js")
   );

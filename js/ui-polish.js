@@ -1,15 +1,9 @@
 (() => {
   "use strict";
 
-  const scriptUrl = document.currentScript?.src || new URL('js/ui-polish.js', document.baseURI).href;
-  const INTERFACE_STYLESHEET = new URL('../interface-fix.css?v=20260721-interface-fix-1', scriptUrl).href;
-  const DESIGN_STYLESHEET = new URL('../design-upgrade.css?v=20260721-control-center-1', scriptUrl).href;
-  const TANK_CARD_STYLESHEET = new URL('../tank-cards-reference.css?v=20260721-reference-cards-1', scriptUrl).href;
-  const OPS_V2_STYLESHEET = new URL('../interface-ops-v2.css?v=20260722-ops-v2-1', scriptUrl).href;
-  const DESIGN_SCRIPT = new URL('design-upgrade.js?v=20260721-control-center-1', scriptUrl).href;
-  const STABILITY_SCRIPT = new URL('design-stability.js?v=20260721-original-tanks-1', scriptUrl).href;
-  const TANK_CARD_SCRIPT = new URL('tank-cards-reference.js?v=20260721-reference-cards-1', scriptUrl).href;
-  const OPS_V2_SCRIPT = new URL('interface-ops-v2.js?v=20260722-ops-v2-1', scriptUrl).href;
+  const scriptUrl = document.currentScript?.src || new URL("js/ui-polish.js", document.baseURI).href;
+  const INTERFACE_STYLESHEET = new URL("../interface-runtime.css?v=20260722-runtime-1", scriptUrl).href;
+  const INTERFACE_SCRIPT = new URL("interface-runtime.js?v=20260722-runtime-1", scriptUrl).href;
   const TAB_CONTAINERS = [
     '[role="tablist"]',
     '.tabs',
@@ -33,40 +27,21 @@
   let resizeTimer = null;
 
   function ensureInterfaceStylesheet() {
-    if (document.querySelector('link[data-interface-fix="true"]')) return;
+    if (document.querySelector('link[data-interface-runtime="true"]')) return;
     const link = document.createElement('link');
     link.rel = 'stylesheet';
     link.href = INTERFACE_STYLESHEET;
-    link.dataset.interfaceFix = 'true';
+    link.dataset.interfaceRuntime = 'true';
     document.head.appendChild(link);
   }
 
-  function appendScript(src, marker) {
-    if (document.querySelector(`script[data-${marker}="true"]`)) return;
+  function ensureInterfaceScript() {
+    if (document.querySelector('script[data-interface-runtime="true"]')) return;
     const script = document.createElement('script');
-    script.src = src;
+    script.src = INTERFACE_SCRIPT;
     script.async = false;
-    script.setAttribute(`data-${marker}`, 'true');
+    script.dataset.interfaceRuntime = 'true';
     document.head.appendChild(script);
-  }
-
-  function appendStylesheet(href, marker) {
-    if (document.querySelector(`link[data-${marker}="true"]`)) return;
-    const link = document.createElement('link');
-    link.rel = 'stylesheet';
-    link.href = href;
-    link.setAttribute(`data-${marker}`, 'true');
-    document.head.appendChild(link);
-  }
-
-  function ensureDesignUpgrade() {
-    appendStylesheet(DESIGN_STYLESHEET, 'design-upgrade');
-    appendStylesheet(TANK_CARD_STYLESHEET, 'tank-cards-reference');
-    appendStylesheet(OPS_V2_STYLESHEET, 'ops-v2');
-    appendScript(DESIGN_SCRIPT, 'design-upgrade');
-    appendScript(STABILITY_SCRIPT, 'design-stability');
-    appendScript(TANK_CARD_SCRIPT, 'tank-cards-reference');
-    appendScript(OPS_V2_SCRIPT, 'ops-v2');
   }
 
   function activeItem(container) {
@@ -170,7 +145,7 @@
 
   function start() {
     ensureInterfaceStylesheet();
-    ensureDesignUpgrade();
+    ensureInterfaceScript();
     schedule();
 
     const observer = new MutationObserver(schedule);

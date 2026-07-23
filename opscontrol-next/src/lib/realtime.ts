@@ -18,48 +18,89 @@ export function subscribeOperationalChanges(onChange:(event:OperationalRealtimeE
  let reconnectTimer:ReturnType<typeof setTimeout>|null=null;
  let channel:RealtimeChannel|null=null;
  let stopped=false;
+ let connecting=false;
  let latestEvent:OperationalRealtimeEvent|null=null;
 
+ const clearReconnect=()=>{
+  if(reconnectTimer){clearTimeout(reconnectTimer);reconnectTimer=null}
+ };
+ const removeCurrentChannel=async()=>{
+  const current=channel;
+  channel=null;
+  if(current)await client.removeChannel(current);
+ };
  const scheduleRefresh=(table:string,payload:RealtimePayload)=>{
+  if(stopped||!navigator.onLine)return;
   latestEvent={table,eventType:normalizeEventType(payload.eventType),receivedAt:new Date().toISOString()};
   if(refreshTimer)clearTimeout(refreshTimer);
-  refreshTimer=setTimeout(()=>{if(latestEvent)onChange(latestEvent)},450);
+  refreshTimer=setTimeout(()=>{
+   refreshTimer=null;
+   const event=latestEvent;
+   latestEvent=null;
+   if(!stopped&&event)onChange(event);
+  },450);
  };
-
+ const scheduleReconnect=()=>{
+  if(stopped||!navigator.onLine||reconnectTimer)return;
+  reconnectTimer=setTimeout(async()=>{
+   reconnectTimer=null;
+   await removeCurrentChannel();
+   connect();
+  },3000);
+ };
  const connect=()=>{
-  if(stopped)return;
+  if(stopped||connecting||!navigator.onLine)return;
+  connecting=true;
+  clearReconnect();
   onState?.('connecting');
-  channel=client.channel(`opscontrol-next-operational-${Date.now()}`);
+  const nextChannel=client.channel(`opscontrol-next-operational-${Date.now()}`);
   realtimeTables.forEach(table=>{
-   channel=channel!.on('postgres_changes',{event:'*',schema:'public',table},payload=>scheduleRefresh(table,payload));
+   nextChannel.on('postgres_changes',{event:'*',schema:'public',table},payload=>scheduleRefresh(table,payload));
   });
-  channel.subscribe(status=>{
-   if(status==='SUBSCRIBED')onState?.('connected');
-   else if(status==='CHANNEL_ERROR'||status==='TIMED_OUT'){
+  channel=nextChannel;
+  nextChannel.subscribe(status=>{
+   if(stopped||channel!==nextChannel)return;
+   if(status==='SUBSCRIBED'){
+    connecting=false;
+    onState?.('connected');
+   }else if(status==='CHANNEL_ERROR'||status==='TIMED_OUT'){
+    connecting=false;
     onState?.('error');
-    if(!stopped){
-     reconnectTimer=setTimeout(async()=>{
-      if(channel)await client.removeChannel(channel);
-      connect();
-     },3000);
-    }
-   }else if(status==='CLOSED')onState?.('disconnected');
-   else onState?.('connecting');
+    scheduleReconnect();
+   }else if(status==='CLOSED'){
+    connecting=false;
+    onState?.('disconnected');
+    scheduleReconnect();
+   }else onState?.('connecting');
   });
  };
-
- const onOnline=()=>{if(!stopped){if(channel)void client.removeChannel(channel);connect()}};
- const onOffline=()=>onState?.('disconnected');
+ const onOnline=async()=>{
+  if(stopped)return;
+  connecting=false;
+  clearReconnect();
+  await removeCurrentChannel();
+  connect();
+ };
+ const onOffline=()=>{
+  connecting=false;
+  clearReconnect();
+  if(refreshTimer){clearTimeout(refreshTimer);refreshTimer=null}
+  latestEvent=null;
+  onState?.('disconnected');
+ };
  window.addEventListener('online',onOnline);
  window.addEventListener('offline',onOffline);
  connect();
 
  return()=>{
   stopped=true;
+  connecting=false;
   window.removeEventListener('online',onOnline);
   window.removeEventListener('offline',onOffline);
   if(refreshTimer)clearTimeout(refreshTimer);
-  if(reconnectTimer)clearTimeout(reconnectTimer);
+  clearReconnect();
+  latestEvent=null;
   if(channel)void client.removeChannel(channel);
+  channel=null;
  };
 }

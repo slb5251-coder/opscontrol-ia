@@ -6,8 +6,9 @@
   "scripts": {
     "lint": "node scripts/validate-static.mjs",
     "typecheck": "node scripts/check-js.mjs",
-    "test": "npm run test:responsive && npm run test:environment && npm run test:observability && npm run test:performance-loader && npm run test:app-core && npm run test:auth-session && npm run test:data-layer && npm run test:deferred-dependencies && npm run test:database-hardening && node tests/security.spec.mjs",
+    "test": "npm run test:responsive && npm run test:visual-system && npm run test:environment && npm run test:observability && npm run test:performance-loader && npm run test:app-core && npm run test:auth-session && npm run test:data-layer && npm run test:deferred-dependencies && npm run test:database-hardening && node tests/security.spec.mjs",
     "test:responsive": "node tests/responsive.spec.mjs",
+    "test:visual-system": "node tests/visual-system.spec.mjs",
     "test:environment": "node tests/environment.spec.mjs",
     "test:observability": "node tests/observability.spec.mjs",
     "test:performance-loader": "node tests/performance-loader.spec.mjs",

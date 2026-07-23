@@ -2,9 +2,20 @@
 revoke all privileges on all tables in schema public from anon;
 revoke all privileges on all sequences in schema public from anon;
 revoke execute on all functions in schema public from anon;
+revoke all privileges on all tables in schema public from public;
+revoke all privileges on all sequences in schema public from public;
+revoke execute on all functions in schema public from public;
 alter default privileges in schema public revoke all on tables from anon;
 alter default privileges in schema public revoke all on sequences from anon;
 alter default privileges in schema public revoke execute on functions from anon;
+alter default privileges in schema public revoke all on tables from public;
+alter default privileges in schema public revoke all on sequences from public;
+alter default privileges in schema public revoke execute on functions from public;
+
+-- Mantém acesso explícito somente para a aplicação autenticada.
+grant usage on schema public to authenticated;
+grant select,insert,update,delete on all tables in schema public to authenticated;
+grant usage,select on all sequences in schema public to authenticated;
 
 -- Catálogo químico: políticas antes aplicadas a PUBLIC.
 drop policy if exists chemical_products_select on public.chemical_products;

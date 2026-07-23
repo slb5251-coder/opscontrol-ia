@@ -48,6 +48,9 @@ jobs:
       - name: Run environment isolation tests
         run: npm run test:environment
 
+      - name: Run observability tests
+        run: npm run test:observability
+
       - name: Run security tests
         run: node tests/security.spec.mjs
 
@@ -84,9 +87,14 @@ jobs:
             Path('final-interface.css'),
             Path('interface-fix.css'),
             Path('homologation.css'),
+            Path('system-health.css'),
             Path('js/ui-polish.js'),
             Path('js/interface-runtime.js'),
+            Path('js/system-observability.js'),
             Path('tests/environment.spec.mjs'),
+            Path('tests/observability.spec.mjs'),
+            Path('supabase/migrations/20260722230000_observability_health_v1.sql'),
+            Path('supabase/migrations/20260722231500_observability_hardening_v1.sql'),
           ]
           for path in required:
             if not path.exists():
@@ -115,7 +123,7 @@ jobs:
             print('\n'.join(f'- {error}' for error in errors))
             sys.exit(1)
 
-          print(f'Validated {len(css_refs)} CSS imports, {len(js_refs)} JS modules and environment isolation files.')
+          print(f'Validated {len(css_refs)} CSS imports, {len(js_refs)} JS modules, observability and environment isolation files.')
 
       - name: Upload responsive test evidence
         if: always()

@@ -1,0 +1,63 @@
+/* OPSControl IA — acessibilidade e acabamento do Visual System V3 */
+body.visual-v3 .btn.secondary,
+body.visual-v3 .btn.soft,
+body.visual-v3 button.secondary,
+body.visual-v3 a.btn.secondary{
+  color:#0d47a1!important;
+  background:#e7f0ff!important;
+  border:1px solid #b8cef0!important;
+  text-shadow:none!important;
+}
+body.visual-v3 .btn.secondary:hover,
+body.visual-v3 .btn.soft:hover,
+body.visual-v3 button.secondary:hover,
+body.visual-v3 a.btn.secondary:hover{
+  color:#083679!important;
+  background:#d9e8ff!important;
+  border-color:#8fb2e5!important;
+}
+
+body.visual-v3 .desktop-brand-copy strong,
+body.visual-v3 .mobile-page-copy strong,
+body.visual-v3 .topbar-page-context strong,
+body.visual-v3 .user-chip strong{color:#0b1d35!important;text-shadow:none!important}
+body.visual-v3 .desktop-brand-copy small,
+body.visual-v3 .mobile-page-copy small,
+body.visual-v3 .topbar-page-context small,
+body.visual-v3 .user-chip small{color:#64748b!important;text-shadow:none!important}
+body.visual-v3 .topbar .brand,body.visual-v3 .topbar .user-chip{color:#0b1d35!important}
+
+body.visual-v3 #logoutBtn,
+body.visual-v3 .sidebar #logoutBtn.btn.danger{
+  color:#fff!important;
+  background:linear-gradient(135deg,#ef4444,#b91c1c)!important;
+  border-color:transparent!important;
+  box-shadow:0 10px 24px rgba(185,28,28,.24)!important;
+}
+body.visual-v3 #logoutBtn:hover{filter:brightness(1.06);box-shadow:0 14px 30px rgba(185,28,28,.32)!important}
+body.visual-v3 .status-badge.danger{color:#a51221}
+body.visual-v3 .status-badge.warning{color:#824700}
+
+body.visual-v3 .login-hero{overflow:hidden}
+body.visual-v3 .visual-login-ship{
+  left:42%;right:0;bottom:3px;height:104px;opacity:.42;
+  transform:scale(.72);transform-origin:right bottom
+}
+body.visual-v3 .visual-login-ship .ship{left:72%;bottom:30px}
+body.visual-v3 .visual-login-ship .wake{left:48%;right:4%;bottom:24px}
+body.visual-v3 .visual-login-ship .sea{height:42px}
+
+body.visual-v3 :where(button,a,input,select,textarea,summary,[tabindex]):focus-visible{
+  outline:3px solid rgba(36,107,253,.48)!important;
+  outline-offset:3px!important;
+}
+body.visual-v3 .sidebar :where(button,a,input):focus-visible{
+  outline-color:rgba(97,212,255,.72)!important;
+}
+body.visual-v3 .muted,body.visual-v3 small{line-height:1.45}
+
+@media(max-width:900px){body.visual-v3 .visual-login-ship{display:none}}
+@media(forced-colors:active){
+  body.visual-v3 .visual-spotlight:after,body.visual-v3 .visual-border-beam:before,body.visual-v3 .visual-login-aurora{display:none}
+  body.visual-v3 .nav-item.active,body.visual-v3 .btn.primary{border:2px solid ButtonText}
+}

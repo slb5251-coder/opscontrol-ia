@@ -1,4 +1,4 @@
-const CACHE = "opscontrol-20260723-data-layer-1";
+const CACHE = "opscontrol-20260723-visual-system-v3-1";
 const CORE_FILES = [
   "./",
   "./index.html",
@@ -6,6 +6,9 @@ const CORE_FILES = [
   "./v33.css?v=20260722-security-1",
   "./opscontrol-ui.css?v=20260722-security-1",
   "./figma-interface.css?v=20260722-security-1",
+  "./visual-system-v3.css?v=20260723-visual-system-v3-1",
+  "./visual-modules-v3.css?v=20260723-visual-system-v3-1",
+  "./visual-accessibility-v3.css?v=20260723-visual-system-v3-1",
   "./interface-runtime.css?v=20260722-deferred-dependencies-1",
   "./interface-fix.css?v=20260722-final-audit-1",
   "./final-interface.css?v=20260722-final-audit-1",
@@ -19,7 +22,8 @@ const CORE_FILES = [
   "./js/app-data.js?v=20260723-data-layer-1",
   "./js/app.js?v=20260723-data-layer-1",
   "./js/ui-polish.js?v=20260722-deferred-dependencies-1",
-  "./js/interface-runtime.js?v=20260722-deferred-dependencies-1",
+  "./js/interface-runtime.js?v=20260723-visual-system-v3-1",
+  "./js/visual-system-v3.js?v=20260723-visual-system-v3-1",
   "./js/system-observability.js?v=20260722-observability-1",
   "./js/interface-ops-v2.js?v=20260722-ops-v2-1",
   "./js/app-states.js?v=20260722-app-states-1",

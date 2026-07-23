@@ -83,6 +83,9 @@ try {
   assert(wasRequested('/system-observability.js'), 'observabilidade carrega como núcleo');
   assert(wasRequested('/interface-ops-v2.js'), 'interface principal carrega como núcleo');
   assert(wasRequested('/app-states.js'), 'estados de conexão carregam como núcleo');
+  assert(wasRequested('/visual-system-v3.js'), 'Visual V3 carrega como núcleo global');
+  assert(wasRequested('/visual-system-v3.css'), 'CSS global do Visual V3 carrega no início');
+  assert(wasRequested('/visual-modules-v3.css'), 'tratamento visual de todos os módulos carrega no início');
   assert(!wasRequested('/role-dashboard.js'), 'dashboard por perfil não carrega durante o login');
   assert(!wasRequested('/tank-cards-reference.js'), 'tancagem não carrega durante o login');
   assert(!wasRequested('/tv-control-room.js'), 'Painel TV não carrega durante o login');
@@ -107,6 +110,18 @@ try {
   assert(!wasRequested('/tv-control-room.js'), 'Painel TV continua sem download quando não foi aberto');
   assert(!wasRequested('/operations-analytics.js'), 'analytics continua sem download quando não foi aberto');
 
+  const visualOrder = await page.evaluate(() => {
+    const links = [...document.querySelectorAll('link[data-ops-module-style]')];
+    const last = links.slice(-2).map(link => link.dataset.opsModuleStyle);
+    return {
+      last,
+      promoted: document.documentElement.dataset.visualStylesPromoted,
+      hasPromote: typeof window.OpsControlModules?.promoteVisualStyles === 'function'
+    };
+  });
+  assert(visualOrder.last.length === 2 && visualOrder.last.every(name => name === 'visual-v3'), 'Visual V3 permanece depois dos estilos sob demanda', visualOrder.last.join(', '));
+  assert(visualOrder.promoted === '2' && visualOrder.hasPromote, 'carregador expõe e registra a precedência visual', visualOrder.promoted);
+
   await page.evaluate(() => {
     const form = document.createElement('form');
     form.id = 'genericForm';
@@ -121,10 +136,12 @@ try {
     version: window.OpsControlModules?.version || '',
     hasLoad: typeof window.OpsControlModules?.load === 'function',
     hasStatus: typeof window.OpsControlModules?.status === 'function',
-    hasPageMap: Boolean(window.OpsControlModules?.pageModules?.dashboard)
+    hasPageMap: Boolean(window.OpsControlModules?.pageModules?.dashboard),
+    visualStillLast: [...document.querySelectorAll('link[data-ops-module-style]')].slice(-2).every(link => link.dataset.opsModuleStyle === 'visual-v3')
   }));
-  assert(loader.version.length > 0, 'API de diagnóstico expõe versão do carregador', loader.version);
+  assert(loader.version.includes('visual-system-v3'), 'API de diagnóstico expõe versão do Visual V3', loader.version);
   assert(loader.hasLoad && loader.hasStatus && loader.hasPageMap, 'API expõe carregamento, estado e mapa de páginas');
+  assert(loader.visualStillLast, 'precedência visual é restaurada após abrir Alertas');
 } finally {
   await browser.close();
   await new Promise(resolveClose => server.close(resolveClose));

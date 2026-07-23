@@ -1,0 +1,106 @@
+/* OPSControl IA — tratamento visual por módulo */
+@import url('visual-accessibility-v3.css?v=20260723-visual-system-v3-1');
+
+body.visual-v3 .page[data-visual-page]{--page-accent:#246bfd;--page-soft:rgba(36,107,253,.1);--page-deep:#123f9d}
+body.visual-v3 #page-dashboard{--page-accent:#246bfd;--page-soft:rgba(36,107,253,.1);--page-deep:#123f9d}
+body.visual-v3 #page-tv{--page-accent:#22d3ee;--page-soft:rgba(34,211,238,.12);--page-deep:#087c91}
+body.visual-v3 #page-quality,body.visual-v3 #page-sanitation{--page-accent:#7c3aed;--page-soft:rgba(124,58,237,.1);--page-deep:#5421a6}
+body.visual-v3 #page-operations,body.visual-v3 #page-vessel-registry{--page-accent:#0ea5e9;--page-soft:rgba(14,165,233,.1);--page-deep:#096e9b}
+body.visual-v3 #page-tanks,body.visual-v3 #page-fluids{--page-accent:#2563eb;--page-soft:rgba(37,99,235,.1);--page-deep:#1746ab}
+body.visual-v3 #page-chemical-catalog,body.visual-v3 #page-chemicals{--page-accent:#8b5cf6;--page-soft:rgba(139,92,246,.1);--page-deep:#6336c6}
+body.visual-v3 #page-trucks,body.visual-v3 #page-client-tickets{--page-accent:#f59e0b;--page-soft:rgba(245,158,11,.12);--page-deep:#a66002}
+body.visual-v3 #page-qhse{--page-accent:#10b981;--page-soft:rgba(16,185,129,.1);--page-deep:#087d59}
+body.visual-v3 #page-maintenance,body.visual-v3 #page-certificates{--page-accent:#f97316;--page-soft:rgba(249,115,22,.1);--page-deep:#b64808}
+body.visual-v3 #page-alerts{--page-accent:#ef4444;--page-soft:rgba(239,68,68,.1);--page-deep:#b91c1c}
+body.visual-v3 #page-ai-assistant{--page-accent:#7c3aed;--page-soft:rgba(124,58,237,.12);--page-deep:#4c1d95}
+body.visual-v3 #page-reports,body.visual-v3 #page-audit{--page-accent:#0891b2;--page-soft:rgba(8,145,178,.1);--page-deep:#0e6276}
+body.visual-v3 #page-settings{--page-accent:#64748b;--page-soft:rgba(100,116,139,.11);--page-deep:#334155}
+
+body.visual-v3 .page[data-visual-page]:not(#page-tv)>.page-header{
+  position:relative;overflow:hidden;min-height:96px;margin-bottom:20px;padding:20px 22px;border:1px solid rgba(205,218,233,.9);
+  border-radius:21px;background:linear-gradient(125deg,#fff 20%,color-mix(in srgb,var(--page-accent) 5%,#fff));box-shadow:0 10px 32px rgba(15,35,68,.055)
+}
+body.visual-v3 .page[data-visual-page]:not(#page-tv)>.page-header:before{content:"";position:absolute;left:0;top:18px;bottom:18px;width:4px;border-radius:0 99px 99px 0;background:linear-gradient(var(--page-accent),color-mix(in srgb,var(--page-accent) 55%,#fff));box-shadow:0 0 20px var(--page-soft)}
+body.visual-v3 .page[data-visual-page]:not(#page-tv)>.page-header:after{content:"";position:absolute;width:190px;height:190px;right:-76px;top:-110px;border-radius:50%;background:radial-gradient(circle,var(--page-soft),transparent 68%)}
+body.visual-v3 .page[data-visual-page]>.page-header>*{position:relative;z-index:1}
+body.visual-v3 .page[data-visual-page]>.page-header h1{color:#0b1d35}
+body.visual-v3 .page[data-visual-page]>.page-header .actions{display:flex;gap:8px;align-items:center}
+body.visual-v3 .page[data-visual-page]>.page-header .actions .btn:not(.primary){background:color-mix(in srgb,var(--page-accent) 8%,#fff);color:var(--page-deep);border-color:color-mix(in srgb,var(--page-accent) 15%,#d9e3ef)}
+body.visual-v3 .page[data-visual-page]>.page-header .actions .btn.primary{background:linear-gradient(135deg,var(--page-accent),var(--page-deep));box-shadow:0 10px 24px color-mix(in srgb,var(--page-accent) 23%,transparent)}
+
+body.visual-v3 .page[data-visual-page]:not(#page-tv)>.card,
+body.visual-v3 .page[data-visual-page]:not(#page-tv)>.table-wrap,
+body.visual-v3 .page[data-visual-page]:not(#page-tv)>section.card,
+body.visual-v3 .page[data-visual-page]:not(#page-tv)>div.card{position:relative}
+body.visual-v3 .page[data-visual-page]:not(#page-tv)>.card:before,
+body.visual-v3 .page[data-visual-page]:not(#page-tv)>section.card:before{content:"";position:absolute;left:18px;right:18px;top:-1px;height:2px;border-radius:0 0 99px 99px;background:linear-gradient(90deg,var(--page-accent),transparent 70%);opacity:.78}
+
+/* Operações e embarcações */
+body.visual-v3 #page-operations .operation-stepper-head,body.visual-v3 #page-operations .operations-filter-bar{padding:8px;border:1px solid #dbe5f0;border-radius:15px;background:rgba(255,255,255,.88);box-shadow:0 8px 24px rgba(15,35,68,.045)}
+body.visual-v3 #page-operations .operation-stepper-head button{position:relative;border-radius:11px;transition:all .2s var(--oc-ease)}
+body.visual-v3 #page-operations .operation-stepper-head button.active{color:#fff;background:linear-gradient(135deg,var(--page-accent),var(--page-deep));box-shadow:0 8px 18px var(--page-soft)}
+body.visual-v3 #page-operations [class*="operation-card"],body.visual-v3 #page-vessel-registry .card{border-left:3px solid var(--page-accent)}
+body.visual-v3 #page-vessel-registry [class*="vessel" i]{transition:transform .2s var(--oc-ease),box-shadow .2s}
+
+/* Tanques, fluidos e químicos */
+body.visual-v3 #page-tanks .tank-command-center,body.visual-v3 #page-fluids .card:first-of-type,body.visual-v3 #page-chemicals .card:first-of-type{border-color:color-mix(in srgb,var(--page-accent) 20%,#d9e3ef);background:linear-gradient(135deg,#fff,color-mix(in srgb,var(--page-accent) 4%,#fff))}
+body.visual-v3 #page-tanks .tank-mobile-toolbar{border:1px solid #dce6f1;border-radius:15px;background:rgba(255,255,255,.9);box-shadow:var(--oc-shadow-sm)}
+body.visual-v3 #page-tanks .tank-mobile-toolbar button.active,body.visual-v3 #page-tanks .tank-mobile-toolbar button:hover{color:#fff;background:var(--page-accent)}
+body.visual-v3 #page-fluids [class*="fluid" i].card,body.visual-v3 #page-chemical-catalog .card,body.visual-v3 #page-chemicals .card{overflow:hidden}
+body.visual-v3 #page-chemical-catalog .data-table tbody tr:hover td,body.visual-v3 #page-chemicals .data-table tbody tr:hover td{background:color-mix(in srgb,var(--page-accent) 5%,#fff)}
+
+/* Logística */
+body.visual-v3 #page-trucks .stat-card,body.visual-v3 #page-client-tickets .stat-card{border-bottom:3px solid var(--page-accent)}
+body.visual-v3 #page-trucks [class*="truck" i].card{background:linear-gradient(145deg,#fff,#fffaf2)}
+body.visual-v3 #page-client-tickets [class*="ticket" i]{transition:border-color .2s,transform .2s}
+body.visual-v3 #page-client-tickets [class*="ticket" i]:hover{border-color:color-mix(in srgb,var(--page-accent) 38%,#d9e3ef)}
+
+/* QHSE, manutenção e certificados */
+body.visual-v3 #page-qhse .stat-card:after{background:rgba(16,185,129,.1)}
+body.visual-v3 #page-qhse [class*="risk" i],body.visual-v3 #page-qhse [class*="qhse" i].card{border-left:3px solid var(--page-accent)}
+body.visual-v3 #page-maintenance [class*="maintenance" i].card,body.visual-v3 #page-certificates [class*="certificate" i].card{border-left:3px solid var(--page-accent)}
+body.visual-v3 #page-maintenance .status-badge,body.visual-v3 #page-certificates .status-badge{font-weight:800}
+
+/* Alertas e chat */
+body.visual-v3 #page-alerts .alert-workspace{gap:14px}
+body.visual-v3 #page-alerts .alert-workspace-tabs,body.visual-v3 #page-alerts .alert-status-filters,body.visual-v3 #page-alerts .alert-chat-channels{padding:6px;border:1px solid #e2e8f0;border-radius:14px;background:rgba(255,255,255,.9);box-shadow:0 7px 20px rgba(15,35,68,.04)}
+body.visual-v3 #page-alerts .alert-workspace-tabs button.active,body.visual-v3 #page-alerts .alert-status-filters button.active,body.visual-v3 #page-alerts .alert-chat-channels button.active{color:#fff;background:linear-gradient(135deg,var(--page-accent),var(--page-deep));box-shadow:0 8px 20px rgba(239,68,68,.18)}
+body.visual-v3 #page-alerts [class*="alert-card"],body.visual-v3 #page-alerts [class*="alert-item"]{border-left:3px solid var(--page-accent);transition:transform .2s var(--oc-ease),box-shadow .2s}
+body.visual-v3 #page-alerts [class*="alert-card"]:hover,body.visual-v3 #page-alerts [class*="alert-item"]:hover{transform:translateX(2px)}
+body.visual-v3 #page-alerts [class*="chat-message"]{border-radius:15px;box-shadow:0 7px 20px rgba(15,35,68,.05)}
+
+/* IA */
+body.visual-v3 #page-ai-assistant .ocai-wrap{position:relative;overflow:hidden;border:1px solid rgba(131,91,230,.2);border-radius:24px;background:linear-gradient(145deg,#0b1021,#181036 60%,#122044);box-shadow:0 28px 72px rgba(20,10,55,.22)}
+body.visual-v3 #page-ai-assistant .ocai-wrap:before{content:"";position:absolute;inset:0;pointer-events:none;background:radial-gradient(circle at 72% 0,rgba(124,58,237,.22),transparent 32rem),linear-gradient(rgba(255,255,255,.025) 1px,transparent 1px);background-size:auto,100% 42px}
+body.visual-v3 #page-ai-assistant .ocai-wrap>*{position:relative;z-index:1}
+body.visual-v3 #page-ai-assistant [data-ocai-mode]{border-color:rgba(180,153,255,.18);background:rgba(255,255,255,.055);color:#dcd3ff;transition:all .2s var(--oc-ease)}
+body.visual-v3 #page-ai-assistant [data-ocai-mode]:hover,body.visual-v3 #page-ai-assistant [data-ocai-mode].active{transform:translateY(-2px);color:#fff;background:rgba(124,58,237,.3);box-shadow:0 12px 28px rgba(38,18,85,.28)}
+
+/* Relatórios, auditoria, qualidade e saneamento */
+body.visual-v3 #page-reports .card,body.visual-v3 #page-audit .card,body.visual-v3 #page-quality .card,body.visual-v3 #page-sanitation .card{background:linear-gradient(145deg,#fff,color-mix(in srgb,var(--page-accent) 3.5%,#fff))}
+body.visual-v3 #page-reports [class*="chart" i],body.visual-v3 #page-quality [class*="chart" i]{border-radius:16px}
+body.visual-v3 #page-audit .data-table td:first-child{font-variant-numeric:tabular-nums;color:var(--page-deep);font-weight:700}
+body.visual-v3 #page-sanitation [class*="warning" i]{border-left:3px solid #f59e0b}
+
+/* Configurações */
+body.visual-v3 #page-settings .card{border-radius:18px}
+body.visual-v3 #page-settings .tabs,body.visual-v3 #page-settings [role="tablist"]{padding:6px;border:1px solid #dde5ef;border-radius:14px;background:#f4f7fb}
+body.visual-v3 #page-settings .tabs button.active,body.visual-v3 #page-settings [role="tablist"] button[aria-selected="true"]{color:#fff;background:linear-gradient(135deg,var(--page-accent),var(--page-deep));box-shadow:0 7px 18px rgba(51,65,85,.18)}
+
+/* Mobile records and drawers */
+body.visual-v3 .design-mobile-data-list>*,body.visual-v3 .mobile-record-list>*,body.visual-v3 .mobile-record-grid>*{border:1px solid #dce5f0;border-radius:16px;background:linear-gradient(145deg,#fff,#f8fbff);box-shadow:0 9px 24px rgba(15,35,68,.06)}
+body.visual-v3 .design-operation-drawer{border-left:1px solid rgba(255,255,255,.12);box-shadow:-30px 0 80px rgba(3,15,31,.24)}
+body.visual-v3 .design-operation-drawer-header{background:linear-gradient(135deg,#07172f,#0d315c);color:#fff}
+body.visual-v3 .design-operation-drawer-header p,body.visual-v3 .design-operation-drawer-header small{color:#a9c0d9}
+
+@media(max-width:900px){
+  body.visual-v3 .page[data-visual-page]:not(#page-tv)>.page-header{min-height:auto;padding:17px 16px;border-radius:18px}
+  body.visual-v3 .page[data-visual-page]>.page-header .actions{width:100%;overflow-x:auto;padding-bottom:2px}
+  body.visual-v3 .page[data-visual-page]>.page-header .actions .btn{flex:0 0 auto}
+}
+
+@media(max-width:560px){
+  body.visual-v3 .page[data-visual-page]:not(#page-tv)>.page-header{display:block}
+  body.visual-v3 .page[data-visual-page]:not(#page-tv)>.page-header:after{width:120px;height:120px;right:-45px;top:-65px}
+  body.visual-v3 .page[data-visual-page]>.page-header .actions{margin-top:13px}
+}

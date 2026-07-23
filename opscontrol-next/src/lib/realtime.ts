@@ -12,7 +12,8 @@ function normalizeEventType(value:string|undefined):OperationalRealtimeEvent['ev
 }
 
 export function subscribeOperationalChanges(onChange:(event:OperationalRealtimeEvent)=>void,onState?:(state:RealtimeState)=>void){
- if(!supabase){onState?.('disconnected');return()=>undefined}
+ const client=supabase;
+ if(!client){onState?.('disconnected');return()=>undefined}
  let refreshTimer:ReturnType<typeof setTimeout>|null=null;
  let reconnectTimer:ReturnType<typeof setTimeout>|null=null;
  let channel:RealtimeChannel|null=null;
@@ -28,7 +29,7 @@ export function subscribeOperationalChanges(onChange:(event:OperationalRealtimeE
  const connect=()=>{
   if(stopped)return;
   onState?.('connecting');
-  channel=supabase.channel(`opscontrol-next-operational-${Date.now()}`);
+  channel=client.channel(`opscontrol-next-operational-${Date.now()}`);
   realtimeTables.forEach(table=>{
    channel=channel!.on('postgres_changes',{event:'*',schema:'public',table},payload=>scheduleRefresh(table,payload));
   });
@@ -38,7 +39,7 @@ export function subscribeOperationalChanges(onChange:(event:OperationalRealtimeE
     onState?.('error');
     if(!stopped){
      reconnectTimer=setTimeout(async()=>{
-      if(channel)await supabase.removeChannel(channel);
+      if(channel)await client.removeChannel(channel);
       connect();
      },3000);
     }
@@ -47,7 +48,7 @@ export function subscribeOperationalChanges(onChange:(event:OperationalRealtimeE
   });
  };
 
- const onOnline=()=>{if(!stopped){if(channel)void supabase.removeChannel(channel);connect()}};
+ const onOnline=()=>{if(!stopped){if(channel)void client.removeChannel(channel);connect()}};
  const onOffline=()=>onState?.('disconnected');
  window.addEventListener('online',onOnline);
  window.addEventListener('offline',onOffline);
@@ -59,6 +60,6 @@ export function subscribeOperationalChanges(onChange:(event:OperationalRealtimeE
   window.removeEventListener('offline',onOffline);
   if(refreshTimer)clearTimeout(refreshTimer);
   if(reconnectTimer)clearTimeout(reconnectTimer);
-  if(channel)void supabase.removeChannel(channel);
+  if(channel)void client.removeChannel(channel);
  };
 }

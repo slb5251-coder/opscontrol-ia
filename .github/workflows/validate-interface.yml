@@ -60,6 +60,9 @@ jobs:
       - name: Run app core tests
         run: npm run test:app-core
 
+      - name: Run authentication and session tests
+        run: npm run test:auth-session
+
       - name: Run database hardening tests
         run: npm run test:database-hardening
 
@@ -83,6 +86,7 @@ jobs:
           config_js = Path('js/config.js').read_text(encoding='utf-8')
           app_js = Path('js/app.js').read_text(encoding='utf-8')
           app_core_js = Path('js/app-core.js').read_text(encoding='utf-8')
+          app_auth_js = Path('js/app-auth.js').read_text(encoding='utf-8')
           index_html = Path('index.html').read_text(encoding='utf-8')
 
           css_refs = re.findall(r"@import\s+url\(['\"]?([^'\")?]+)", runtime_css)
@@ -113,11 +117,13 @@ jobs:
             Path('js/interface-runtime.js'),
             Path('js/system-observability.js'),
             Path('js/app-core.js'),
+            Path('js/app-auth.js'),
             Path('tests/environment.spec.mjs'),
             Path('tests/observability.spec.mjs'),
             Path('tests/performance-loader.spec.mjs'),
             Path('tests/deferred-dependencies.spec.mjs'),
             Path('tests/app-core.spec.mjs'),
+            Path('tests/auth-session.spec.mjs'),
             Path('tests/database-hardening.spec.mjs'),
             Path('supabase/migrations/20260722230000_observability_health_v1.sql'),
             Path('supabase/migrations/20260722231500_observability_hardening_v1.sql'),
@@ -133,7 +139,7 @@ jobs:
             if token not in config_js:
               errors.append(f'Missing environment guard token in config: {token}')
 
-          for token in ['CORE_FILES', 'cacheFirst', 'networkFirst', 'app-core.js']:
+          for token in ['CORE_FILES', 'cacheFirst', 'networkFirst', 'app-core.js', 'app-auth.js', 'auth-session-1']:
             if token not in service_worker:
               errors.append(f'Missing modular cache token in service worker: {token}')
 
@@ -146,19 +152,37 @@ jobs:
               errors.append(f'Missing deferred dependency token in runtime: {token}')
 
           core_index = index_html.find('js/app-core.js')
+          auth_index = index_html.find('js/app-auth.js')
           app_index = index_html.find('js/app.js')
-          if core_index < 0 or app_index <= core_index:
-            errors.append('app-core.js must load before app.js')
+          if core_index < 0 or auth_index <= core_index or app_index <= auth_index:
+            errors.append('Script order must be app-core.js, app-auth.js, then app.js')
 
-          for token in ['window.OpsControlCore', '20260723-app-core-1']:
-            if token not in app_js:
-              errors.append(f'Missing app core integration token in app.js: {token}')
-            if token not in app_core_js and token != 'window.OpsControlCore':
-              errors.append(f'Missing app core version token in app-core.js: {token}')
+          if 'window.OpsControlCore' not in app_js:
+            errors.append('Missing app core integration in app.js')
+          if '20260723-app-core-1' not in app_core_js:
+            errors.append('Missing app core version in app-core.js')
+          if 'window.OpsControlAuth' not in app_js:
+            errors.append('Missing authentication integration in app.js')
+          for token in ['window.OpsControlAuth', '20260723-auth-session-1', 'createController', 'resetPasswordForEmail']:
+            if token not in app_auth_js:
+              errors.append(f'Missing authentication module token: {token}')
+          if '20260723-auth-session-1' not in app_js:
+            errors.append('Missing authentication version in app.js')
 
           for duplicate in ['const UI_ICONS =', 'function normalizeSearch(', 'const MOBILE_PAGE_META =']:
             if duplicate in app_js:
               errors.append(f'App core symbol duplicated in app.js: {duplicate}')
+
+          for duplicate in [
+            'function loadConfig(', 'function initClient(', 'function resolveLoginEmail(',
+            'function requestPasswordRecovery(', 'function login(', 'function restoreSession(',
+            'function logout(', 'REMEMBER_LOGIN_KEY', 'APP_ENV_KEY', 'CONFIG_KEY'
+          ]:
+            if duplicate in app_js:
+              errors.append(f'Authentication symbol duplicated in app.js: {duplicate}')
+
+          if 'Se o acesso estiver cadastrado' not in app_auth_js:
+            errors.append('Password recovery must keep a non-enumerating response')
 
           forbidden = [
             'design-upgrade.css',
@@ -179,7 +203,7 @@ jobs:
             print('\n'.join(f'- {error}' for error in errors))
             sys.exit(1)
 
-          print(f'Validated {len(css_refs)} core CSS imports, {len(dynamic_css_refs)} lazy CSS assets, {len(js_refs)} JS modules, app core extraction, deferred dependencies, observability, performance, RLS and environment isolation files.')
+          print(f'Validated {len(css_refs)} core CSS imports, {len(dynamic_css_refs)} lazy CSS assets, {len(js_refs)} JS modules, app core, authentication/session, deferred dependencies, observability, performance, RLS and environment isolation files.')
 
       - name: Upload responsive test evidence
         if: always()

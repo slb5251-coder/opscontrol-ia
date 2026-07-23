@@ -45,6 +45,9 @@ jobs:
       - name: Run responsive tests
         run: npm run test:responsive
 
+      - name: Run visual system tests
+        run: npm run test:visual-system
+
       - name: Run environment isolation tests
         run: npm run test:environment
 
@@ -91,6 +94,8 @@ jobs:
           app_core_js = Path('js/app-core.js').read_text(encoding='utf-8')
           app_auth_js = Path('js/app-auth.js').read_text(encoding='utf-8')
           app_data_js = Path('js/app-data.js').read_text(encoding='utf-8')
+          visual_css = Path('visual-system-v3.css').read_text(encoding='utf-8')
+          visual_js = Path('js/visual-system-v3.js').read_text(encoding='utf-8')
           index_html = Path('index.html').read_text(encoding='utf-8')
 
           css_refs = re.findall(r"@import\s+url\(['\"]?([^'\")?]+)", runtime_css)
@@ -114,12 +119,13 @@ jobs:
 
           required = [
             Path('final-interface.css'), Path('interface-fix.css'), Path('homologation.css'), Path('system-health.css'),
+            Path('visual-system-v3.css'),
             Path('js/ui-polish.js'), Path('js/interface-runtime.js'), Path('js/system-observability.js'),
-            Path('js/app-core.js'), Path('js/app-auth.js'), Path('js/app-data.js'),
+            Path('js/app-core.js'), Path('js/app-auth.js'), Path('js/app-data.js'), Path('js/visual-system-v3.js'),
             Path('tests/environment.spec.mjs'), Path('tests/observability.spec.mjs'),
             Path('tests/performance-loader.spec.mjs'), Path('tests/deferred-dependencies.spec.mjs'),
             Path('tests/app-core.spec.mjs'), Path('tests/auth-session.spec.mjs'), Path('tests/data-layer.spec.mjs'),
-            Path('tests/database-hardening.spec.mjs'),
+            Path('tests/visual-system.spec.mjs'), Path('tests/database-hardening.spec.mjs'),
             Path('supabase/migrations/20260722230000_observability_health_v1.sql'),
             Path('supabase/migrations/20260722231500_observability_hardening_v1.sql'),
             Path('supabase/migrations/20260723001500_revoke_anon_and_public_policies.sql'),
@@ -134,7 +140,7 @@ jobs:
             if token not in config_js:
               errors.append(f'Missing environment guard token in config: {token}')
 
-          for token in ['CORE_FILES', 'cacheFirst', 'networkFirst', 'app-core.js', 'app-auth.js', 'app-data.js', 'data-layer-1']:
+          for token in ['CORE_FILES', 'cacheFirst', 'networkFirst', 'app-core.js', 'app-auth.js', 'app-data.js', 'data-layer-1', 'visual-system-v3.css', 'visual-system-v3.js']:
             if token not in service_worker:
               errors.append(f'Missing modular cache token in service worker: {token}')
 
@@ -142,9 +148,16 @@ jobs:
             if dependency in index_html:
               errors.append(f'Deferred dependency still blocks initial HTML: {dependency}')
 
-          for token in ['ai-assistant', 'leaflet', 'deferred-dependencies']:
+          for token in ['ai-assistant', 'leaflet', 'deferred-dependencies', 'visual-v3']:
             if token not in runtime_js:
               errors.append(f'Missing deferred dependency token in runtime: {token}')
+
+          for token in ['visual-v3', 'visual-vessel-gauge', 'tv-control-room', 'prefers-reduced-motion', 'visual-login-ship']:
+            if token not in visual_css:
+              errors.append(f'Missing visual system CSS token: {token}')
+          for token in ['window.OpsControlVisual', 'addLoginScene', 'enhanceTankCard', 'IntersectionObserver', 'animateNumbers']:
+            if token not in visual_js:
+              errors.append(f'Missing visual system JS token: {token}')
 
           core_index = index_html.find('js/app-core.js')
           auth_index = index_html.find('js/app-auth.js')
@@ -202,7 +215,7 @@ jobs:
             print('\n'.join(f'- {error}' for error in errors))
             sys.exit(1)
 
-          print(f'Validated {len(css_refs)} core CSS imports, {len(dynamic_css_refs)} lazy CSS assets, {len(js_refs)} JS modules, app core, authentication, data layer, deferred dependencies, observability, RLS and environment isolation files.')
+          print(f'Validated {len(css_refs)} core CSS imports, {len(dynamic_css_refs)} lazy CSS assets, {len(js_refs)} JS modules, visual system, app core, authentication, data layer, deferred dependencies, observability, RLS and environment isolation files.')
 
       - name: Upload responsive test evidence
         if: always()

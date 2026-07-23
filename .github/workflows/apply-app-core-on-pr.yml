@@ -16,7 +16,7 @@ jobs:
         with:
           ref: performance/extract-app-core-v1
           fetch-depth: 0
-      - name: Extract app core
+      - name: Extract and connect app core
         run: python scripts/extract-app-core.py
       - name: Commit extracted application core
         run: |
@@ -26,6 +26,6 @@ jobs:
             echo "No changes to commit"
             exit 0
           fi
-          git add js/app.js
-          git commit -m "refactor: extrair núcleo compartilhado do app"
+          git add js/app.js index.html sw.js package.json
+          git commit -m "refactor: conectar núcleo compartilhado do app"
           git push origin HEAD:performance/extract-app-core-v1

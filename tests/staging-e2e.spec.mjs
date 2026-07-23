@@ -136,9 +136,15 @@ try {
   const page = await desktop.newPage();
   const pageErrors = [];
   const severeConsole = [];
+  const failedResponses = [];
   page.on('pageerror', error => pageErrors.push(error.message));
+  page.on('response', response => {
+    if (response.status() >= 400) failedResponses.push({ status: response.status(), url: response.url() });
+  });
   page.on('console', message => {
-    if (message.type() === 'error' && !/favicon|net::ERR_ABORTED|optional/i.test(message.text())) severeConsole.push(message.text());
+    const text = message.text();
+    const genericResourceError = /^Failed to load resource:/i.test(text);
+    if (message.type() === 'error' && !genericResourceError && !/favicon|net::ERR_ABORTED|optional/i.test(text)) severeConsole.push(text);
   });
 
   await login(page);
@@ -224,8 +230,14 @@ try {
   await page.click('#forgotPasswordBtn');
   await page.waitForFunction(() => document.querySelector('#loginMessage')?.textContent?.includes('Se o acesso estiver cadastrado'), null, { timeout: 30000 });
   check((await page.locator('#loginMessage').textContent()).includes('Se o acesso estiver cadastrado'), 'recuperação usa resposta não enumerável');
+  const unexpectedResponses = failedResponses.filter(item => {
+    const expectedRecoveryProtection = item.status === 400 && /\/auth\/v1\/recover(?:\?|$)/.test(item.url);
+    const optionalFavicon = item.status === 404 && /\/favicon(?:\.ico)?(?:\?|$)/.test(item.url);
+    return !expectedRecoveryProtection && !optionalFavicon;
+  });
   check(pageErrors.length === 0, 'nenhum erro JavaScript não tratado no desktop', pageErrors.join(' | '));
   check(severeConsole.length === 0, 'nenhum erro grave no console desktop', severeConsole.join(' | '));
+  check(unexpectedResponses.length === 0, 'nenhuma resposta HTTP inesperada no desktop', unexpectedResponses.map(item => `${item.status} ${item.url}`).join(' | '));
   await desktop.close();
 
   const mobile = await browser.newContext({ viewport: { width: 390, height: 844 } });

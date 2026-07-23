@@ -66,8 +66,17 @@ async function login(page) {
   }, null, { timeout: 60000 });
 }
 
-async function openPage(page, name = page) {
-  const button = page.locator(`.nav-item[data-page="${name}"]`);
+async function openPage(page, name) {
+  const button = page.locator(`.nav-item[data-page="${name}"]`).first();
+  await button.waitFor({ state: 'attached', timeout: 30000 });
+  const group = button.locator('xpath=ancestor::section[contains(concat(" ", normalize-space(@class), " "), " design-nav-group ")]').first();
+  if (await group.count()) {
+    const toggle = group.locator(':scope > .design-nav-group-toggle').first();
+    if (await toggle.count() && (await toggle.getAttribute('aria-expanded')) !== 'true') {
+      await toggle.click();
+      await page.waitForTimeout(80);
+    }
+  }
   await button.waitFor({ state: 'visible', timeout: 30000 });
   await button.click();
   await page.locator(`#page-${name}.active`).waitFor({ state: 'visible', timeout: 30000 });
@@ -215,7 +224,8 @@ try {
     if (await direct.count() && await direct.isVisible()) await direct.click();
     else {
       await mobilePage.click('#menuBtn').catch(() => {});
-      await mobilePage.locator(`.nav-item[data-page="${module}"]`).click();
+      const target = mobilePage.locator(`.nav-item[data-page="${module}"]`).first();
+      await target.click({ force: true });
     }
     await mobilePage.locator(`#page-${module}.active`).waitFor({ state: 'visible', timeout: 30000 });
     const overflow = await mobilePage.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 3);

@@ -46,7 +46,11 @@ jobs:
         run: npm run test:responsive
 
       - name: Run visual system tests
-        run: npm run test:visual-system
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p test-results
+          npm run test:visual-system 2>&1 | tee test-results/visual-system.log
 
       - name: Run environment isolation tests
         run: npm run test:environment
@@ -119,7 +123,7 @@ jobs:
 
           required = [
             Path('final-interface.css'), Path('interface-fix.css'), Path('homologation.css'), Path('system-health.css'),
-            Path('visual-system-v3.css'),
+            Path('visual-system-v3.css'), Path('visual-modules-v3.css'), Path('visual-accessibility-v3.css'),
             Path('js/ui-polish.js'), Path('js/interface-runtime.js'), Path('js/system-observability.js'),
             Path('js/app-core.js'), Path('js/app-auth.js'), Path('js/app-data.js'), Path('js/visual-system-v3.js'),
             Path('tests/environment.spec.mjs'), Path('tests/observability.spec.mjs'),
@@ -140,7 +144,7 @@ jobs:
             if token not in config_js:
               errors.append(f'Missing environment guard token in config: {token}')
 
-          for token in ['CORE_FILES', 'cacheFirst', 'networkFirst', 'app-core.js', 'app-auth.js', 'app-data.js', 'data-layer-1', 'visual-system-v3.css', 'visual-system-v3.js']:
+          for token in ['CORE_FILES', 'cacheFirst', 'networkFirst', 'app-core.js', 'app-auth.js', 'app-data.js', 'data-layer-1', 'visual-system-v3.css', 'visual-modules-v3.css', 'visual-accessibility-v3.css', 'visual-system-v3.js']:
             if token not in service_worker:
               errors.append(f'Missing modular cache token in service worker: {token}')
 

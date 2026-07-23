@@ -24,4 +24,11 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          npm run build --silent 2>&1 | tail -n 80
+          npm run build --silent 2>&1 | tee build.log
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: opscontrol-next-build-log
+          path: opscontrol-next/build.log
+          if-no-files-found: error

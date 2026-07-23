@@ -1,0 +1,188 @@
+from pathlib import Path
+import json
+
+
+def replace(path, old, new):
+    file = Path(path)
+    text = file.read_text(encoding="utf-8")
+    if old not in text:
+        raise SystemExit(f"Expected block not found in {path}: {old[:100]}")
+    file.write_text(text.replace(old, new), encoding="utf-8")
+
+
+index = Path("index.html")
+html = index.read_text(encoding="utf-8")
+for line in [
+    '  <link rel="stylesheet" href="assistente-integrado.css?v=20260722-security-1">\n',
+    '  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="">\n',
+    '  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>\n',
+    '  <script src="js/assistente-integrado.js?v=20260722-security-1"></script>\n',
+]:
+    if line not in html:
+        raise SystemExit(f"Expected index dependency not found: {line.strip()}")
+    html = html.replace(line, "")
+index.write_text(html, encoding="utf-8")
+
+runtime = Path("js/interface-runtime.js")
+text = runtime.read_text(encoding="utf-8")
+text = text.replace('const VERSION = "20260722-module-loader-1";', 'const VERSION = "20260722-deferred-dependencies-1";')
+text = text.replace('    alerts: ["alert-center-v2"]\n', '    alerts: ["alert-center-v2"],\n    "ai-assistant": ["ai-assistant"]\n')
+marker = '''    "alert-center-v2": {
+      script: "alert-center-v2.js?v=20260722-alert-center-v2-1",
+      styles: ["../alert-center-v2.css?v=20260722-alert-center-v2-1"]
+    }
+'''
+addition = '''    "alert-center-v2": {
+      script: "alert-center-v2.js?v=20260722-alert-center-v2-1",
+      styles: ["../alert-center-v2.css?v=20260722-alert-center-v2-1"]
+    },
+    "ai-assistant": {
+      script: "assistente-integrado.js?v=20260722-deferred-dependencies-1",
+      styles: ["../assistente-integrado.css?v=20260722-deferred-dependencies-1"]
+    },
+    leaflet: {
+      script: "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js",
+      styles: ["https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"]
+    }
+'''
+if marker not in text:
+    raise SystemExit("Module insertion marker not found")
+text = text.replace(marker, addition)
+text = text.replace(
+    '''      if (document.querySelector('#genericForm[data-kind="alert"]')) loadModule("alert-center-v2").catch(() => {});
+''',
+    '''      if (document.querySelector('#genericForm[data-kind="alert"]')) loadModule("alert-center-v2").catch(() => {});
+      if (document.querySelector("#vesselAisMap")) loadModule("leaflet").catch(() => {});
+''',
+)
+text = text.replace("node.matches?.('#genericForm[data-kind=\"alert\"],.page')", "node.matches?.('#genericForm[data-kind=\"alert\"],#vesselAisMap,.page')")
+text = text.replace("node.querySelector?.('#genericForm[data-kind=\"alert\"],.page')", "node.querySelector?.('#genericForm[data-kind=\"alert\"],#vesselAisMap,.page')")
+runtime.write_text(text, encoding="utf-8")
+
+replace(
+    "js/ui-polish.js",
+    'const VERSION = "20260722-final-audit-1";\n  const scriptUrl = document.currentScript?.src || new URL("js/ui-polish.js", document.baseURI).href;\n  const INTERFACE_STYLESHEET = new URL("../interface-runtime.css?v=20260722-final-audit-1", scriptUrl).href;\n  const INTERFACE_SCRIPT = new URL("interface-runtime.js?v=20260722-final-audit-1", scriptUrl).href;',
+    'const VERSION = "20260722-deferred-dependencies-1";\n  const scriptUrl = document.currentScript?.src || new URL("js/ui-polish.js", document.baseURI).href;\n  const INTERFACE_STYLESHEET = new URL("../interface-runtime.css?v=20260722-deferred-dependencies-1", scriptUrl).href;\n  const INTERFACE_SCRIPT = new URL("interface-runtime.js?v=20260722-deferred-dependencies-1", scriptUrl).href;',
+)
+
+sw = Path("sw.js")
+sw_text = sw.read_text(encoding="utf-8")
+sw_text = sw_text.replace('const CACHE = "opscontrol-20260722-module-loader-1";', 'const CACHE = "opscontrol-20260722-deferred-dependencies-1";')
+for line in [
+    '  "./assistente-integrado.css?v=20260722-security-1",\n',
+    '  "./js/assistente-integrado.js?v=20260722-security-1",\n',
+]:
+    if line not in sw_text:
+        raise SystemExit(f"Expected service worker dependency not found: {line.strip()}")
+    sw_text = sw_text.replace(line, "")
+sw_text = sw_text.replace('"./interface-runtime.css?v=20260722-final-audit-1"', '"./interface-runtime.css?v=20260722-deferred-dependencies-1"')
+sw_text = sw_text.replace('"./js/ui-polish.js?v=20260722-security-1"', '"./js/ui-polish.js?v=20260722-deferred-dependencies-1"')
+sw_text = sw_text.replace('"./js/interface-runtime.js?v=20260722-final-audit-1"', '"./js/interface-runtime.js?v=20260722-deferred-dependencies-1"')
+sw.write_text(sw_text, encoding="utf-8")
+
+test = r'''import { chromium } from 'playwright';
+import { createServer } from 'node:http';
+import { readFile } from 'node:fs/promises';
+import { resolve, dirname } from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
+const root = resolve(__dirname, '..');
+const requests = [];
+const pageHtml = `<!doctype html><html><head><meta charset="utf-8"></head><body>
+<section id="loginView"></section><section id="appView" class="hidden">
+<button class="nav-item active" data-page="dashboard">Dashboard</button>
+<button class="nav-item" data-page="ai-assistant">IA</button>
+<section id="page-dashboard" class="page active"></section>
+<section id="page-ai-assistant" class="page"></section>
+</section><span id="syncBadge">Online</span><script src="/js/interface-runtime.js"></script></body></html>`;
+
+const server = createServer(async (request, response) => {
+  const url = new URL(request.url || '/', 'http://127.0.0.1');
+  requests.push(url.pathname);
+  if (url.pathname === '/test.html') { response.writeHead(200, {'content-type':'text/html'}); response.end(pageHtml); return; }
+  if (url.pathname === '/js/interface-runtime.js') { response.writeHead(200, {'content-type':'text/javascript'}); response.end(await readFile(resolve(root,'js/interface-runtime.js'))); return; }
+  if (url.pathname.endsWith('.js')) { response.writeHead(200, {'content-type':'text/javascript'}); response.end(`window.OpsDeferredStub=true;`); return; }
+  if (url.pathname.endsWith('.css')) { response.writeHead(200, {'content-type':'text/css'}); response.end('/* stub */'); return; }
+  response.writeHead(404); response.end();
+});
+
+await new Promise(resolveStart => server.listen(0,'127.0.0.1',resolveStart));
+const port = server.address().port;
+const browser = await chromium.launch({headless:true});
+let failed = false;
+const assert = (condition, message) => { console.log(`${condition?'PASS':'FAIL'} — ${message}`); if(!condition) failed=true; };
+
+try {
+  const page = await browser.newPage();
+  await page.route('https://unpkg.com/**', async route => {
+    requests.push(new URL(route.request().url()).pathname);
+    const isJs = route.request().url().endsWith('.js');
+    await route.fulfill({status:200, contentType:isJs?'text/javascript':'text/css', body:isJs?'window.L={map(){}};':'/* leaflet */'});
+  });
+  await page.goto(`http://127.0.0.1:${port}/test.html`, {waitUntil:'domcontentloaded'});
+  await page.waitForFunction(() => document.documentElement.dataset.interfaceRuntime === 'ready');
+  assert(!requests.some(path => path.includes('assistente-integrado')), 'Assistente não é baixado no login');
+  assert(!requests.some(path => path.includes('leaflet')), 'Leaflet não é baixado no login');
+
+  await page.evaluate(() => document.querySelector('#appView').classList.remove('hidden'));
+  await page.waitForFunction(() => window.OpsControlModules?.loaded('role-dashboard'));
+  assert(!requests.some(path => path.includes('assistente-integrado')), 'Assistente continua adiado no dashboard');
+  assert(!requests.some(path => path.includes('leaflet')), 'Leaflet continua adiado no dashboard');
+
+  await page.evaluate(() => {
+    document.querySelector('#page-dashboard').classList.remove('active');
+    document.querySelector('#page-ai-assistant').classList.add('active');
+    document.querySelector('[data-page="dashboard"]').classList.remove('active');
+    document.querySelector('[data-page="ai-assistant"]').classList.add('active');
+  });
+  await page.waitForFunction(() => window.OpsControlModules?.loaded('ai-assistant'));
+  assert(requests.some(path => path.endsWith('/assistente-integrado.js')), 'JS do Assistente carrega ao abrir o módulo');
+  assert(requests.some(path => path.endsWith('/assistente-integrado.css')), 'CSS do Assistente carrega junto');
+  assert(!requests.some(path => path.includes('leaflet')), 'Leaflet não carrega ao abrir apenas a IA');
+
+  await page.evaluate(() => {
+    const map = document.createElement('div'); map.id='vesselAisMap'; document.querySelector('#appView').appendChild(map);
+  });
+  await page.waitForFunction(() => window.OpsControlModules?.loaded('leaflet'));
+  assert(requests.some(path => path.endsWith('/leaflet.js')), 'Leaflet JS carrega apenas quando existe mapa interno');
+  assert(requests.some(path => path.endsWith('/leaflet.css')), 'Leaflet CSS acompanha o mapa interno');
+} finally {
+  await browser.close();
+  await new Promise(resolveClose => server.close(resolveClose));
+}
+if (failed) process.exit(1);
+'''
+Path("tests/deferred-dependencies.spec.mjs").write_text(test, encoding="utf-8")
+
+package = Path("package.json")
+data = json.loads(package.read_text(encoding="utf-8"))
+data["scripts"]["test"] = data["scripts"]["test"].replace("npm run test:performance-loader &&", "npm run test:performance-loader && npm run test:deferred-dependencies &&")
+data["scripts"]["test:deferred-dependencies"] = "node tests/deferred-dependencies.spec.mjs"
+package.write_text(json.dumps(data, ensure_ascii=False, indent=2) + "\n", encoding="utf-8")
+
+workflow = Path(".github/workflows/validate-interface.yml")
+validate = workflow.read_text(encoding="utf-8")
+validate = validate.replace(
+    """      - name: Run module loader tests
+        run: npm run test:performance-loader
+""",
+    """      - name: Run module loader tests
+        run: npm run test:performance-loader
+
+      - name: Run deferred dependency tests
+        run: npm run test:deferred-dependencies
+""",
+)
+validate = validate.replace("Path('tests/performance-loader.spec.mjs'),", "Path('tests/performance-loader.spec.mjs'),\n            Path('tests/deferred-dependencies.spec.mjs'),")
+insert = '''
+          index_html = Path('index.html').read_text(encoding='utf-8')
+          for dependency in ['assistente-integrado.js', 'assistente-integrado.css', 'leaflet.js', 'leaflet.css']:
+            if dependency in index_html:
+              errors.append(f'Deferred dependency still blocks initial HTML: {dependency}')
+          for token in ['ai-assistant', 'leaflet', 'deferred-dependencies']:
+            if token not in runtime_js:
+              errors.append(f'Missing deferred dependency token in runtime: {token}')
+'''
+validate = validate.replace("          forbidden = [\n", insert + "\n          forbidden = [\n")
+workflow.write_text(validate, encoding="utf-8")

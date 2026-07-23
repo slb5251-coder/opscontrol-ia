@@ -164,11 +164,12 @@ try {
     record(width, 'validação de credenciais vazias', await page.$eval('#loginMessage', element => !element.classList.contains('hidden') && element.textContent.includes('Preencha')));
     await page.screenshot({ path: resolve(outputDir, `login-${width}.png`), fullPage: true });
 
-    const assistantAudit = await page.evaluate(() => {
+    const assistantAudit = await page.evaluate(async () => {
       document.querySelector('#loginView')?.classList.add('hidden');
       document.querySelector('#appView')?.classList.remove('hidden');
       document.querySelectorAll('.page').forEach(element => element.classList.remove('active'));
       document.querySelector('#page-ai-assistant')?.classList.add('active');
+      await window.OpsControlModules?.load?.('ai-assistant');
       window.OpsControlAI?.render?.();
       const page = document.querySelector('#page-ai-assistant');
       const viewport = document.documentElement.clientWidth;

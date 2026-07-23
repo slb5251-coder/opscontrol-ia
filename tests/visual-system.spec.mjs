@@ -8,6 +8,10 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
 const fixture = `<!doctype html><html lang="pt-BR"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<style>
+*{box-sizing:border-box}html,body{margin:0;max-width:100%;overflow-x:clip}.login-view{display:grid;grid-template-columns:minmax(0,1fr) 420px;min-height:100vh}.login-hero{position:relative;overflow:hidden;padding:48px}.login-panel{display:grid;place-items:center;padding:24px}.login-card{width:min(390px,100%);padding:28px}.shell{display:grid;grid-template-columns:264px minmax(0,1fr)}.sidebar{position:relative;min-width:0}.main-content{min-width:0;padding:26px}.page{min-width:0}.topbar{display:flex;align-items:center}.stat-card,.card,.reference-tank-card{padding:18px}.tv-screen{min-height:420px}.nav-item{display:flex;align-items:center;gap:10px}.hidden{display:none!important}
+@media(max-width:900px){.login-view{grid-template-columns:1fr}.login-hero{min-height:420px}.shell{grid-template-columns:1fr}.main-content{padding:16px 14px 92px}}
+</style>
 <link rel="stylesheet" href="/visual-system-v3.css"></head><body>
 <section class="login-view"><div class="login-hero"><div class="login-hero-copy"><h1>OpsControl IA</h1></div><section class="login-ops-overview"><div class="login-ops-metrics"><article><strong>24/7</strong><span>Operação</span></article></div></section></div><div class="login-panel"><form class="login-card"><div class="login-field"><input></div><button class="btn primary">Entrar</button></form></div></section>
 <section id="appView"><header class="topbar"><span class="brand-mark">OC</span></header><div class="shell"><aside class="sidebar"><nav><button class="nav-item active" data-page="dashboard"><span class="nav-icon"><svg viewBox="0 0 24 24"><path d="M3 3h8v8H3z"></path></svg></span><span class="nav-label">Dashboard</span></button></nav></aside><main class="main-content">

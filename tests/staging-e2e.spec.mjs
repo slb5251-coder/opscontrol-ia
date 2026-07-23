@@ -238,8 +238,7 @@ try {
     if (await direct.count()) await direct.click();
     else {
       await mobilePage.click('#menuBtn').catch(() => {});
-      const target = mobilePage.locator(`.nav-item[data-page="${module}"]`).first();
-      await target.click({ force: true });
+      await mobilePage.evaluate(name => document.querySelector(`.nav-item[data-page="${name}"]`)?.click(), module);
     }
     await mobilePage.locator(`#page-${module}.active`).waitFor({ state: 'visible', timeout: 30000 });
     const overflow = await mobilePage.evaluate(() => document.documentElement.scrollWidth > document.documentElement.clientWidth + 3);

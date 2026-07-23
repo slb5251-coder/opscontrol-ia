@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "20260722-alert-center-v2-1";
+  const VERSION = "20260723-alert-center-v2-2";
   const PAGE_SELECTOR = "#page-alerts";
   const TAB_KEY = "opscontrol_alert_center_tab";
   const CHANNEL_KEY = "opscontrol_alert_center_channel";
@@ -23,7 +23,7 @@
   let loadTimer = null;
   let rendering = false;
   let activeTab = localStorage.getItem(TAB_KEY) || "alerts";
-  let activeChannel = localStorage.getItem(CHANNEL_KEY) || "operacao-geral";
+  let activeChannel = localStorage.getItem(CHANNEL_KEY) || "geral";
   let statusFilter = "all";
   let responsibleFilter = "all";
   let query = "";
@@ -50,13 +50,17 @@
 
   function appConfig() {
     const config = window.OPSCONTROL_CONFIG || {};
+    const modular = window.OpsControlAuth?.loadConfig?.(config);
+    if (modular?.url && modular?.key) return modular;
     let saved = {};
     try { saved = JSON.parse(localStorage.getItem(CONFIG_KEY) || "{}"); } catch {}
     const environment = localStorage.getItem(ENV_KEY) || config.defaultEnvironment || "production";
     const selected = config.environments?.[environment] || {};
+    const named = Boolean(selected.supabaseUrl && selected.supabaseKey);
     return {
-      url: saved.url || selected.supabaseUrl || config.supabaseUrl || "",
-      key: saved.key || selected.supabaseKey || config.supabaseKey || ""
+      url: named ? selected.supabaseUrl : (saved.url || config.supabaseUrl || ""),
+      key: named ? selected.supabaseKey : (saved.key || config.supabaseKey || ""),
+      environment
     };
   }
 
@@ -78,7 +82,7 @@
   }
 
   const channelDefinitions = [
-    { id: "operacao-geral", label: "Geral", roles: ["*"] },
+    { id: "geral", label: "Geral", roles: ["*"] },
     { id: "operacao", label: "Operação", roles: ["admin", "supervisor", "lider", "operador", "user"] },
     { id: "lideranca", label: "Liderança", roles: ["admin", "supervisor", "lider"] },
     { id: "logistica", label: "Logística", roles: ["admin", "supervisor", "lider", "logistica"] },
@@ -93,7 +97,8 @@
 
   function ensureActiveChannel() {
     const channels = allowedChannels();
-    if (!channels.some(channel => channel.id === activeChannel)) activeChannel = channels[0]?.id || "operacao-geral";
+    if (activeChannel === "operacao-geral") activeChannel = "geral";
+    if (!channels.some(channel => channel.id === activeChannel)) activeChannel = channels[0]?.id || "geral";
     localStorage.setItem(CHANNEL_KEY, activeChannel);
   }
 
@@ -410,7 +415,7 @@
 
   async function ensureClient() {
     if (client) return true;
-    const { url, key } = appConfig();
+    const { url, key, environment = "production" } = appConfig();
     if (!url || !key || !window.supabase?.createClient) return false;
     const remember = localStorage.getItem(REMEMBER_LOGIN_KEY) !== "false";
     client = window.supabase.createClient(url, key, {
@@ -419,7 +424,9 @@
         autoRefreshToken: true,
         detectSessionInUrl: true,
         storage: remember ? window.localStorage : window.sessionStorage,
-        storageKey: remember ? "opscontrol-auth" : "opscontrol-auth-session"
+        storageKey: remember
+          ? `opscontrol-auth${environment !== "production" ? `-${environment}` : ""}`
+          : `opscontrol-auth-session${environment !== "production" ? `-${environment}` : ""}`
       }
     });
     const { data, error } = await client.auth.getSession();
@@ -442,7 +449,7 @@
     ] = await Promise.all([
       client.from("profiles").select("id,full_name,role,department,active").eq("id", user.id).maybeSingle(),
       client.from("profiles").select("id,full_name,role,department,active").eq("active", true),
-      client.from("alerts").select("id,title,message,level,target_group,target_user_id,is_read,created_by,created_at,status,responsible_user_id,due_at,acknowledged_at,acknowledged_by,resolved_at,resolved_by,updated_at").order("created_at", { ascending: false }).limit(200),
+      client.from("alerts").select("id,title,message,level,target_group,target_user_id,is_read,created_by,created_at,workflow_status,assigned_to,due_at,acknowledged_at,acknowledged_by,resolved_at,resolved_by,resolution_notes").order("created_at", { ascending: false }).limit(200),
       client.from("alert_read_receipts").select("alert_id,user_id,read_at").limit(5000),
       client.from("chat_messages").select("id,channel,sender_id,sender_name,message,created_at").order("created_at", { ascending: true }).limit(500),
       client.from("chat_message_reads").select("message_id,user_id,read_at").limit(5000)
@@ -457,7 +464,11 @@
 
     currentProfile = profileResult.data || null;
     profiles = profilesResult.data || [];
-    alerts = alertsResult.data || [];
+    alerts = (alertsResult.data || []).map(item => ({
+      ...item,
+      status: item.workflow_status || "Novo",
+      responsible_user_id: item.assigned_to || null
+    }));
     alertReceipts = receiptsResult.data || [];
     messages = messagesResult.data || [];
     messageReads = messageReadsResult.data || [];
@@ -492,7 +503,7 @@
     const { error } = await client.rpc("update_alert_workflow", {
       p_alert_id: id,
       p_status: status,
-      p_responsible_user_id: responsible || null,
+      p_assigned_to: responsible || null,
       p_due_at: dueAt
     });
     if (error) return feedback(error.message, "error");
@@ -573,7 +584,7 @@
     fields.className = "alert-v2-form-fields form-grid";
     fields.innerHTML = `
       <div><label>Status inicial</label><select name="workflow_status">${statusOptions("Novo")}</select></div>
-      <div><label>Responsável</label><select name="responsible_user_id">${profileOptions("", true)}</select></div>
+      <div><label>Responsável</label><select name="assigned_to">${profileOptions("", true)}</select></div>
       <div class="wide"><label>Prazo de atendimento</label><input type="datetime-local" name="due_at"></div>`;
     actions?.insertAdjacentElement("beforebegin", fields);
   }
@@ -593,8 +604,8 @@
       level: data.level || "Informativo",
       target_group: clean(data.target) || null,
       is_read: false,
-      status: data.workflow_status || "Novo",
-      responsible_user_id: data.responsible_user_id || null,
+      workflow_status: data.workflow_status || "Novo",
+      assigned_to: data.assigned_to || null,
       due_at: data.due_at ? new Date(data.due_at).toISOString() : null,
       created_by: user.id
     });

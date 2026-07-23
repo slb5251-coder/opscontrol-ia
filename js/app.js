@@ -4,24 +4,27 @@
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
   const CONFIG = window.OPSCONTROL_CONFIG || {};
-  const CONFIG_KEY = "opscontrol_config";
   const THEME_KEY = "opscontrol_theme";
   const OFFLINE_QUEUE_KEY = "opscontrol_offline_queue";
   const LOCAL_BACKUP_KEY = "opscontrol_daily_backups";
   const FORM_DRAFT_KEY = "opscontrol_form_drafts";
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
-  const APP_ENV_KEY = "opscontrol_environment";
-  const REMEMBER_LOGIN_KEY = "opscontrol_remember_login";
-  const APP_VERSION = "20260723-app-core-1";
+  const APP_VERSION = "20260723-auth-session-1";
   const REALTIME_TABLES = ["tanks", "operations", "alerts", "chat_messages", "trucks", "equipment", "maintenance_orders", "qhse_records"];
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+
+  if (!window.OpsControlAuth) {
+    throw new Error("OpsControlAuth não foi carregado antes do aplicativo.");
+  }
+  const AUTH = window.OpsControlAuth;
 
   const state = {
     client: null,
     clientRemember: null,
     authListenerBound: false,
+    authSubscription: null,
     user: null,
     data: null,
     page: "dashboard",
@@ -56,19 +59,8 @@
       pullStartY: 0,
       pullRefreshing: false
     },
-    config: loadConfig()
+    config: AUTH.loadConfig(CONFIG)
   };
-
-  function loadConfig() {
-    const saved = JSON.parse(localStorage.getItem(CONFIG_KEY) || "{}");
-    const environment = localStorage.getItem(APP_ENV_KEY) || CONFIG.defaultEnvironment || "production";
-    const selected = CONFIG.environments?.[environment] || {};
-    return {
-      url: saved.url || selected.supabaseUrl || CONFIG.supabaseUrl || "",
-      key: saved.key || selected.supabaseKey || CONFIG.supabaseKey || "",
-      environment
-    };
-  }
 
   if (!window.OpsControlCore) {
     throw new Error("OpsControlCore não foi carregado antes do aplicativo.");
@@ -631,29 +623,6 @@
     el.textContent = message;
     $("#toastContainer").appendChild(el);
     setTimeout(() => el.remove(), 3600);
-  }
-
-  function showLoginMessage(message, kind = "error") {
-    const el = $("#loginMessage");
-    el.textContent = message;
-    el.classList.toggle("success", kind === "success");
-    el.classList.remove("hidden");
-  }
-
-  function clearLoginMessage() {
-    const el = $("#loginMessage");
-    el.textContent = "";
-    el.classList.remove("success");
-    el.classList.add("hidden");
-  }
-
-  function setLoginLoading(loading, label = "Entrando...") {
-    const button = $("#loginBtn");
-    if (!button) return;
-    button.disabled = loading;
-    button.classList.toggle("is-loading", loading);
-    const text = button.querySelector("span");
-    if (text) text.textContent = loading ? label : "Entrar";
   }
 
   function role() {
@@ -1366,116 +1335,35 @@
       .replace(/-+/g, "-");
   }
 
-  async function initClient(remember = localStorage.getItem(REMEMBER_LOGIN_KEY) !== "false") {
-    if (!state.config.url || !state.config.key || !window.supabase) {
-      throw new Error("A conexão do sistema não está configurada.");
+  const authController = AUTH.createController({
+    state,
+    config: CONFIG,
+    loadData,
+    openApp,
+    openModal,
+    closeModal,
+    formActions,
+    toast,
+    beforeLogout: async () => {
+      clearTimeout(state.refreshDebounce);
+      clearInterval(state.refreshTimer);
+      stopTvMode();
+      if (state.realtime && state.client) await state.client.removeChannel(state.realtime);
+      state.realtime = null;
     }
-    if (!state.client || state.clientRemember !== remember) {
-      if (state.client && state.authListenerBound) {
-        state.authListenerBound = false;
-      }
-      state.clientRemember = remember;
-      state.client = window.supabase.createClient(state.config.url, state.config.key, {
-        auth: {
-          persistSession: true,
-          autoRefreshToken: true,
-          detectSessionInUrl: true,
-          storage: remember ? window.localStorage : window.sessionStorage,
-          storageKey: remember ? "opscontrol-auth" : "opscontrol-auth-session"
-        }
-      });
-    }
-    if (!state.authListenerBound) {
-      state.authListenerBound = true;
-      state.client.auth.onAuthStateChange(event => {
-        if (event === "PASSWORD_RECOVERY") {
-          setTimeout(openPasswordRecovery, 0);
-        }
-      });
-    }
-    return state.client;
-  }
+  });
 
-  async function resolveLoginEmail(identifier) {
-    const normalized = String(identifier || "").trim();
-    if (normalized.includes("@")) return normalized.toLowerCase();
-    const { data, error } = await state.client.rpc("resolve_login_email", { p_identifier: normalized });
-    if (error || !data) throw new Error("Credenciais inválidas.");
-    return String(data).trim().toLowerCase();
-  }
-
-  function openPasswordRecovery() {
-    openModal("Definir nova senha", `<form id="passwordRecoveryForm"><div class="form-grid">
-      <div class="wide"><label for="recoveryNewPassword">Nova senha *</label><input id="recoveryNewPassword" name="new_password" type="password" minlength="8" autocomplete="new-password" required></div>
-      <div class="wide"><label for="recoveryConfirmPassword">Confirmar nova senha *</label><input id="recoveryConfirmPassword" name="confirm_password" type="password" minlength="8" autocomplete="new-password" required></div>
-    </div><div class="info-box" style="margin-top:12px">Use pelo menos 8 caracteres. Após a alteração, entre novamente com a nova senha.</div>${formActions("Atualizar senha")}</form>`, "RECUPERAÇÃO DE ACESSO");
-  }
-
-  async function requestPasswordRecovery() {
-    const identifier = $("#loginEmail").value.trim();
-    if (!identifier) return showLoginMessage("Informe seu e-mail ou usuário para recuperar a senha.");
-    const button = $("#forgotPasswordBtn");
-    button.disabled = true;
-    clearLoginMessage();
-    try {
-      await initClient($("#rememberLogin")?.checked !== false);
-      const email = await resolveLoginEmail(identifier);
-      const redirectTo = `${location.origin}${location.pathname}`;
-      const { error } = await state.client.auth.resetPasswordForEmail(email, { redirectTo });
-      if (error) throw error;
-      showLoginMessage("Se o acesso estiver cadastrado, enviaremos as instruções de recuperação por e-mail.", "success");
-    } catch (_) {
-      showLoginMessage("Se o acesso estiver cadastrado, enviaremos as instruções de recuperação por e-mail.", "success");
-    } finally {
-      button.disabled = false;
-    }
-  }
-
-  async function login() {
-    const identifier = $("#loginEmail").value.trim();
-    const password = $("#loginPassword").value;
-    if (!identifier || !password) return showLoginMessage("Preencha e-mail ou usuário e senha.");
-
-    const remember = $("#rememberLogin")?.checked !== false;
-    localStorage.setItem(REMEMBER_LOGIN_KEY, String(remember));
-    clearLoginMessage();
-    setLoginLoading(true);
-    try {
-      await initClient(remember);
-      const email = await resolveLoginEmail(identifier);
-      const { data, error } = await state.client.auth.signInWithPassword({ email, password });
-      if (error) throw error;
-      state.user = data.user;
-      await loadData();
-      if (state.data.profile.active === false) {
-        await state.client.auth.signOut();
-        throw new Error("Seu acesso está bloqueado. Procure o administrador.");
-      }
-      openApp();
-    } catch (error) {
-      const blocked = String(error?.message || "").includes("bloqueado");
-      showLoginMessage(blocked ? error.message : "Não foi possível entrar. Verifique suas credenciais e tente novamente.");
-    } finally {
-      setLoginLoading(false);
-    }
-  }
-
-  async function restoreSession() {
-    try {
-      await initClient(localStorage.getItem(REMEMBER_LOGIN_KEY) !== "false");
-      const { data } = await state.client.auth.getSession();
-      if (!data.session?.user) return;
-      state.user = data.session.user;
-      await loadData();
-      if (state.data.profile.active === false) {
-        await state.client.auth.signOut();
-        return;
-      }
-      openApp();
-    } catch (error) {
-      console.error("Não foi possível restaurar a sessão:", error);
-    }
-  }
+  const {
+    showLoginMessage,
+    clearLoginMessage,
+    initClient,
+    resolveLoginEmail,
+    openPasswordRecovery,
+    requestPasswordRecovery,
+    login,
+    restoreSession,
+    logout
+  } = authController;
 
   async function loadData() {
     const c = state.client;
@@ -1983,14 +1871,7 @@
     updateConnectionBadge();
   }
 
-  async function logout() {
-    clearTimeout(state.refreshDebounce);
-    clearInterval(state.refreshTimer);
-    stopTvMode();
-    if (state.realtime) await state.client.removeChannel(state.realtime);
-    await state.client.auth.signOut();
-    location.reload();
-  }
+
 
   function updateConnectionBadge() {
     const badgeEl = $("#syncBadge");
@@ -2065,8 +1946,7 @@
     try {
       await loadData();
       if (state.data.profile.active === false) {
-        await state.client.auth.signOut();
-        location.reload();
+        await authController.signOutAndReload();
         return false;
       }
       renderAll();
@@ -6557,28 +6437,7 @@
     event.preventDefault();
     const form = event.target;
     if (form.id === "loginForm") return login();
-    if (form.id === "passwordRecoveryForm") {
-      const payload = Object.fromEntries(new FormData(form));
-      const password = String(payload.new_password || "");
-      const confirmation = String(payload.confirm_password || "");
-      if (password.length < 8) return toast("A nova senha precisa ter pelo menos 8 caracteres.", "error");
-      if (password !== confirmation) return toast("A confirmação da nova senha não confere.", "error");
-      const submit = form.querySelector("button[type='submit'], button:not([type])");
-      if (submit) submit.disabled = true;
-      try {
-        await initClient(localStorage.getItem(REMEMBER_LOGIN_KEY) !== "false");
-        const { error } = await state.client.auth.updateUser({ password });
-        if (error) throw error;
-        await state.client.auth.signOut();
-        closeModal();
-        showLoginMessage("Senha atualizada. Entre novamente com sua nova senha.", "success");
-      } catch (error) {
-        toast(`Não foi possível atualizar a senha: ${error.message}`, "error");
-      } finally {
-        if (submit) submit.disabled = false;
-      }
-      return;
-    }
+    if (form.id === "passwordRecoveryForm") return authController.completePasswordRecovery(form);
     if (state.testMode && form.id !== "feedbackForm") {
       simulateFormSubmission(form);
       return;
@@ -6594,22 +6453,7 @@
       if (!navigator.onLine) throw new Error("Sem internet. Reconecte para salvar alterações.");
 
       if (form.id === "profilePasswordForm") {
-        const payload = Object.fromEntries(new FormData(form));
-        const currentPassword = String(payload.current_password || "");
-        const newPassword = String(payload.new_password || "");
-        const confirmation = String(payload.confirm_password || "");
-        if (!currentPassword) throw new Error("Informe a senha atual.");
-        if (newPassword.length < 8) throw new Error("A nova senha precisa ter pelo menos 8 caracteres.");
-        if (newPassword !== confirmation) throw new Error("A confirmação da nova senha não confere.");
-        if (newPassword === currentPassword) throw new Error("A nova senha precisa ser diferente da senha atual.");
-        const { data: authData, error: authError } = await state.client.auth.signInWithPassword({
-          email: state.user?.email || state.data.profile.email,
-          password: currentPassword
-        });
-        if (authError) throw new Error("A senha atual está incorreta.");
-        if (authData?.user) state.user = authData.user;
-        const { error: passwordError } = await state.client.auth.updateUser({ password: newPassword });
-        if (passwordError) throw passwordError;
+        await authController.changePassword(form, state.user?.email || state.data.profile.email);
         clearFormDraft(form);
         closeModal();
         toast("Senha alterada com sucesso.", "success");
@@ -7178,11 +7022,7 @@
       return toast("Rascunho descartado.");
     }
     if (action === "switch-environment") {
-      const environment=button.dataset.environment;
-      const config=CONFIG.environments?.[environment] || {};
-      if(!config.supabaseUrl || !config.supabaseKey) return toast("O ambiente de homologação ainda não possui URL e chave.","error");
-      localStorage.setItem(APP_ENV_KEY,environment);
-      location.reload();
+      authController.switchEnvironment(button.dataset.environment);
       return;
     }
 
@@ -8039,7 +7879,5 @@
     window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(console.error));
   }
 
-  $("#rememberLogin").checked = localStorage.getItem(REMEMBER_LOGIN_KEY) !== "false";
-  $("#connectionHint").textContent = "Acesse com seu e-mail ou usuário e senha cadastrados.";
-  restoreSession();
+  authController.initializeLogin();
 })();

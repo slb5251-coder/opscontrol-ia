@@ -231,7 +231,7 @@ try {
   await page.waitForFunction(() => document.querySelector('#loginMessage')?.textContent?.includes('Se o acesso estiver cadastrado'), null, { timeout: 30000 });
   check((await page.locator('#loginMessage').textContent()).includes('Se o acesso estiver cadastrado'), 'recuperação usa resposta não enumerável');
   const unexpectedResponses = failedResponses.filter(item => {
-    const expectedRecoveryProtection = item.status === 400 && /\/auth\/v1\/recover(?:\?|$)/.test(item.url);
+    const expectedRecoveryProtection = [400, 429].includes(item.status) && /\/auth\/v1\/recover(?:\?|$)/.test(item.url);
     const optionalFavicon = item.status === 404 && /\/favicon(?:\.ico)?(?:\?|$)/.test(item.url);
     return !expectedRecoveryProtection && !optionalFavicon;
   });

@@ -1,6 +1,6 @@
-import {useEffect,useRef,useState} from 'react';
+import {useEffect,useMemo,useRef,useState} from 'react';
 import App from '../App';
-import {subscribeOperationalChanges,type RealtimeState} from '../lib/realtime';
+import {subscribeOperationalChanges,type OperationalRealtimeEvent,type RealtimeState} from '../lib/realtime';
 
 type UiSnapshot={active:string;query:string;scrollY:number};
 
@@ -31,24 +31,33 @@ function restoreUi(snapshot:UiSnapshot){
 export function RealtimeApp(){
  const[version,setVersion]=useState(0);
  const[state,setState]=useState<RealtimeState>('connecting');
- const pending=useRef(false);
+ const[pendingSync,setPendingSync]=useState(false);
+ const[lastEvent,setLastEvent]=useState<OperationalRealtimeEvent|null>(null);
+ const pending=useRef<OperationalRealtimeEvent|null>(null);
  const snapshot=useRef<UiSnapshot>({active:'Visão geral',query:'',scrollY:0});
  const refreshing=useRef(false);
 
+ const applyRefresh=(event:OperationalRealtimeEvent)=>{
+  if(refreshing.current)return;
+  if(document.querySelector('.dialog-panel')){
+   pending.current=event;
+   setPendingSync(true);
+   return;
+  }
+  refreshing.current=true;
+  snapshot.current=captureUi();
+  setLastEvent(event);
+  setPendingSync(false);
+  setVersion(value=>value+1);
+ };
+
  useEffect(()=>{
-  const hasOpenDialog=()=>Boolean(document.querySelector('.dialog-panel'));
-  const applyRefresh=()=>{
-   if(refreshing.current)return;
-   if(hasOpenDialog()){pending.current=true;return}
-   refreshing.current=true;
-   snapshot.current=captureUi();
-   setVersion(value=>value+1);
-  };
   const unsubscribe=subscribeOperationalChanges(applyRefresh,setState);
   const observer=new MutationObserver(()=>{
-   if(pending.current&&!hasOpenDialog()){
-    pending.current=false;
-    applyRefresh();
+   if(pending.current&&!document.querySelector('.dialog-panel')){
+    const event=pending.current;
+    pending.current=null;
+    applyRefresh(event);
    }
   });
   observer.observe(document.body,{childList:true,subtree:true});
@@ -62,5 +71,16 @@ export function RealtimeApp(){
   return()=>window.clearTimeout(done);
  },[version]);
 
- return <div data-realtime-state={state}><App key={version}/><div className={`realtime-indicator realtime-${state}`} title={`Supabase Realtime: ${state}`}><i/><span>{state==='connected'?'Tempo real ativo':state==='connecting'?'Conectando...':state==='error'?'Tempo real indisponível':'Tempo real desconectado'}</span></div></div>;
+ const label=useMemo(()=>{
+  if(pendingSync)return'Atualização pendente';
+  if(state==='connecting')return'Conectando...';
+  if(state==='error')return'Tempo real indisponível';
+  if(state==='disconnected')return'Tempo real desconectado';
+  if(lastEvent)return`Atualizado ${new Date(lastEvent.receivedAt).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`;
+  return'Tempo real ativo';
+ },[lastEvent,pendingSync,state]);
+
+ const title=lastEvent?`${lastEvent.eventType} em ${lastEvent.table} · ${new Date(lastEvent.receivedAt).toLocaleString('pt-BR')}`:`Supabase Realtime: ${state}`;
+
+ return <div data-realtime-state={state} data-realtime-pending={pendingSync?'true':'false'}><App key={version}/><button type="button" className={`realtime-indicator realtime-${pendingSync?'pending':state}`} title={title} onClick={()=>window.location.reload()}><i/><span>{label}</span><small>Atualizar</small></button></div>;
 }

@@ -6,6 +6,7 @@ import './styles.css';
 import './auth.css';
 import './modules.css';
 import './premium.css';
+import './tv-panel.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode><BrowserRouter><App /></BrowserRouter></React.StrictMode>

@@ -1,4 +1,5 @@
 /* OPSControl IA — tratamento visual por módulo */
+@import url('visual-accessibility-v3.css?v=20260723-visual-system-v3-1');
 
 body.visual-v3 .page[data-visual-page]{--page-accent:#246bfd;--page-soft:rgba(36,107,253,.1);--page-deep:#123f9d}
 body.visual-v3 #page-dashboard{--page-accent:#246bfd;--page-soft:rgba(36,107,253,.1);--page-deep:#123f9d}

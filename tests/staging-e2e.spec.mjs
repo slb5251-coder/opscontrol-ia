@@ -1,11 +1,13 @@
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readFile, mkdir } from 'node:fs/promises';
 import { extname, resolve, dirname, normalize } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const root = resolve(__dirname, '..');
+const outputDir = resolve(root, 'test-results');
+await mkdir(outputDir, { recursive: true });
 const email = process.env.E2E_EMAIL;
 const password = process.env.E2E_PASSWORD;
 if (!email || !password) throw new Error('Credenciais E2E não foram fornecidas.');
@@ -58,7 +60,10 @@ async function login(page) {
   await page.fill('#loginPassword', password);
   await page.click('#loginBtn');
   await page.waitForSelector('#appView:not(.hidden)', { timeout: 60000 });
-  await page.waitForFunction(() => document.querySelector('#userRole')?.textContent?.trim().toLowerCase() === 'admin', null, { timeout: 60000 });
+  await page.waitForFunction(() => {
+    const role = document.querySelector('#userRole')?.textContent?.trim().toLowerCase() || '';
+    return role && role !== 'perfil';
+  }, null, { timeout: 60000 });
 }
 
 async function openPage(page, name = page) {
@@ -111,10 +116,12 @@ try {
   });
 
   await login(page);
+  const roleLabel = (await page.locator('#userRole').textContent()).trim().toLowerCase();
   check((await page.title()).startsWith('[HOMOLOGAÇÃO]'), 'título identifica homologação', await page.title());
   check(await page.locator('#homologationBanner').isVisible(), 'faixa de homologação está visível');
-  check((await page.locator('#userRole').textContent()).trim().toLowerCase() === 'admin', 'login real recebeu perfil administrador');
+  check(/admin|administrador/.test(roleLabel), 'login real recebeu perfil administrador', roleLabel);
   check(!(await page.locator('#syncBadge').textContent()).includes('Modo local'), 'aplicativo está conectado ao Supabase');
+  await page.screenshot({ path: resolve(outputDir, 'e2e-desktop-login.png'), fullPage: true });
 
   const modules = ['dashboard','operations','vessel-registry','tanks','fluids','chemical-catalog','chemicals','trucks','client-tickets','qhse','maintenance','certificates','alerts','reports','audit','settings','tv'];
   for (const module of modules) {
@@ -182,6 +189,7 @@ try {
   check(tvAudit.text > 50, 'Painel TV renderiza conteúdo operacional', `texto: ${tvAudit.text}`);
   check(tvAudit.controls > 0, 'Painel TV disponibiliza controles', `controles: ${tvAudit.controls}`);
   check(!tvAudit.overflow, 'Painel TV não causa overflow global');
+  await page.screenshot({ path: resolve(outputDir, 'e2e-tv-panel.png'), fullPage: true });
 
   const logout = page.locator('#logoutBtn, [data-action="logout"]').first();
   check(await logout.count() > 0, 'controle de logout está disponível');
@@ -214,6 +222,7 @@ try {
     check(!overflow, `módulo ${module} permanece responsivo em 390px`);
   }
   check(mobileErrors.length === 0, 'nenhum erro JavaScript não tratado no celular', mobileErrors.join(' | '));
+  await mobilePage.screenshot({ path: resolve(outputDir, 'e2e-mobile.png'), fullPage: true });
   await mobile.close();
 } finally {
   await browser.close();

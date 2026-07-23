@@ -25,7 +25,7 @@ jobs:
     env:
       E2E_FUNCTION_URL: https://idnbbesxdoeeiupwltxk.supabase.co/functions/v1/github-e2e-session
       E2E_BASE_URL: ${{ inputs.base_url }}
-      E2E_BOOTSTRAP_VERSION: '6'
+      E2E_BOOTSTRAP_VERSION: '7'
     steps:
       - uses: actions/checkout@v4
 

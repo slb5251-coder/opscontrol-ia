@@ -1,0 +1,42 @@
+name: Production Pages smoke
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-pages-smoke-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      PRODUCTION_URL: https://slb5251-coder.github.io/opscontrol-ia/
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+
+      - name: Validate published production and staging entrypoints
+        run: node tests/production-deployment-smoke.mjs
+
+      - name: Upload deployment evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-pages-smoke-${{ github.run_number }}
+          path: test-results/production-smoke/
+          if-no-files-found: ignore
+          retention-days: 30

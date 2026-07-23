@@ -44,13 +44,18 @@ jobs:
             -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
             "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=opscontrol-staging-e2e" | jq -r '.value')
           echo "::add-mask::${OIDC}"
-          RESPONSE=$(curl --fail --silent --show-error -X POST \
+          STATUS=$(curl --silent --show-error -o /tmp/e2e-response.json -w '%{http_code}' -X POST \
             -H "Authorization: Bearer ${OIDC}" \
             -H "Content-Type: application/json" \
             "${E2E_FUNCTION_URL}" \
             --data '{"action":"prepare"}')
-          EMAIL=$(jq -r '.email' <<<"${RESPONSE}")
-          PASSWORD=$(jq -r '.password' <<<"${RESPONSE}")
+          if [[ ! "${STATUS}" =~ ^2 ]]; then
+            echo "Bootstrap E2E falhou com HTTP ${STATUS}"
+            jq -c '{error}' /tmp/e2e-response.json || cat /tmp/e2e-response.json
+            exit 1
+          fi
+          EMAIL=$(jq -r '.email' /tmp/e2e-response.json)
+          PASSWORD=$(jq -r '.password' /tmp/e2e-response.json)
           test -n "${EMAIL}" && test "${EMAIL}" != "null"
           test -n "${PASSWORD}" && test "${PASSWORD}" != "null"
           echo "::add-mask::${EMAIL}"

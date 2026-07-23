@@ -109,6 +109,7 @@ try {
       }
     };
     localStorage.setItem('opscontrol_environment', 'staging');
+    localStorage.setItem('opscontrol_config', JSON.stringify({ url: 'https://legacy-prod.test', key: 'legacy-prod-key' }));
     const resolved = window.OpsControlAuth.loadConfig(config);
     const state = {
       config: resolved, client: null, clientRemember: null,
@@ -186,6 +187,7 @@ try {
       firstStorageLocal: createOptions[0]?.auth?.storage === localStorage,
       sessionStorageSelected,
       finalStorageLocal: createOptions.at(-1)?.auth?.storage === localStorage,
+      storageKeys: createOptions.map(item => item.auth.storageKey),
       listenerUnsubscribedOnModeChange: metrics.unsubscribe >= 1,
       loginSnapshot,
       blockedSnapshot,
@@ -204,10 +206,11 @@ try {
 
   assert(result.version.includes('auth-session'), 'módulo expõe versão própria', result.version);
   assert(result.frozen, 'API pública de autenticação é congelada');
-  assert(result.resolved.environment === 'staging' && result.resolved.url === 'https://stage.test', 'configuração respeita ambiente selecionado');
+  assert(result.resolved.environment === 'staging' && result.resolved.url === 'https://stage.test' && result.resolved.key === 'stage-key', 'ambiente nomeado vence configuração legada armazenada');
   assert(result.clientReuseCount === 1, 'cliente Supabase é reutilizado no mesmo modo de persistência');
   assert(result.totalClients === 3, 'cliente é recriado somente nas duas trocas de persistência', String(result.totalClients));
   assert(result.firstStorageLocal && result.sessionStorageSelected && result.finalStorageLocal, 'persistência alterna corretamente entre local e sessão');
+  assert(result.storageKeys.every(key => key.endsWith('-staging')), 'chaves de sessão são isoladas por ambiente', result.storageKeys.join(', '));
   assert(result.listenerUnsubscribedOnModeChange, 'listener anterior é removido ao trocar persistência');
   assert(result.loginSnapshot.signInEmail === 'usuario@teste.com', 'login por usuário resolve o e-mail antes da autenticação');
   assert(result.loginSnapshot.openApp === 1 && result.loginSnapshot.user === 'usuario@teste.com', 'login válido carrega dados e abre o aplicativo');

@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "20260722-alert-center-v2-1";
+  const VERSION = "20260723-alert-center-v2-3";
   const PAGE_SELECTOR = "#page-alerts";
   const TAB_KEY = "opscontrol_alert_center_tab";
   const CHANNEL_KEY = "opscontrol_alert_center_channel";
@@ -23,7 +23,7 @@
   let loadTimer = null;
   let rendering = false;
   let activeTab = localStorage.getItem(TAB_KEY) || "alerts";
-  let activeChannel = localStorage.getItem(CHANNEL_KEY) || "operacao-geral";
+  let activeChannel = localStorage.getItem(CHANNEL_KEY) || "geral";
   let statusFilter = "all";
   let responsibleFilter = "all";
   let query = "";
@@ -50,13 +50,17 @@
 
   function appConfig() {
     const config = window.OPSCONTROL_CONFIG || {};
+    const modular = window.OpsControlAuth?.loadConfig?.(config);
+    if (modular?.url && modular?.key) return modular;
     let saved = {};
     try { saved = JSON.parse(localStorage.getItem(CONFIG_KEY) || "{}"); } catch {}
     const environment = localStorage.getItem(ENV_KEY) || config.defaultEnvironment || "production";
     const selected = config.environments?.[environment] || {};
+    const named = Boolean(selected.supabaseUrl && selected.supabaseKey);
     return {
-      url: saved.url || selected.supabaseUrl || config.supabaseUrl || "",
-      key: saved.key || selected.supabaseKey || config.supabaseKey || ""
+      url: named ? selected.supabaseUrl : (saved.url || config.supabaseUrl || ""),
+      key: named ? selected.supabaseKey : (saved.key || config.supabaseKey || ""),
+      environment
     };
   }
 
@@ -78,7 +82,7 @@
   }
 
   const channelDefinitions = [
-    { id: "operacao-geral", label: "Geral", roles: ["*"] },
+    { id: "geral", label: "Geral", roles: ["*"] },
     { id: "operacao", label: "Operação", roles: ["admin", "supervisor", "lider", "operador", "user"] },
     { id: "lideranca", label: "Liderança", roles: ["admin", "supervisor", "lider"] },
     { id: "logistica", label: "Logística", roles: ["admin", "supervisor", "lider", "logistica"] },
@@ -93,7 +97,8 @@
 
   function ensureActiveChannel() {
     const channels = allowedChannels();
-    if (!channels.some(channel => channel.id === activeChannel)) activeChannel = channels[0]?.id || "operacao-geral";
+    if (activeChannel === "operacao-geral") activeChannel = "geral";
+    if (!channels.some(channel => channel.id === activeChannel)) activeChannel = channels[0]?.id || "geral";
     localStorage.setItem(CHANNEL_KEY, activeChannel);
   }
 
@@ -410,7 +415,7 @@
 
   async function ensureClient() {
     if (client) return true;
-    const { url, key } = appConfig();
+    const { url, key, environment = "production" } = appConfig();
     if (!url || !key || !window.supabase?.createClient) return false;
     const remember = localStorage.getItem(REMEMBER_LOGIN_KEY) !== "false";
     client = window.supabase.createClient(url, key, {
@@ -419,7 +424,9 @@
         autoRefreshToken: true,
         detectSessionInUrl: true,
         storage: remember ? window.localStorage : window.sessionStorage,
-        storageKey: remember ? "opscontrol-auth" : "opscontrol-auth-session"
+        storageKey: remember
+          ? `opscontrol-auth${environment !== "production" ? `-${environment}` : ""}`
+          : `opscontrol-auth-session${environment !== "production" ? `-${environment}` : ""}`
       }
     });
     const { data, error } = await client.auth.getSession();

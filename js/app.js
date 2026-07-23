@@ -4,24 +4,32 @@
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
   const CONFIG = window.OPSCONTROL_CONFIG || {};
-  const CONFIG_KEY = "opscontrol_config";
   const THEME_KEY = "opscontrol_theme";
   const OFFLINE_QUEUE_KEY = "opscontrol_offline_queue";
   const LOCAL_BACKUP_KEY = "opscontrol_daily_backups";
   const FORM_DRAFT_KEY = "opscontrol_form_drafts";
   const TEST_MODE_KEY = "opscontrol_homologation_mode";
   const TEST_LOG_KEY = "opscontrol_homologation_log";
-  const APP_ENV_KEY = "opscontrol_environment";
-  const REMEMBER_LOGIN_KEY = "opscontrol_remember_login";
-  const APP_VERSION = "20260722-security-1";
+  const APP_VERSION = "20260723-data-layer-1";
   const REALTIME_TABLES = ["tanks", "operations", "alerts", "chat_messages", "trucks", "equipment", "maintenance_orders", "qhse_records"];
   const fmt = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: 1 });
   const money = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+
+  if (!window.OpsControlAuth) {
+    throw new Error("OpsControlAuth não foi carregado antes do aplicativo.");
+  }
+  const AUTH = window.OpsControlAuth;
+
+  if (!window.OpsControlData) {
+    throw new Error("OpsControlData não foi carregado antes do aplicativo.");
+  }
+  const DATA = window.OpsControlData;
 
   const state = {
     client: null,
     clientRemember: null,
     authListenerBound: false,
+    authSubscription: null,
     user: null,
     data: null,
     page: "dashboard",
@@ -56,193 +64,37 @@
       pullStartY: 0,
       pullRefreshing: false
     },
-    config: loadConfig()
+    config: AUTH.loadConfig(CONFIG)
   };
 
-  function loadConfig() {
-    const saved = JSON.parse(localStorage.getItem(CONFIG_KEY) || "{}");
-    const environment = localStorage.getItem(APP_ENV_KEY) || CONFIG.defaultEnvironment || "production";
-    const selected = CONFIG.environments?.[environment] || {};
-    return {
-      url: saved.url || selected.supabaseUrl || CONFIG.supabaseUrl || "",
-      key: saved.key || selected.supabaseKey || CONFIG.supabaseKey || "",
-      environment
-    };
+  if (!window.OpsControlCore) {
+    throw new Error("OpsControlCore não foi carregado antes do aplicativo.");
   }
 
-  function esc(value = "") {
-    return String(value).replace(/[&<>"']/g, char => ({
-      "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;"
-    }[char]));
-  }
-
-
-  function userInitials(name = "Usuário") {
-    return String(name || "Usuário").trim().split(/\s+/).filter(Boolean).slice(0, 2).map(part => part[0]).join("").toUpperCase() || "US";
-  }
-
-  function profileAvatarHtml(url, name, className = "") {
-    const safeUrl = String(url || "").trim();
-    const classes = ["profile-avatar-render", className].filter(Boolean).join(" ");
-    if (safeUrl) return `<img class="${esc(classes)}" src="${esc(safeUrl)}" alt="Foto de ${esc(name || "usuário")}" loading="lazy">`;
-    return `<span class="${esc(classes)} profile-avatar-fallback">${esc(userInitials(name))}</span>`;
-  }
-
-
-  const UI_ICONS = {
-    anchor: '<path d="M12 3v15"></path><path d="M8 7l4-4 4 4"></path><path d="M5 21h14"></path><path d="M4 17c2.5 0 3.5 1 5 1s2.5-1 4-1 2.5 1 4 1 2.5-1 3-1"></path>',
-    truck: '<path d="M3 6h11v9H3z"></path><path d="M14 9h3l4 4v2h-7z"></path><circle cx="7.5" cy="18" r="1.5"></circle><circle cx="17.5" cy="18" r="1.5"></circle>',
-    wrench: '<path d="M14.7 6.3a4 4 0 0 0-5.4 5.4L3 18v3h3l6.3-6.3a4 4 0 0 0 5.4-5.4l-2.3 2.3-2-2z"></path>',
-    bell: '<path d="M18 8a6 6 0 1 0-12 0c0 7-3 7-3 7h18s-3 0-3-7"></path><path d="M10.5 20a1.5 1.5 0 0 0 3 0"></path>',
-    droplet: '<path d="M12 3.2S6.5 9.1 6.5 14a5.5 5.5 0 0 0 11 0C17.5 9.1 12 3.2 12 3.2z"></path>',
-    package: '<path d="M4 7.5 12 3l8 4.5v9L12 21l-8-4.5z"></path><path d="m4 7.5 8 4.5 8-4.5"></path><path d="M12 12v9"></path>',
-    gauge: '<path d="M4 18a8 8 0 1 1 16 0"></path><path d="M12 14l4-4"></path><path d="M6.5 14h.01"></path><path d="M17.5 14h.01"></path>',
-    alert: '<path d="M12 3 2.8 20h18.4L12 3z"></path><path d="M12 9v5"></path><path d="M12 17h.01"></path>',
-    refresh: '<path d="M20 11a8 8 0 1 0 2 5"></path><path d="M20 4v7h-7"></path>',
-    check: '<path d="m5 12 4 4L19 6"></path>',
-    lock: '<rect x="5" y="10" width="14" height="10" rx="2"></rect><path d="M8 10V7a4 4 0 0 1 8 0v3"></path>',
-    paperclip: '<path d="m20.5 11.5-8.8 8.8a5 5 0 0 1-7.1-7.1l9.2-9.2a3.5 3.5 0 0 1 5 5l-9.2 9.2a2 2 0 1 1-2.8-2.8l8.5-8.5"></path>',
-    products: '<rect x="3" y="4" width="8" height="7" rx="1"></rect><rect x="13" y="4" width="8" height="7" rx="1"></rect><rect x="3" y="13" width="8" height="7" rx="1"></rect><rect x="13" y="13" width="8" height="7" rx="1"></rect>',
-    layers: '<path d="m12 3 9 5-9 5-9-5 9-5z"></path><path d="m3 12 9 5 9-5"></path><path d="m3 16 9 5 9-5"></path>',
-    hourglass: '<path d="M6 3h12"></path><path d="M6 21h12"></path><path d="M8 3c0 4 1 5 4 7-3 2-4 3-4 7"></path><path d="M16 3c0 4-1 5-4 7 3 2 4 3 4 7"></path>',
-    image: '<rect x="3" y="4" width="18" height="16" rx="2"></rect><circle cx="9" cy="10" r="2"></circle><path d="m21 15-5-5L5 20"></path>',
-    file: '<path d="M7 3h7l4 4v14H7z"></path><path d="M14 3v5h5"></path><path d="M10 13h5"></path><path d="M10 17h5"></path>',
-    database: '<ellipse cx="12" cy="5" rx="8" ry="3"></ellipse><path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5"></path><path d="M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6"></path>',
-    shield: '<path d="M12 3l7 3v5c0 4.5-3 8.7-7 10-4-1.3-7-5.5-7-10V6l7-3z"></path><path d="m8.5 12 2.2 2.2 4.8-5"></path>',
-    flask: '<path d="M10 2v7.5L5 18a3 3 0 0 0 2.6 4.5h8.8A3 3 0 0 0 19 18l-5-8.5V2"></path><path d="M8 2h8"></path><path d="M8.5 14h7"></path>',
-    monitor: '<rect x="3" y="4" width="18" height="13" rx="2"></rect><path d="M8 21h8"></path><path d="M12 17v4"></path>',
-    settings: '<circle cx="12" cy="12" r="3"></circle><path d="M19 12a7 7 0 0 0-.1-1l2-1.5-2-3.4-2.5 1a8 8 0 0 0-1.7-1L14.4 3h-4.8l-.4 3.1a8 8 0 0 0-1.7 1L5 6.1 3 9.5 5 11a7 7 0 0 0 0 2l-2 1.5 2 3.4 2.5-1a8 8 0 0 0 1.7 1l.4 3.1h4.8l.4-3.1a8 8 0 0 0 1.7-1l2.5 1 2-3.4-2-1.5c.1-.3.1-.7.1-1z"></path>',
-    sparkles: '<path d="M12 3l1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5L12 3z"></path><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8L19 15z"></path>'
-  };
-
-  function uiIcon(name, className = "ui-icon") {
-    const paths = UI_ICONS[name] || UI_ICONS.database;
-    return `<svg class="${esc(className)}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
-  }
-
-  function uid(prefix = "id") {
-    return `${prefix}-${crypto.randomUUID ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(16).slice(2)}`}`;
-  }
-
-  function dateOnly(value) {
-    if (!value) return "-";
-    return new Date(`${String(value).slice(0, 10)}T12:00:00`).toLocaleDateString("pt-BR");
-  }
-
-  function dateTime(value) {
-    if (!value) return "-";
-    return new Date(value).toLocaleString("pt-BR");
-  }
-
-  function toLocalInput(value) {
-    if (!value) return "";
-    const d = new Date(value);
-    const local = new Date(d.getTime() - d.getTimezoneOffset() * 60000);
-    return local.toISOString().slice(0, 16);
-  }
-
-  function daysUntil(value) {
-    if (!value) return null;
-    return Math.ceil((new Date(`${String(value).slice(0, 10)}T23:59:59`) - new Date()) / 86400000);
-  }
-
-  function localDateKey(value = new Date()) {
-    const date = value instanceof Date ? value : new Date(value);
-    if (Number.isNaN(date.getTime())) return "";
-    const parts = new Intl.DateTimeFormat("en-CA", {
-      timeZone: "America/Sao_Paulo",
-      year: "numeric",
-      month: "2-digit",
-      day: "2-digit"
-    }).formatToParts(date);
-    const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
-    return `${values.year}-${values.month}-${values.day}`;
-  }
-
-  function recordDateKey(value) {
-    if (!value) return "";
-    const text = String(value);
-    if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return text;
-    return localDateKey(value);
-  }
-
-  function addDaysToDateKey(dateKey, days) {
-    if (!dateKey) return "";
-    const date = new Date(`${dateKey}T12:00:00`);
-    if (Number.isNaN(date.getTime())) return "";
-    date.setDate(date.getDate() + Number(days || 0));
-    return localDateKey(date);
-  }
-
-  function normalizedAlertLevel(value = "") {
-    return String(value)
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .trim();
-  }
-
-  function isCriticalAlert(value) {
-    return ["alta", "critica", "critico", "critical", "urgente"].includes(normalizedAlertLevel(value));
-  }
-
-  function latestTimestamp(values = []) {
-    const valid = values
-      .filter(Boolean)
-      .map(value => new Date(value))
-      .filter(value => !Number.isNaN(value.getTime()));
-    return valid.length ? new Date(Math.max(...valid.map(value => value.getTime()))) : null;
-  }
+  const {
+    esc,
+    userInitials,
+    profileAvatarHtml,
+    uiIcon,
+    uid,
+    dateOnly,
+    dateTime,
+    toLocalInput,
+    daysUntil,
+    localDateKey,
+    recordDateKey,
+    addDaysToDateKey,
+    normalizedAlertLevel,
+    isCriticalAlert,
+    latestTimestamp,
+    normalizeSearch,
+    MOBILE_PAGE_META,
+    DESKTOP_PAGE_META
+  } = window.OpsControlCore;
 
   function filterIsActive() {
     return Object.values(state.filters).some(Boolean);
   }
-
-  const MOBILE_PAGE_META = {
-    dashboard: ["Início", "Resumo do seu perfil"],
-    quality: ["Qualidade dos Dados", "Conciliação e inconsistências"],
-    sanitation: ["Saneamento de Dados", "Registros antigos e vínculos"],
-    tv: ["Painel TV", "Exibição coletiva"],
-    operations: ["Operações", "Serviços e movimentações"],
-    "vessel-registry": ["Cadastro de Embarcações", "Nome, IMO e MMSI"],
-    tanks: ["Tanques e Silos", "Inventário da planta"],
-    fluids: ["Fluidos e Granéis", "Catálogo de produtos"],
-    "chemical-catalog": ["Catálogo Químico", "Nomes e unidades oficiais"],
-    chemicals: ["Inventário Químico", "Lotes, validade e saldo"],
-    trucks: ["Carretas", "Entradas e saídas"],
-    "client-tickets": ["Tickets de Clientes", "FDT, FRT, MDT e MRT"],
-    qhse: ["QHSE", "Segurança e ações"],
-    maintenance: ["Manutenção", "Equipamentos e ordens"],
-    certificates: ["Certificados", "Documentos da equipe"],
-    alerts: ["Alertas e Chat", "Comunicação operacional"],
-    "ai-assistant": ["Assistente IA", "Inteligência operacional"],
-    reports: ["Relatórios", "Passagem de serviço"],
-    audit: ["Auditoria", "Rastreabilidade"],
-    settings: ["Usuários e Acessos", "Perfis e permissões"]
-  };
-
-  const DESKTOP_PAGE_META = {
-    dashboard: ["Painel Geral de Operações", "Comando central e telemetria da planta"],
-    quality: ["Qualidade dos Dados", "Conciliação e integridade dos registros"],
-    sanitation: ["Saneamento de Dados", "Tratamento de vínculos e registros antigos"],
-    tv: ["Painel TV", "Acompanhamento operacional em tempo real"],
-    operations: ["Operações", "Programação e execução dos serviços"],
-    "vessel-registry": ["Embarcações", "Cadastro e programação marítima"],
-    tanks: ["Tanques e Silos", "Inventário e telemetria da planta"],
-    fluids: ["Fluidos e Granéis", "Controle de produtos e movimentações"],
-    "chemical-catalog": ["Catálogo Químico", "Padronização de produtos e unidades"],
-    chemicals: ["Inventário Químico", "Lotes, validade e níveis de estoque"],
-    trucks: ["Carretas", "Recebimentos, expedições e rastreabilidade"],
-    "client-tickets": ["Tickets de Clientes", "FDT, FRT, MDT e MRT"],
-    qhse: ["QHSE", "Saúde, segurança, meio ambiente e qualidade"],
-    maintenance: ["Manutenção", "Ordens de serviço e ativos da planta"],
-    certificates: ["Certificados", "Documentos, licenças e vencimentos"],
-    alerts: ["Central de Alertas", "Comunicação operacional e direcionamento por função"],
-    "ai-assistant": ["Assistente IA", "Passagens, relatórios e análise operacional"],
-    reports: ["Relatórios", "Indicadores, consolidações e passagem de serviço"],
-    audit: ["Auditoria", "Histórico e rastreabilidade das alterações"],
-    settings: ["Usuários e Acessos", "Perfis, acessos e parâmetros do sistema"]
-  };
 
   function isMobileViewport() {
     return window.matchMedia("(max-width: 820px)").matches;
@@ -391,14 +243,6 @@
     }
   }
 
-
-  function normalizeSearch(value = "") {
-    return String(value)
-      .normalize("NFD")
-      .replace(/[\u0300-\u036f]/g, "")
-      .toLowerCase()
-      .trim();
-  }
 
   function clientLogoConfig(client = "") {
     const normalized = normalizeSearch(client);
@@ -784,29 +628,6 @@
     el.textContent = message;
     $("#toastContainer").appendChild(el);
     setTimeout(() => el.remove(), 3600);
-  }
-
-  function showLoginMessage(message, kind = "error") {
-    const el = $("#loginMessage");
-    el.textContent = message;
-    el.classList.toggle("success", kind === "success");
-    el.classList.remove("hidden");
-  }
-
-  function clearLoginMessage() {
-    const el = $("#loginMessage");
-    el.textContent = "";
-    el.classList.remove("success");
-    el.classList.add("hidden");
-  }
-
-  function setLoginLoading(loading, label = "Entrando...") {
-    const button = $("#loginBtn");
-    if (!button) return;
-    button.disabled = loading;
-    button.classList.toggle("is-loading", loading);
-    const text = button.querySelector("span");
-    if (text) text.textContent = loading ? label : "Entrar";
   }
 
   function role() {
@@ -1519,510 +1340,44 @@
       .replace(/-+/g, "-");
   }
 
-  async function initClient(remember = localStorage.getItem(REMEMBER_LOGIN_KEY) !== "false") {
-    if (!state.config.url || !state.config.key || !window.supabase) {
-      throw new Error("A conexão do sistema não está configurada.");
+  const authController = AUTH.createController({
+    state,
+    config: CONFIG,
+    loadData,
+    openApp,
+    openModal,
+    closeModal,
+    formActions,
+    toast,
+    beforeLogout: async () => {
+      clearTimeout(state.refreshDebounce);
+      clearInterval(state.refreshTimer);
+      stopTvMode();
+      if (state.realtime && state.client) await state.client.removeChannel(state.realtime);
+      state.realtime = null;
     }
-    if (!state.client || state.clientRemember !== remember) {
-      if (state.client && state.authListenerBound) {
-        state.authListenerBound = false;
-      }
-      state.clientRemember = remember;
-      state.client = window.supabase.createClient(state.config.url, state.config.key, {
-        auth: {
-          persistSession: true,
-          autoRefreshToken: true,
-          detectSessionInUrl: true,
-          storage: remember ? window.localStorage : window.sessionStorage,
-          storageKey: remember ? "opscontrol-auth" : "opscontrol-auth-session"
-        }
-      });
-    }
-    if (!state.authListenerBound) {
-      state.authListenerBound = true;
-      state.client.auth.onAuthStateChange(event => {
-        if (event === "PASSWORD_RECOVERY") {
-          setTimeout(openPasswordRecovery, 0);
-        }
-      });
-    }
-    return state.client;
-  }
+  });
 
-  async function resolveLoginEmail(identifier) {
-    const normalized = String(identifier || "").trim();
-    if (normalized.includes("@")) return normalized.toLowerCase();
-    const { data, error } = await state.client.rpc("resolve_login_email", { p_identifier: normalized });
-    if (error || !data) throw new Error("Credenciais inválidas.");
-    return String(data).trim().toLowerCase();
-  }
-
-  function openPasswordRecovery() {
-    openModal("Definir nova senha", `<form id="passwordRecoveryForm"><div class="form-grid">
-      <div class="wide"><label for="recoveryNewPassword">Nova senha *</label><input id="recoveryNewPassword" name="new_password" type="password" minlength="8" autocomplete="new-password" required></div>
-      <div class="wide"><label for="recoveryConfirmPassword">Confirmar nova senha *</label><input id="recoveryConfirmPassword" name="confirm_password" type="password" minlength="8" autocomplete="new-password" required></div>
-    </div><div class="info-box" style="margin-top:12px">Use pelo menos 8 caracteres. Após a alteração, entre novamente com a nova senha.</div>${formActions("Atualizar senha")}</form>`, "RECUPERAÇÃO DE ACESSO");
-  }
-
-  async function requestPasswordRecovery() {
-    const identifier = $("#loginEmail").value.trim();
-    if (!identifier) return showLoginMessage("Informe seu e-mail ou usuário para recuperar a senha.");
-    const button = $("#forgotPasswordBtn");
-    button.disabled = true;
-    clearLoginMessage();
-    try {
-      await initClient($("#rememberLogin")?.checked !== false);
-      const email = await resolveLoginEmail(identifier);
-      const redirectTo = `${location.origin}${location.pathname}`;
-      const { error } = await state.client.auth.resetPasswordForEmail(email, { redirectTo });
-      if (error) throw error;
-      showLoginMessage("Se o acesso estiver cadastrado, enviaremos as instruções de recuperação por e-mail.", "success");
-    } catch (_) {
-      showLoginMessage("Se o acesso estiver cadastrado, enviaremos as instruções de recuperação por e-mail.", "success");
-    } finally {
-      button.disabled = false;
-    }
-  }
-
-  async function login() {
-    const identifier = $("#loginEmail").value.trim();
-    const password = $("#loginPassword").value;
-    if (!identifier || !password) return showLoginMessage("Preencha e-mail ou usuário e senha.");
-
-    const remember = $("#rememberLogin")?.checked !== false;
-    localStorage.setItem(REMEMBER_LOGIN_KEY, String(remember));
-    clearLoginMessage();
-    setLoginLoading(true);
-    try {
-      await initClient(remember);
-      const email = await resolveLoginEmail(identifier);
-      const { data, error } = await state.client.auth.signInWithPassword({ email, password });
-      if (error) throw error;
-      state.user = data.user;
-      await loadData();
-      if (state.data.profile.active === false) {
-        await state.client.auth.signOut();
-        throw new Error("Seu acesso está bloqueado. Procure o administrador.");
-      }
-      openApp();
-    } catch (error) {
-      const blocked = String(error?.message || "").includes("bloqueado");
-      showLoginMessage(blocked ? error.message : "Não foi possível entrar. Verifique suas credenciais e tente novamente.");
-    } finally {
-      setLoginLoading(false);
-    }
-  }
-
-  async function restoreSession() {
-    try {
-      await initClient(localStorage.getItem(REMEMBER_LOGIN_KEY) !== "false");
-      const { data } = await state.client.auth.getSession();
-      if (!data.session?.user) return;
-      state.user = data.session.user;
-      await loadData();
-      if (state.data.profile.active === false) {
-        await state.client.auth.signOut();
-        return;
-      }
-      openApp();
-    } catch (error) {
-      console.error("Não foi possível restaurar a sessão:", error);
-    }
-  }
+  const {
+    showLoginMessage,
+    clearLoginMessage,
+    initClient,
+    resolveLoginEmail,
+    openPasswordRecovery,
+    requestPasswordRecovery,
+    login,
+    restoreSession,
+    logout
+  } = authController;
 
   async function loadData() {
-    const c = state.client;
-    const u = state.user;
-    const results = await Promise.all([
-      c.from("profiles").select("*").eq("id", u.id).maybeSingle(),
-      c.from("profiles").select("*").order("full_name"),
-      c.from("fluid_types").select("*").order("name"),
-      c.from("tanks").select("*").order("display_order"),
-      c.from("tank_history").select("*").order("created_at", { ascending: false }).limit(500),
-      c.from("operations").select("*").order("start_at", { ascending: false }).limit(2000),
-      c.from("operation_events").select("*").order("event_time", { ascending: true }).limit(5000),
-      c.from("trucks").select("*").order("movement_date", { ascending: false }).limit(2000),
-      c.from("qhse_records").select("*").order("record_date", { ascending: false }).limit(1000),
-      c.from("action_items").select("*").order("due_date", { ascending: true }).limit(500),
-      c.from("equipment").select("*").order("name"),
-      c.from("diesel_logs").select("*").order("log_date", { ascending: false }).limit(500),
-      c.from("maintenance_orders").select("*").order("opened_at", { ascending: false }).limit(500),
-      c.from("certificates").select("*").order("expires_at"),
-      c.from("alerts").select("*").order("created_at", { ascending: false }).limit(1000),
-      c.from("chat_messages").select("*").order("created_at", { ascending: true }).limit(500),
-      c.from("attachments").select("*").order("created_at", { ascending: false }).limit(1000),
-      c.from("chemical_inventory").select("*").order("product_name").limit(1000),
-      c.from("chemical_movements").select("*").order("created_at", { ascending: false }).limit(3000),
-      c.from("tank_movements").select("*").order("created_at", { ascending: false }).limit(2000),
-      c.from("inventory_alerts").select("*").order("created_at", { ascending: false }),
-      c.from("operational_health_alerts").select("*").order("created_at", { ascending: false }),
-      c.from("system_errors").select("*").order("created_at", { ascending: false }).limit(50),
-      c.from("operation_tank_allocations").select("*").order("display_order", { ascending: true }),
-      c.from("handover_pending_items").select("*").order("created_at", { ascending: false }).limit(1000),
-      c.from("shift_handover_notes").select("*").order("shift_date", { ascending: false }).limit(500),
-      c.from("operational_alert_center").select("*").order("created_at", { ascending: false }).limit(1000),
-      c.from("shift_handover_approvals").select("*").order("shift_date", { ascending: false }).limit(500),
-      c.from("shift_checklist_items").select("*").order("shift_date", { ascending: false }).limit(2000),
-      c.from("audit_logs").select("*").order("created_at", { ascending: false }).limit(1500),
-      c.from("app_feedback").select("*").order("created_at", { ascending: false }).limit(500),
-      c.from("truck_movement_items").select("*").order("display_order", { ascending: true }).limit(5000),
-      c.from("chemical_products").select("*").order("name"),
-      c.from("operational_closings").select("*").order("closing_date", { ascending: false }).order("shift", { ascending: true }).limit(200),
-      c.from("closing_reconciliation_items").select("*").order("created_at", { ascending: false }).limit(10000),
-      c.from("inventory_counts").select("*").order("counted_at", { ascending: false }).limit(5000),
-      c.from("vessel_schedules").select("*").order("eta", { ascending: true }).limit(1000),
-      c.from("latest_vessel_positions").select("*").order("position_time", { ascending: false }).limit(1000),
-      c.from("vessel_positions").select("*").order("position_time", { ascending: false }).limit(3000),
-      c.from("vessel_geofences").select("*").eq("active", true).order("created_at", { ascending: true }),
-      c.from("vessel_ais_alerts").select("*").order("event_at", { ascending: false }).limit(1000),
-      c.from("vessel_ais_sync_runs").select("*").order("started_at", { ascending: false }).limit(100),
-      c.from("vessel_registry").select("*").order("name", { ascending: true }).limit(2000),
-      c.from("dismissed_system_alerts").select("*").order("dismissed_at", { ascending: false }).limit(2000),
-      c.from("client_document_tickets").select("*").order("ticket_date", { ascending: false }).order("created_at", { ascending: false }).limit(2000),
-      c.from("client_ticket_documents").select("*").order("created_at", { ascending: false }).limit(5000)
-    ]);
-
-    if (results[0]?.error) throw results[0].error;
-
-    const optionalAvailability = {
-      vessels: !results[36]?.error,
-      vesselPositions: !results[37]?.error,
-      vesselPositionHistory: !results[38]?.error,
-      vesselGeofences: !results[39]?.error,
-      vesselAlerts: !results[40]?.error,
-      vesselSyncRuns: !results[41]?.error,
-      vesselRegistry: !results[42]?.error
-    };
-
-    results.forEach((result, index) => {
-      if (!result?.error) return;
-      console.warn(`Fonte opcional ${index} indisponível:`, result.error);
-      results[index] = { data: [] };
+    const result = await DATA.load({
+      client: state.client,
+      user: state.user,
+      applySiloCapacityModels
     });
-
-    const profile = results[0].data || {
-      id: u.id,
-      email: u.email,
-      full_name: u.email,
-      role: "user",
-      active: true,
-      permissions: {}
-    };
-
-    state.data = {
-      profile: {
-        id: profile.id,
-        name: profile.full_name || u.email,
-        email: profile.email || u.email,
-        role: profile.role || "user",
-        department: profile.department || "",
-        avatarUrl: profile.avatar_url || "",
-        active: profile.active !== false,
-        permissions: profile.permissions || {}
-      },
-      users: (results[1].data || []).map(x => ({
-        id: x.id, email: x.email || "", name: x.full_name || x.email || "Usuário",
-        role: x.role || "user", department: x.department || "", avatarUrl: x.avatar_url || "", active: x.active !== false,
-        permissions: x.permissions || {}, created_at: x.created_at
-      })),
-      fluids: (results[2].data || []).map(x => ({
-        id: x.id, name: x.name, type: x.category, unit: x.default_unit,
-        density: Number(x.density_value ?? x.density_ppg ?? 0),
-        densityUnit: x.density_unit || (["granel", "insumo"].includes(String(x.category || "").toLowerCase()) ? "t/m³" : "ppg"),
-        active: x.active !== false
-      })),
-      tanks: applySiloCapacityModels((results[3].data || []).map(x => ({
-        id: x.id, name: x.name, phase: x.phase, kind: x.kind,
-        capacity: Number(x.capacity), unit: x.unit, volume: Number(x.current_volume || 0),
-        physicalCapacityM3: x.physical_capacity_m3 === null || x.physical_capacity_m3 === undefined
-          ? null : Number(x.physical_capacity_m3),
-        fluidTypeId: x.current_fluid_type_id || null,
-        product: x.current_product || "", lot: x.current_lot || "",
-        density: x.current_density === null || x.current_density === undefined ? null : Number(x.current_density),
-        densityUnit: x.current_density_unit || null,
-        client: x.client || "A definir",
-        status: x.status, order: x.display_order,
-        updated_by: x.updated_by, updated_at: x.updated_at
-      }))),
-      tankHistory: results[4].data || [],
-      operations: (results[5].data || []).map(x => {
-        const linkedProduct = (results[2].data || []).find(item => item.id === x.fluid_type_id);
-        return {
-        id: x.id, client: x.client, vessel: x.vessel, vesselRegistryId: x.vessel_registry_id || null, service_order: x.service_order || "",
-        rig: x.rig || "", well: x.well || "", ticketNumber: x.ticket_number || "",
-        fluidTypeId: x.fluid_type_id || null,
-        activity: x.activity, product: linkedProduct?.name || x.product, lot: x.lot || "",
-        planned: Number(x.planned_quantity || 0), executed: Number(x.executed_quantity || 0),
-        unit: x.unit, status: x.status, start_at: x.start_at, end_at: x.end_at,
-        notes: x.notes || "", occurrence: x.occurrence || "", responsible_id: x.responsible_id,
-        flow_rate: Number(x.flow_rate || 0), flow_rate_unit: x.flow_rate_unit || "",
-        paused_minutes: Number(x.paused_minutes || 0), locked: x.locked === true,
-        source_tank_id: x.source_tank_id, destination_tank_id: x.destination_tank_id,
-        apply_tank_movement: x.apply_tank_movement === true,
-        tank_movement_applied: x.tank_movement_applied === true,
-        tank_movement_applied_at: x.tank_movement_applied_at,
-        created_by: x.created_by, created_at: x.created_at, updated_at: x.updated_at
-      };
-      }),
-      operationEvents: results[6].data || [],
-      trucks: (results[7].data || []).map(x => {
-        const linkedProduct = (results[2].data || []).find(item => item.id === x.fluid_type_id);
-        const items = (results[31].data || []).filter(item => item.truck_id === x.id).map(item => ({
-          id: item.id,
-          truckId: item.truck_id,
-          chemicalProductId: item.chemical_product_id || null,
-          productName: item.product_name,
-          lot: item.lot || "",
-          quantity: Number(item.quantity || 0),
-          unit: item.unit,
-          displayOrder: Number(item.display_order || 0),
-          created_at: item.created_at,
-          updated_at: item.updated_at
-        }));
-        return {
-          id: x.id, date: x.movement_date, movement: x.movement_type,
-          truckType: x.truck_type || (["bbl","m³","m3"].includes(String(x.unit || "").toLowerCase()) ? "Tank" : "Bulk"),
-          fluidTypeId: x.fluid_type_id || null,
-          tankId: x.tank_id || null,
-          stockApplied: x.stock_applied === true,
-          stockAppliedAt: x.stock_applied_at,
-          stockSummary: x.stock_application_summary || {},
-          supplier: x.supplier, client: x.client || "",
-          product: linkedProduct?.name || x.product, lot: x.lot || "",
-          quantity: Number(x.quantity || 0), unit: x.unit, plate: x.plate || "",
-          driver: x.driver_name || "", invoice: x.invoice_number || "", status: x.status,
-          notes: x.notes || "", items, created_by: x.created_by,
-          created_at: x.created_at, updated_at: x.updated_at
-        };
-      }),
-      qhse: (results[8].data || []).map(x => ({
-        id: x.id, date: x.record_date, type: x.record_type, title: x.title,
-        description: x.description || "", responsible: x.responsible || "",
-        severity: x.severity, status: x.status, created_by: x.created_by,
-        created_at: x.created_at, updated_at: x.updated_at
-      })),
-      actionItems: results[9].data || [],
-      equipment: (results[10].data || []).map(x => ({
-        id: x.id, name: x.name, category: x.category, status: x.status,
-        hourmeter: Number(x.hourmeter || 0), last_hours: Number(x.last_work_hours || 0),
-        diesel_initial: Number(x.diesel_initial || 0), refueled: Number(x.diesel_refueled || 0),
-        diesel_final: Number(x.diesel_final || 0), location: x.location || "",
-        next_maintenance_date: x.next_maintenance_date,
-        maintenance_due_hourmeter: Number(x.maintenance_due_hourmeter || 0),
-        maintenance_interval_hours: Number(x.maintenance_interval_hours || 0),
-        notes: x.notes || "", updated_at: x.updated_at
-      })),
-      dieselLogs: results[11].data || [],
-      maintenanceOrders: (results[12].data || []).map(x => ({
-        id: x.id, equipment_id: x.equipment_id, title: x.title,
-        description: x.description || "", priority: x.priority, status: x.status,
-        opened_at: x.opened_at, due_date: x.due_date, closed_at: x.closed_at,
-        responsible: x.responsible || "", maintenance_type: x.maintenance_type || "Corretiva",
-        parts_used: x.parts_used || "", solution: x.solution || "",
-        estimated_cost: Number(x.estimated_cost || 0), actual_cost: Number(x.actual_cost || 0),
-        before_notes: x.before_notes || "", after_notes: x.after_notes || ""
-      })),
-      certificates: (results[13].data || []).map(x => ({
-        id: x.id, user_id: x.user_id, title: x.title, owner: x.owner_name,
-        issuer: x.issuer || "", issued_at: x.issued_at, expires_at: x.expires_at,
-        status: x.status
-      })),
-      alerts: (results[14].data || []).map(x => ({
-        id: x.id, title: x.title, message: x.message, level: x.level,
-        target: x.target_group || "", target_user_id: x.target_user_id,
-        created_at: x.created_at, read: x.is_read
-      })),
-      messages: (results[15].data || []).map(x => ({
-        id: x.id, sender: x.sender_name, sender_id: x.sender_id,
-        text: x.message, created_at: x.created_at, mine: x.sender_id === u.id
-      })),
-      attachments: (results[16].data || []).map(x => ({
-        id: x.id, module: x.module, record_id: x.record_id, file_name: x.file_name,
-        file_path: x.file_path, mime_type: x.mime_type, file_size: Number(x.file_size || 0),
-        uploaded_by: x.uploaded_by, created_at: x.created_at
-      })),
-      chemicalProducts: (results[32].data || []).map(x => ({
-        id:x.id, name:x.name, category:x.category || "", unit:x.default_unit || "unidade",
-        active:x.active !== false, notes:x.notes || "", created_by:x.created_by,
-        created_at:x.created_at, updated_at:x.updated_at
-      })),
-      chemicals: (results[17].data || []).map(x => ({
-        id: x.id, productId: x.product_id || null, name: x.product_name, category: x.category || "", lot: x.lot || "",
-        unit: x.unit || "kg", quantity: Number(x.quantity || 0),
-        minimum: Number(x.minimum_quantity || 0), expiry_date: x.expiry_date,
-        location: x.location || "", supplier: x.supplier || "",
-        status: x.status || "Disponível", notes: x.notes || "",
-        created_by: x.created_by, updated_by: x.updated_by,
-        created_at: x.created_at, updated_at: x.updated_at
-      })),
-      chemicalMovements: (results[18].data || []).map(x => ({
-        id: x.id, inventory_id: x.inventory_id, movement_type: x.movement_type,
-        quantity: Number(x.quantity || 0), previous_balance: Number(x.previous_balance || 0),
-        new_balance: Number(x.new_balance || 0), reference: x.reference || "",
-        notes: x.notes || "", performed_by: x.performed_by,
-        chemicalProductId: x.chemical_product_id || null, truckId: x.truck_id || null,
-        created_at: x.created_at
-      })),
-      tankMovements: (results[19].data || []).map(x => ({
-        id: x.id, movement_type: x.movement_type, source_tank_id: x.source_tank_id,
-        destination_tank_id: x.destination_tank_id, operation_id: x.operation_id,
-        truckId: x.truck_id || null,
-        quantity: Number(x.quantity || 0), unit: x.unit, product: x.product || "",
-        lot: x.lot || "", reference: x.reference || "", notes: x.notes || "",
-        created_by: x.created_by, created_at: x.created_at
-      })),
-      systemAlerts: [...(results[20].data || []), ...(results[21].data || [])],
-      systemErrors: results[22].data || [],
-      operationAllocations: (results[23].data || []).map(x => ({
-        id: x.id, operation_id: x.operation_id, direction: x.direction,
-        tank_id: x.tank_id, quantity: Number(x.quantity || 0), unit: x.unit,
-        display_order: Number(x.display_order || 0), created_by: x.created_by,
-        created_at: x.created_at, updated_at: x.updated_at
-      })),
-      handoverPendings: (results[24].data || []).map(x => ({
-        id: x.id, title: x.title, description: x.description || "",
-        category: x.category, responsible: x.responsible || "",
-        priority: x.priority, status: x.status, due_at: x.due_at,
-        created_by: x.created_by, completed_by: x.completed_by,
-        completed_at: x.completed_at, created_at: x.created_at, updated_at: x.updated_at
-      })),
-      handoverNotes: (results[25].data || []).map(x => ({
-        id: x.id, shift_date: x.shift_date, shift_type: x.shift_type,
-        observations: x.observations || "", updated_by: x.updated_by,
-        created_at: x.created_at, updated_at: x.updated_at
-      })),
-      alertCenter: (results[26].data || []).map(x => ({
-        id: x.alert_key, title: x.title, message: x.message || "", level: x.level || "Média",
-        category: x.category || "Sistema", entity_type: x.entity_type, entity_id: x.entity_id,
-        due_at: x.due_at, created_at: x.created_at, action_page: x.action_page || "alerts", automatic: true
-      })),
-      handoverApprovals: (results[27].data || []).map(x => ({
-        id:x.id, sequence_no:Number(x.sequence_no||0), shift_date:x.shift_date, shift_type:x.shift_type,
-        status:x.status, snapshot_json:x.snapshot_json||{}, snapshot_text:x.snapshot_text||"",
-        delivered_by:x.delivered_by, delivered_at:x.delivered_at, received_by:x.received_by,
-        received_at:x.received_at, reopened_by:x.reopened_by, reopened_at:x.reopened_at,
-        created_at:x.created_at, updated_at:x.updated_at
-      })),
-      shiftChecklist: (results[28].data || []).map(x => ({
-        id:x.id, shift_date:x.shift_date, shift_type:x.shift_type, item_key:x.item_key,
-        item_label:x.item_label, category:x.category, completed:x.completed,
-        notes:x.notes||"", completed_by:x.completed_by, completed_at:x.completed_at,
-        created_by:x.created_by, created_at:x.created_at, updated_at:x.updated_at
-      })),
-      auditLogs: (results[29].data || []).map(x => ({
-        id:x.id, table_name:x.table_name, record_id:x.record_id, action:x.action,
-        old_data:x.old_data, new_data:x.new_data, changed_by:x.changed_by, created_at:x.created_at
-      })),
-      feedback: (results[30].data || []).map(x => ({
-        id:x.id, category:x.category, page:x.page || "dashboard", rating:x.rating,
-        message:x.message, device_info:x.device_info || "", app_version:x.app_version || "",
-        status:x.status || "Novo", created_by:x.created_by, created_at:x.created_at, updated_at:x.updated_at
-      })),
-      truckItems: (results[31].data || []).map(item => ({
-        id:item.id, truckId:item.truck_id, chemicalProductId:item.chemical_product_id || null,
-        productName:item.product_name, lot:item.lot || "", quantity:Number(item.quantity || 0),
-        unit:item.unit, displayOrder:Number(item.display_order || 0),
-        created_at:item.created_at, updated_at:item.updated_at
-      })),
-      closings: (results[33].data || []).map(item => ({
-        id:item.id, date:item.closing_date, shift:item.shift, periodStart:item.period_start,
-        periodEnd:item.period_end, status:item.status, summary:item.summary || {},
-        notes:item.notes || "", closedBy:item.closed_by, closedAt:item.closed_at,
-        reopenedBy:item.reopened_by, reopenedAt:item.reopened_at,
-        created_at:item.created_at, updated_at:item.updated_at
-      })),
-      closingItems: (results[34].data || []).map(item => ({
-        id:item.id, closingId:item.closing_id, itemType:item.item_type, itemId:item.item_id,
-        itemName:item.item_name, unit:item.unit,
-        theoretical:Number(item.theoretical_quantity || 0),
-        measured:item.measured_quantity === null ? null : Number(item.measured_quantity),
-        variance:item.variance === null ? null : Number(item.variance),
-        variancePct:item.variance_pct === null ? null : Number(item.variance_pct),
-        status:item.status, created_at:item.created_at
-      })),
-      inventoryCounts: (results[35].data || []).map(item => ({
-        id:item.id, countedAt:item.counted_at, shift:item.shift, itemType:item.item_type,
-        itemId:item.item_id, measured:Number(item.measured_quantity || 0),
-        unit:item.unit, notes:item.notes || "", createdBy:item.created_by
-      })),
-      vessels: (results[36].data || []).map(item => ({
-        id:item.id, vesselName:item.vessel_name, imo:item.imo || "", mmsi:item.mmsi || "",
-        client:item.client, berth:item.berth || "", operationType:item.operation_type || "Bombeio",
-        product:item.product || "", plannedQuantity:Number(item.planned_quantity || 0), unit:item.unit || "bbl",
-        eta:item.eta, etb:item.etb, etd:item.etd, destination:item.destination || "", status:item.status || "Programada",
-        priority:item.priority || "Normal", notes:item.notes || "", aisEnabled:item.ais_enabled === true,
-        aisProvider:item.ais_provider || "MarineTraffic", aisEta:item.ais_eta,
-        distanceToPortNm:item.distance_to_port_nm === null || item.distance_to_port_nm === undefined ? null : Number(item.distance_to_port_nm),
-        aisSyncStatus:item.ais_sync_status || "Pendente", aisSyncMessage:item.ais_sync_message || "",
-        lastAisAt:item.last_ais_at, createdBy:item.created_by, updatedBy:item.updated_by,
-        createdAt:item.created_at, updatedAt:item.updated_at
-      })),
-      vesselPositions: (results[37].data || []).map(item => ({
-        id:item.id, scheduleId:item.schedule_id, latitude:Number(item.latitude), longitude:Number(item.longitude),
-        speedKnots:item.speed_knots === null ? null : Number(item.speed_knots),
-        courseDegrees:item.course_degrees === null ? null : Number(item.course_degrees),
-        headingDegrees:item.heading_degrees === null ? null : Number(item.heading_degrees),
-        navigationStatus:item.navigation_status || "", positionTime:item.position_time,
-        source:item.source || "manual", createdAt:item.created_at
-      })),
-      vesselPositionHistory: (results[38].data || []).map(item => ({
-        id:item.id, scheduleId:item.schedule_id, latitude:Number(item.latitude), longitude:Number(item.longitude),
-        speedKnots:item.speed_knots === null ? null : Number(item.speed_knots),
-        courseDegrees:item.course_degrees === null ? null : Number(item.course_degrees),
-        headingDegrees:item.heading_degrees === null ? null : Number(item.heading_degrees),
-        navigationStatus:item.navigation_status || "", positionTime:item.position_time,
-        source:item.source || "manual", createdAt:item.created_at
-      })),
-      vesselGeofences: (results[39].data || []).map(item => ({
-        id:item.id, name:item.name, latitude:Number(item.latitude), longitude:Number(item.longitude),
-        radiusNm:Number(item.radius_nm || 25), alertOnEntry:item.alert_on_entry !== false,
-        active:item.active !== false, createdAt:item.created_at, updatedAt:item.updated_at
-      })),
-      vesselAisAlerts: (results[40].data || []).map(item => ({
-        id:item.id, scheduleId:item.schedule_id, type:item.alert_type, severity:item.severity,
-        title:item.title, message:item.message || "", eventAt:item.event_at,
-        resolvedAt:item.resolved_at, resolvedBy:item.resolved_by,
-        metadata:item.metadata || {}, createdAt:item.created_at
-      })),
-      vesselAisSyncRuns: (results[41].data || []).map(item => ({
-        id:item.id, provider:item.provider, status:item.status,
-        processed:Number(item.processed_count || 0), updated:Number(item.updated_count || 0),
-        failed:Number(item.failed_count || 0), message:item.message || "",
-        startedAt:item.started_at, finishedAt:item.finished_at, requestedBy:item.requested_by
-      })),
-      vesselRegistry: (results[42].data || []).map(item => ({
-        id:item.id, name:item.name, imo:item.imo || "", mmsi:item.mmsi || "",
-        active:item.active !== false, createdBy:item.created_by, updatedBy:item.updated_by,
-        createdAt:item.created_at, updatedAt:item.updated_at
-      })),
-      dismissedSystemAlerts: (results[43].data || []).map(item => ({
-        id:item.id, alertKey:item.alert_key, title:item.title || "", category:item.category || "",
-        dismissedBy:item.dismissed_by, dismissedAt:item.dismissed_at
-      })),
-      clientTickets: (results[44].data || []).map(item => ({
-        id:item.id, ticketNumber:item.ticket_number, client:item.client, title:item.title,
-        date:item.ticket_date, operationId:item.operation_id || null, vessel:item.vessel || "",
-        serviceOrder:item.service_order || "", responsible:item.responsible || "", status:item.status,
-        requiredTypes:Array.isArray(item.required_document_types) ? item.required_document_types : ["FDT","FRT","MDT","MRT"],
-        notes:item.notes || "", createdBy:item.created_by, createdAt:item.created_at, updatedAt:item.updated_at
-      })),
-      clientTicketDocuments: (results[45].data || []).map(item => ({
-        id:item.id, ticketId:item.ticket_id, documentType:item.document_type,
-        documentNumber:item.document_number || "", documentDate:item.document_date || "", revision:item.revision || "",
-        status:item.status || "Anexado", fileName:item.file_name, filePath:item.file_path, mimeType:item.mime_type || "",
-        fileSize:Number(item.file_size || 0), notes:item.notes || "", uploadedBy:item.uploaded_by,
-        createdAt:item.created_at, updatedAt:item.updated_at
-      })),
-      vesselRegistryAvailable: optionalAvailability.vesselRegistry,
-      vesselModuleAvailable: optionalAvailability.vessels,
-      vesselPositionsAvailable: optionalAvailability.vesselPositions,
-      vesselMonitoringAvailable: optionalAvailability.vesselPositionHistory && optionalAvailability.vesselGeofences && optionalAvailability.vesselAlerts
-    };
-    const dismissedAlertKeys = new Set((state.data.dismissedSystemAlerts || []).map(item => String(item.alertKey || "")));
-    state.data.systemAlerts = [...state.data.systemAlerts, ...state.data.alertCenter]
-      .filter((item,index,all) => all.findIndex(other => String(other.id || other.alert_key || other.title) === String(item.id || item.alert_key || item.title)) === index)
-      .filter(item => !dismissedAlertKeys.has(String(item.id || item.alert_key || item.title || "")));
-    state.lastSync = new Date();
+    state.data = result.data;
+    state.lastSync = result.lastSync;
   }
 
   function openAppProfileHeader() {
@@ -2136,14 +1491,7 @@
     updateConnectionBadge();
   }
 
-  async function logout() {
-    clearTimeout(state.refreshDebounce);
-    clearInterval(state.refreshTimer);
-    stopTvMode();
-    if (state.realtime) await state.client.removeChannel(state.realtime);
-    await state.client.auth.signOut();
-    location.reload();
-  }
+
 
   function updateConnectionBadge() {
     const badgeEl = $("#syncBadge");
@@ -2218,8 +1566,7 @@
     try {
       await loadData();
       if (state.data.profile.active === false) {
-        await state.client.auth.signOut();
-        location.reload();
+        await authController.signOutAndReload();
         return false;
       }
       renderAll();
@@ -6710,28 +6057,7 @@
     event.preventDefault();
     const form = event.target;
     if (form.id === "loginForm") return login();
-    if (form.id === "passwordRecoveryForm") {
-      const payload = Object.fromEntries(new FormData(form));
-      const password = String(payload.new_password || "");
-      const confirmation = String(payload.confirm_password || "");
-      if (password.length < 8) return toast("A nova senha precisa ter pelo menos 8 caracteres.", "error");
-      if (password !== confirmation) return toast("A confirmação da nova senha não confere.", "error");
-      const submit = form.querySelector("button[type='submit'], button:not([type])");
-      if (submit) submit.disabled = true;
-      try {
-        await initClient(localStorage.getItem(REMEMBER_LOGIN_KEY) !== "false");
-        const { error } = await state.client.auth.updateUser({ password });
-        if (error) throw error;
-        await state.client.auth.signOut();
-        closeModal();
-        showLoginMessage("Senha atualizada. Entre novamente com sua nova senha.", "success");
-      } catch (error) {
-        toast(`Não foi possível atualizar a senha: ${error.message}`, "error");
-      } finally {
-        if (submit) submit.disabled = false;
-      }
-      return;
-    }
+    if (form.id === "passwordRecoveryForm") return authController.completePasswordRecovery(form);
     if (state.testMode && form.id !== "feedbackForm") {
       simulateFormSubmission(form);
       return;
@@ -6747,22 +6073,7 @@
       if (!navigator.onLine) throw new Error("Sem internet. Reconecte para salvar alterações.");
 
       if (form.id === "profilePasswordForm") {
-        const payload = Object.fromEntries(new FormData(form));
-        const currentPassword = String(payload.current_password || "");
-        const newPassword = String(payload.new_password || "");
-        const confirmation = String(payload.confirm_password || "");
-        if (!currentPassword) throw new Error("Informe a senha atual.");
-        if (newPassword.length < 8) throw new Error("A nova senha precisa ter pelo menos 8 caracteres.");
-        if (newPassword !== confirmation) throw new Error("A confirmação da nova senha não confere.");
-        if (newPassword === currentPassword) throw new Error("A nova senha precisa ser diferente da senha atual.");
-        const { data: authData, error: authError } = await state.client.auth.signInWithPassword({
-          email: state.user?.email || state.data.profile.email,
-          password: currentPassword
-        });
-        if (authError) throw new Error("A senha atual está incorreta.");
-        if (authData?.user) state.user = authData.user;
-        const { error: passwordError } = await state.client.auth.updateUser({ password: newPassword });
-        if (passwordError) throw passwordError;
+        await authController.changePassword(form, state.user?.email || state.data.profile.email);
         clearFormDraft(form);
         closeModal();
         toast("Senha alterada com sucesso.", "success");
@@ -7331,11 +6642,7 @@
       return toast("Rascunho descartado.");
     }
     if (action === "switch-environment") {
-      const environment=button.dataset.environment;
-      const config=CONFIG.environments?.[environment] || {};
-      if(!config.supabaseUrl || !config.supabaseKey) return toast("O ambiente de homologação ainda não possui URL e chave.","error");
-      localStorage.setItem(APP_ENV_KEY,environment);
-      location.reload();
+      authController.switchEnvironment(button.dataset.environment);
       return;
     }
 
@@ -7564,7 +6871,7 @@
       const text = $("#chatText")?.value.trim();
       if (!text) return;
       const { error } = await state.client.from("chat_messages").insert({
-        channel: "operacao-geral", sender_id: state.user.id,
+        channel: "geral", sender_id: state.user.id,
         sender_name: state.data.profile.name, message: text
       });
       if (error) return toast(error.message, "error");
@@ -8192,7 +7499,5 @@
     window.addEventListener("load", () => navigator.serviceWorker.register("sw.js").catch(console.error));
   }
 
-  $("#rememberLogin").checked = localStorage.getItem(REMEMBER_LOGIN_KEY) !== "false";
-  $("#connectionHint").textContent = "Acesse com seu e-mail ou usuário e senha cadastrados.";
-  restoreSession();
+  authController.initializeLogin();
 })();

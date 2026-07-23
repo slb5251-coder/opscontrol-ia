@@ -50,6 +50,8 @@ export function useRealtimeRefresh(){
   setVersion(value=>value+1);
  };
 
+ const syncNow=()=>applyRefresh({table:'manual',eventType:'UPDATE',receivedAt:new Date().toISOString()});
+
  useEffect(()=>{
   const unsubscribe=subscribeOperationalChanges(applyRefresh,setState);
   const observer=new MutationObserver(()=>{
@@ -70,5 +72,5 @@ export function useRealtimeRefresh(){
   return()=>window.clearTimeout(done);
  },[version]);
 
- return{version,state,pendingSync,lastEvent};
+ return{version,state,pendingSync,lastEvent,syncNow};
 }

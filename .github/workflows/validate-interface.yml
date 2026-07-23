@@ -63,6 +63,9 @@ jobs:
       - name: Run authentication and session tests
         run: npm run test:auth-session
 
+      - name: Run data layer tests
+        run: npm run test:data-layer
+
       - name: Run database hardening tests
         run: npm run test:database-hardening
 
@@ -87,6 +90,7 @@ jobs:
           app_js = Path('js/app.js').read_text(encoding='utf-8')
           app_core_js = Path('js/app-core.js').read_text(encoding='utf-8')
           app_auth_js = Path('js/app-auth.js').read_text(encoding='utf-8')
+          app_data_js = Path('js/app-data.js').read_text(encoding='utf-8')
           index_html = Path('index.html').read_text(encoding='utf-8')
 
           css_refs = re.findall(r"@import\s+url\(['\"]?([^'\")?]+)", runtime_css)
@@ -109,21 +113,12 @@ jobs:
               errors.append(f'Missing JS reference: {path}')
 
           required = [
-            Path('final-interface.css'),
-            Path('interface-fix.css'),
-            Path('homologation.css'),
-            Path('system-health.css'),
-            Path('js/ui-polish.js'),
-            Path('js/interface-runtime.js'),
-            Path('js/system-observability.js'),
-            Path('js/app-core.js'),
-            Path('js/app-auth.js'),
-            Path('tests/environment.spec.mjs'),
-            Path('tests/observability.spec.mjs'),
-            Path('tests/performance-loader.spec.mjs'),
-            Path('tests/deferred-dependencies.spec.mjs'),
-            Path('tests/app-core.spec.mjs'),
-            Path('tests/auth-session.spec.mjs'),
+            Path('final-interface.css'), Path('interface-fix.css'), Path('homologation.css'), Path('system-health.css'),
+            Path('js/ui-polish.js'), Path('js/interface-runtime.js'), Path('js/system-observability.js'),
+            Path('js/app-core.js'), Path('js/app-auth.js'), Path('js/app-data.js'),
+            Path('tests/environment.spec.mjs'), Path('tests/observability.spec.mjs'),
+            Path('tests/performance-loader.spec.mjs'), Path('tests/deferred-dependencies.spec.mjs'),
+            Path('tests/app-core.spec.mjs'), Path('tests/auth-session.spec.mjs'), Path('tests/data-layer.spec.mjs'),
             Path('tests/database-hardening.spec.mjs'),
             Path('supabase/migrations/20260722230000_observability_health_v1.sql'),
             Path('supabase/migrations/20260722231500_observability_hardening_v1.sql'),
@@ -139,7 +134,7 @@ jobs:
             if token not in config_js:
               errors.append(f'Missing environment guard token in config: {token}')
 
-          for token in ['CORE_FILES', 'cacheFirst', 'networkFirst', 'app-core.js', 'app-auth.js', 'auth-session-1']:
+          for token in ['CORE_FILES', 'cacheFirst', 'networkFirst', 'app-core.js', 'app-auth.js', 'app-data.js', 'data-layer-1']:
             if token not in service_worker:
               errors.append(f'Missing modular cache token in service worker: {token}')
 
@@ -153,9 +148,10 @@ jobs:
 
           core_index = index_html.find('js/app-core.js')
           auth_index = index_html.find('js/app-auth.js')
+          data_index = index_html.find('js/app-data.js')
           app_index = index_html.find('js/app.js')
-          if core_index < 0 or auth_index <= core_index or app_index <= auth_index:
-            errors.append('Script order must be app-core.js, app-auth.js, then app.js')
+          if core_index < 0 or auth_index <= core_index or data_index <= auth_index or app_index <= data_index:
+            errors.append('Script order must be app-core.js, app-auth.js, app-data.js, then app.js')
 
           if 'window.OpsControlCore' not in app_js:
             errors.append('Missing app core integration in app.js')
@@ -166,8 +162,13 @@ jobs:
           for token in ['window.OpsControlAuth', '20260723-auth-session-1', 'createController', 'resetPasswordForEmail']:
             if token not in app_auth_js:
               errors.append(f'Missing authentication module token: {token}')
-          if '20260723-auth-session-1' not in app_js:
-            errors.append('Missing authentication version in app.js')
+          if 'window.OpsControlData' not in app_js or 'DATA.load' not in app_js:
+            errors.append('Missing data layer integration in app.js')
+          for token in ['window.OpsControlData', '20260723-data-layer-1', 'async function load(', 'client_document_tickets']:
+            if token not in app_data_js:
+              errors.append(f'Missing data layer token: {token}')
+          if '20260723-data-layer-1' not in app_js:
+            errors.append('Missing data layer version in app.js')
 
           for duplicate in ['const UI_ICONS =', 'function normalizeSearch(', 'const MOBILE_PAGE_META =']:
             if duplicate in app_js:
@@ -181,14 +182,12 @@ jobs:
             if duplicate in app_js:
               errors.append(f'Authentication symbol duplicated in app.js: {duplicate}')
 
+          if 'c.from("profiles").select("*").eq("id", u.id).maybeSingle()' in app_js:
+            errors.append('Supabase data queries remain duplicated in app.js')
           if 'Se o acesso estiver cadastrado' not in app_auth_js:
             errors.append('Password recovery must keep a non-enumerating response')
 
-          forbidden = [
-            'design-upgrade.css',
-            'js/design-upgrade.js',
-            'js/design-stability.js',
-          ]
+          forbidden = ['design-upgrade.css', 'js/design-upgrade.js', 'js/design-stability.js']
           combined = runtime_css + runtime_js + service_worker
           for item in forbidden:
             if item in combined:
@@ -203,7 +202,7 @@ jobs:
             print('\n'.join(f'- {error}' for error in errors))
             sys.exit(1)
 
-          print(f'Validated {len(css_refs)} core CSS imports, {len(dynamic_css_refs)} lazy CSS assets, {len(js_refs)} JS modules, app core, authentication/session, deferred dependencies, observability, performance, RLS and environment isolation files.')
+          print(f'Validated {len(css_refs)} core CSS imports, {len(dynamic_css_refs)} lazy CSS assets, {len(js_refs)} JS modules, app core, authentication, data layer, deferred dependencies, observability, RLS and environment isolation files.')
 
       - name: Upload responsive test evidence
         if: always()

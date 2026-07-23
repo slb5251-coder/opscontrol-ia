@@ -1,0 +1,85 @@
+name: Staging authenticated E2E
+
+on:
+  pull_request:
+    branches: [homologacao, main]
+  workflow_dispatch:
+    inputs:
+      base_url:
+        description: URL opcional para validar uma publicação existente
+        required: false
+        type: string
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: staging-e2e-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    env:
+      E2E_FUNCTION_URL: https://idnbbesxdoeeiupwltxk.supabase.co/functions/v1/github-e2e-session
+      E2E_BASE_URL: ${{ inputs.base_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+
+      - name: Prepare isolated E2E user
+        shell: bash
+        run: |
+          set -euo pipefail
+          OIDC=$(curl --fail --silent --show-error \
+            -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=opscontrol-staging-e2e" | jq -r '.value')
+          echo "::add-mask::${OIDC}"
+          RESPONSE=$(curl --fail --silent --show-error -X POST \
+            -H "Authorization: Bearer ${OIDC}" \
+            -H "Content-Type: application/json" \
+            "${E2E_FUNCTION_URL}" \
+            --data '{"action":"prepare"}')
+          EMAIL=$(jq -r '.email' <<<"${RESPONSE}")
+          PASSWORD=$(jq -r '.password' <<<"${RESPONSE}")
+          test -n "${EMAIL}" && test "${EMAIL}" != "null"
+          test -n "${PASSWORD}" && test "${PASSWORD}" != "null"
+          echo "::add-mask::${EMAIL}"
+          echo "::add-mask::${PASSWORD}"
+          echo "E2E_EMAIL=${EMAIL}" >> "${GITHUB_ENV}"
+          echo "E2E_PASSWORD=${PASSWORD}" >> "${GITHUB_ENV}"
+
+      - name: Run authenticated staging flows
+        run: node tests/staging-e2e.spec.mjs
+
+      - name: Cleanup isolated E2E user and records
+        if: always()
+        shell: bash
+        run: |
+          set +e
+          OIDC=$(curl --silent --show-error \
+            -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
+            "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=opscontrol-staging-e2e" | jq -r '.value')
+          curl --silent --show-error -X POST \
+            -H "Authorization: Bearer ${OIDC}" \
+            -H "Content-Type: application/json" \
+            "${E2E_FUNCTION_URL}" \
+            --data '{"action":"cleanup"}' >/dev/null
+
+      - name: Upload E2E evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: staging-e2e-${{ github.run_number }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14

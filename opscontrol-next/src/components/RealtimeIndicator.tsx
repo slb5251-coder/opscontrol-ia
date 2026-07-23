@@ -1,7 +1,7 @@
 import {useMemo} from 'react';
 import type {OperationalRealtimeEvent,RealtimeState} from '../lib/realtime';
 
-type Props={state:RealtimeState;pending:boolean;lastEvent:OperationalRealtimeEvent|null};
+type Props={state:RealtimeState;pending:boolean;lastEvent:OperationalRealtimeEvent|null;onSync:()=>void};
 
 const tableLabels:Record<string,string>={
  tanks:'Tanques',
@@ -12,10 +12,11 @@ const tableLabels:Record<string,string>={
  truck_stage_history:'Fluxo de carretas',
  maintenance_orders:'Manutenção',
  qhse_records:'QHSE',
- audit_logs:'Auditoria'
+ audit_logs:'Auditoria',
+ manual:'Sincronização manual'
 };
 
-export function RealtimeIndicator({state,pending,lastEvent}:Props){
+export function RealtimeIndicator({state,pending,lastEvent,onSync}:Props){
  const moduleLabel=lastEvent?tableLabels[lastEvent.table]||lastEvent.table:null;
  const label=useMemo(()=>{
   if(pending)return'Atualização pendente';
@@ -27,7 +28,7 @@ export function RealtimeIndicator({state,pending,lastEvent}:Props){
  },[lastEvent,moduleLabel,pending,state]);
 
  const title=lastEvent?`${lastEvent.eventType} em ${moduleLabel} · ${new Date(lastEvent.receivedAt).toLocaleString('pt-BR')}`:`Supabase Realtime: ${state}`;
- const ariaLabel=`${label}. Clique para atualizar os dados da aplicação.`;
+ const ariaLabel=`${label}. Clique para sincronizar os dados da aplicação sem recarregar o navegador.`;
 
- return <button type="button" className={`realtime-indicator realtime-${pending?'pending':state}`} title={title} aria-label={ariaLabel} aria-live="polite" onClick={()=>window.location.reload()}><i aria-hidden="true"/><span>{label}</span><small>Sincronizar</small></button>;
+ return <button type="button" className={`realtime-indicator realtime-${pending?'pending':state}`} title={title} aria-label={ariaLabel} aria-live="polite" onClick={onSync}><i aria-hidden="true"/><span>{label}</span><small>Sincronizar</small></button>;
 }

@@ -1,0 +1,31 @@
+name: Apply app core extraction
+
+on:
+  pull_request:
+    branches: [homologacao]
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.head_ref == 'performance/extract-app-core-v1'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: performance/extract-app-core-v1
+          fetch-depth: 0
+      - name: Extract app core
+        run: python scripts/extract-app-core.py
+      - name: Commit extracted application core
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if git diff --quiet; then
+            echo "No changes to commit"
+            exit 0
+          fi
+          git add js/app.js
+          git commit -m "refactor: extrair núcleo compartilhado do app"
+          git push origin HEAD:performance/extract-app-core-v1

@@ -1,7 +1,7 @@
 import { chromium } from 'playwright';
 import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
-import { resolve, dirname } from 'node:path';
+import { resolve, dirname, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -17,6 +17,7 @@ const pageHtml = `<!doctype html><html><body>
 <div id="modalBody"></div>
 <script src="/js/app-auth.js"></script>
 </body></html>`;
+const mime = { '.html': 'text/html; charset=utf-8', '.js': 'text/javascript; charset=utf-8' };
 
 const server = createServer(async (request, response) => {
   const url = new URL(request.url || '/', 'http://127.0.0.1');
@@ -25,9 +26,16 @@ const server = createServer(async (request, response) => {
     response.end(pageHtml);
     return;
   }
-  if (url.pathname === '/js/app-auth.js') {
-    response.writeHead(200, { 'content-type': 'text/javascript; charset=utf-8' });
-    response.end(await readFile(resolve(root, 'js/app-auth.js')));
+  const allowed = new Map([
+    ['/js/app-auth.js', resolve(root, 'js/app-auth.js')],
+    ['/js/app.js', resolve(root, 'js/app.js')],
+    ['/index.html', resolve(root, 'index.html')],
+    ['/sw.js', resolve(root, 'sw.js')]
+  ]);
+  const file = allowed.get(url.pathname);
+  if (file) {
+    response.writeHead(200, { 'content-type': mime[extname(file)] || 'text/plain; charset=utf-8' });
+    response.end(await readFile(file));
     return;
   }
   response.writeHead(404);
@@ -54,28 +62,13 @@ try {
     sessionStorage.clear();
 
     const metrics = {
-      createClient: 0,
-      unsubscribe: 0,
-      signIn: [],
-      signOut: 0,
-      reset: 0,
-      update: [],
-      loadData: 0,
-      openApp: 0,
-      openModal: 0,
-      closeModal: 0,
-      beforeLogout: 0,
-      reload: 0,
-      toasts: []
+      createClient: 0, unsubscribe: 0, signIn: [], signOut: 0, reset: 0,
+      update: [], loadData: 0, openApp: 0, openModal: 0, closeModal: 0,
+      beforeLogout: 0, reload: 0, toasts: []
     };
     const scenario = {
-      profileActive: true,
-      sessionUser: null,
-      rpcEmail: 'usuario@teste.com',
-      rpcError: null,
-      signInError: null,
-      resetError: null,
-      updateError: null
+      profileActive: true, sessionUser: null, rpcEmail: 'usuario@teste.com',
+      rpcError: null, signInError: null, resetError: null, updateError: null
     };
 
     const subscription = { unsubscribe: () => { metrics.unsubscribe += 1; } };
@@ -118,13 +111,8 @@ try {
     localStorage.setItem('opscontrol_environment', 'staging');
     const resolved = window.OpsControlAuth.loadConfig(config);
     const state = {
-      config: resolved,
-      client: null,
-      clientRemember: null,
-      authListenerBound: false,
-      authSubscription: null,
-      user: null,
-      data: null
+      config: resolved, client: null, clientRemember: null,
+      authListenerBound: false, authSubscription: null, user: null, data: null
     };
 
     const controller = window.OpsControlAuth.createController({
@@ -147,6 +135,7 @@ try {
     await controller.initClient(true);
     const clientReuseCount = metrics.createClient;
     await controller.initClient(false);
+    const sessionStorageSelected = createOptions.at(-1)?.auth?.storage === sessionStorage;
 
     document.querySelector('#loginEmail').value = 'usuario';
     document.querySelector('#loginPassword').value = 'senha-segura';
@@ -186,7 +175,6 @@ try {
     localStorage.removeItem('opscontrol_environment');
     const switched = controller.switchEnvironment('staging');
     const environmentStored = localStorage.getItem('opscontrol_environment');
-
     await controller.logout();
 
     return {
@@ -196,7 +184,8 @@ try {
       clientReuseCount,
       totalClients: metrics.createClient,
       firstStorageLocal: createOptions[0]?.auth?.storage === localStorage,
-      secondStorageSession: createOptions.at(-1)?.auth?.storage === sessionStorage,
+      sessionStorageSelected,
+      finalStorageLocal: createOptions.at(-1)?.auth?.storage === localStorage,
       listenerUnsubscribedOnModeChange: metrics.unsubscribe >= 1,
       loginSnapshot,
       blockedSnapshot,
@@ -217,8 +206,8 @@ try {
   assert(result.frozen, 'API pública de autenticação é congelada');
   assert(result.resolved.environment === 'staging' && result.resolved.url === 'https://stage.test', 'configuração respeita ambiente selecionado');
   assert(result.clientReuseCount === 1, 'cliente Supabase é reutilizado no mesmo modo de persistência');
-  assert(result.totalClients === 2, 'cliente é recriado ao trocar localStorage por sessionStorage', String(result.totalClients));
-  assert(result.firstStorageLocal && result.secondStorageSession, 'persistência usa o armazenamento correto');
+  assert(result.totalClients === 3, 'cliente é recriado somente nas duas trocas de persistência', String(result.totalClients));
+  assert(result.firstStorageLocal && result.sessionStorageSelected && result.finalStorageLocal, 'persistência alterna corretamente entre local e sessão');
   assert(result.listenerUnsubscribedOnModeChange, 'listener anterior é removido ao trocar persistência');
   assert(result.loginSnapshot.signInEmail === 'usuario@teste.com', 'login por usuário resolve o e-mail antes da autenticação');
   assert(result.loginSnapshot.openApp === 1 && result.loginSnapshot.user === 'usuario@teste.com', 'login válido carrega dados e abre o aplicativo');
@@ -228,22 +217,28 @@ try {
   assert(result.restoredUser === 'sessao@teste.com', 'sessão existente é restaurada');
   assert(result.passwordUpdate === 'senha-nova-123', 'troca de senha atualiza somente após reautenticação');
   assert(result.switched && result.environmentStored === 'staging', 'troca de ambiente persiste a seleção');
-  assert(result.beforeLogout === 1 && result.reloads >= 2, 'logout executa limpeza e recarrega a aplicação');
-  assert(result.finalSignOut >= 2 && result.finalUnsubscribe >= 2, 'logout encerra sessão e listener');
+  assert(result.beforeLogout === 1 && result.reloads === 2, 'troca de ambiente e logout recarregam uma vez cada');
+  assert(result.finalSignOut >= 2 && result.finalUnsubscribe >= 3, 'logout encerra sessão e listener');
   assert(result.rememberStored === 'true', 'preferência de permanência é persistida');
 
   const staticAudit = await page.evaluate(async () => {
     const [app, index, sw] = await Promise.all([
-      fetch('/js/app.js').then(response => response.text()).catch(() => ''),
-      fetch('/index.html').then(response => response.text()).catch(() => ''),
-      fetch('/sw.js').then(response => response.text()).catch(() => '')
+      fetch('/js/app.js').then(response => response.text()),
+      fetch('/index.html').then(response => response.text()),
+      fetch('/sw.js').then(response => response.text())
     ]);
     return { app, index, sw };
   });
-
-  // O servidor da fixture não entrega os arquivos estáticos abaixo; a verificação estrutural
-  // é executada também pelo workflow com leitura direta do repositório.
-  assert(Boolean(staticAudit), 'fixture conclui sem dependências externas');
+  const forbiddenDefinitions = [
+    'function loadConfig(', 'function initClient(', 'function resolveLoginEmail(',
+    'function requestPasswordRecovery(', 'function login(', 'function restoreSession(', 'function logout('
+  ];
+  assert(forbiddenDefinitions.every(token => !staticAudit.app.includes(token)), 'app.js não duplica fluxos extraídos');
+  const coreIndex = staticAudit.index.indexOf('js/app-core.js');
+  const authIndex = staticAudit.index.indexOf('js/app-auth.js');
+  const appIndex = staticAudit.index.indexOf('js/app.js');
+  assert(coreIndex >= 0 && coreIndex < authIndex && authIndex < appIndex, 'ordem de scripts mantém core, autenticação e aplicativo');
+  assert(staticAudit.sw.includes('js/app-auth.js') && staticAudit.sw.includes('auth-session-1'), 'PWA inclui o módulo de autenticação no núcleo');
 } finally {
   await browser.close();
   await new Promise(resolveClose => server.close(resolveClose));

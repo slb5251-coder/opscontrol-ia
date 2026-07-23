@@ -14,22 +14,23 @@ const tableLabels:Record<string,string>={
  qhse_records:'QHSE',
  audit_logs:'Auditoria',
  manual:'Sincronização manual',
- resume:'Atualização ao retornar'
+ resume:'Atualização ao retornar',
+ reconnect:'Atualização após reconexão'
 };
 
 export function RealtimeIndicator({state,pending,lastEvent,onSync}:Props){
  const moduleLabel=lastEvent?tableLabels[lastEvent.table]||lastEvent.table:null;
  const label=useMemo(()=>{
+  if(state==='disconnected')return'Sem conexão';
   if(pending)return'Atualização pendente';
   if(state==='connecting')return'Conectando...';
   if(state==='error')return'Tempo real indisponível';
-  if(state==='disconnected')return'Tempo real desconectado';
   if(lastEvent)return`${moduleLabel} · ${new Date(lastEvent.receivedAt).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'})}`;
   return'Tempo real ativo';
  },[lastEvent,moduleLabel,pending,state]);
 
- const title=lastEvent?`${lastEvent.eventType} em ${moduleLabel} · ${new Date(lastEvent.receivedAt).toLocaleString('pt-BR')}`:`Supabase Realtime: ${state}`;
+ const title=state==='disconnected'?'Sem acesso à internet. A sincronização será retomada automaticamente.':lastEvent?`${lastEvent.eventType} em ${moduleLabel} · ${new Date(lastEvent.receivedAt).toLocaleString('pt-BR')}`:`Supabase Realtime: ${state}`;
  const ariaLabel=`${label}. Clique para sincronizar os dados da aplicação sem recarregar o navegador.`;
 
- return <button type="button" className={`realtime-indicator realtime-${pending?'pending':state}`} title={title} aria-label={ariaLabel} aria-live="polite" onClick={onSync}><i aria-hidden="true"/><span>{label}</span><small>Sincronizar</small></button>;
+ return <button type="button" className={`realtime-indicator realtime-${state==='disconnected'?'disconnected':pending?'pending':state}`} title={title} aria-label={ariaLabel} aria-live="polite" onClick={onSync} disabled={state==='disconnected'}><i aria-hidden="true"/><span>{label}</span><small>{state==='disconnected'?'Offline':'Sincronizar'}</small></button>;
 }

@@ -1,98 +1,40 @@
-import { Dialog, DialogPanel, DialogTitle } from '@headlessui/react';
-import { AnimatePresence, motion } from 'motion/react';
-import { Activity, Bell, Boxes, ChevronRight, Droplets, Gauge, Menu, Search, ShieldCheck, Ship, Truck, Wrench, X, LogOut } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { Dialog,DialogPanel,DialogTitle } from '@headlessui/react';
+import { AnimatePresence,motion } from 'motion/react';
+import { Activity,Bell,Boxes,ChevronRight,Droplets,Gauge,Menu,Search,ShieldCheck,Ship,Truck,Wrench,X,LogOut,Filter,Clock,MapPin } from 'lucide-react';
+import { useEffect,useMemo,useState } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { Login } from './components/Login';
-import { loadDashboard, type Tank } from './lib/data';
+import { loadDashboard,loadTankHistory,type Operation,type Tank,type TankHistory,type VesselSchedule } from './lib/data';
 import { supabase } from './lib/supabase';
 
-const demoTanks: Tank[] = [
-  { id:'1', name:'TK-04', current_product:'KCL Polymer 9.8 ppg', kind:'WBM', phase:'Phase #1', current_volume:760, capacity:1000, status:'Operando', unit:'bbl' },
-  { id:'2', name:'TK-S08', current_product:'Rheliant 9.6 ppg', kind:'SBM', phase:'Phase #2', current_volume:1125, capacity:1500, status:'Disponível', unit:'bbl' },
-  { id:'3', name:'TK-12', current_product:'Brine NaCl 9.9 ppg', kind:'BRINE', phase:'Phase #1', current_volume:420, capacity:1000, status:'Recebendo', unit:'bbl' },
-  { id:'4', name:'SILO-02', current_product:'Barita', kind:'BULK', phase:'Phase #1', current_volume:72, capacity:100, status:'Bombeando', unit:'t' }
-];
+const demoTanks:Tank[]=[
+{id:'1',name:'TK-04',current_product:'KCL Polymer 9.8 ppg',kind:'WBM',phase:'Phase #1',current_volume:760,capacity:1000,status:'Operando',unit:'bbl',client:'Equinor',current_lot:'L-2407'},
+{id:'2',name:'TK-S08',current_product:'Rheliant 9.6 ppg',kind:'SBM',phase:'Phase #2',current_volume:1125,capacity:1500,status:'Disponível',unit:'bbl',client:'Petrobras'},
+{id:'3',name:'TK-12',current_product:'Brine NaCl 9.9 ppg',kind:'BRINE',phase:'Phase #1',current_volume:420,capacity:1000,status:'Recebendo',unit:'bbl',client:'PRIO'},
+{id:'4',name:'SILO-02',current_product:'Barita',kind:'BULK',phase:'Phase #1',current_volume:72,capacity:100,status:'Bombeando',unit:'t',client:'PRIO'}];
+const nav=[['Visão geral',Gauge],['Operações',Activity],['Tanques e silos',Droplets],['Embarcações',Ship],['Carretas',Truck],['Manutenção',Wrench],['QHSE',ShieldCheck]] as const;
 
-const nav = [
-  ['Visão geral', Gauge], ['Operações', Activity], ['Tanques e silos', Droplets],
-  ['Embarcações', Ship], ['Carretas', Truck], ['Manutenção', Wrench], ['QHSE', ShieldCheck]
-] as const;
+function TankCard({tank,onOpen}:{tank:Tank;onOpen:(t:Tank)=>void}){const pct=Math.min(100,Math.round((tank.current_volume/tank.capacity)*100));return <motion.article layout whileHover={{y:-5}} className="tank-card"><div className="card-top"><div><span>{tank.kind}</span><h3>{tank.name}</h3></div><b>{tank.status}</b></div><div className="tank-visual"><motion.div className="liquid" initial={{height:0}} animate={{height:`${pct}%`}} transition={{duration:1.1}}/><div className="tank-grid"/><strong>{pct}%</strong></div><div className="tank-copy"><h4>{tank.current_product||'Sem produto'}</h4><p>{tank.current_volume.toLocaleString('pt-BR')} / {tank.capacity.toLocaleString('pt-BR')} {tank.unit}</p><small>{tank.client||'Sem cliente'} · {tank.phase}</small></div><button onClick={()=>onOpen(tank)}>Ver detalhes <ChevronRight size={16}/></button></motion.article>}
 
-function TankCard({tank}:{tank:Tank}) {
-  const pct = Math.min(100, Math.round((tank.current_volume/tank.capacity)*100));
-  return <motion.article layout whileHover={{y:-5}} transition={{type:'spring', stiffness:280, damping:24}} className="tank-card">
-    <div className="card-top"><div><span>{tank.kind}</span><h3>{tank.name}</h3></div><b>{tank.status}</b></div>
-    <div className="tank-visual" aria-label={`${pct}% ocupado`}>
-      <motion.div className="liquid" initial={{height:0}} animate={{height:`${pct}%`}} transition={{duration:1.15, ease:[.22,1,.36,1]}} />
-      <div className="tank-grid"/><strong>{pct}%</strong>
-    </div>
-    <div className="tank-copy"><h4>{tank.current_product || 'Sem produto'}</h4><p>{tank.current_volume.toLocaleString('pt-BR')} / {tank.capacity.toLocaleString('pt-BR')} {tank.unit}</p></div>
-    <button>Ver histórico <ChevronRight size={16}/></button>
-  </motion.article>
+function Dashboard({demo,onExitDemo}:{demo:boolean;onExitDemo:()=>void}){
+ const [sidebar,setSidebar]=useState(false),[alertsOpen,setAlertsOpen]=useState(false),[active,setActive]=useState('Visão geral');
+ const [tanks,setTanks]=useState<Tank[]>(demoTanks),[alerts,setAlerts]=useState<any[]>([]),[summary,setSummary]=useState<any>(null),[operations,setOperations]=useState<Operation[]>([]),[vessels,setVessels]=useState<VesselSchedule[]>([]),[loading,setLoading]=useState(!demo);
+ const [query,setQuery]=useState(''),[phase,setPhase]=useState('Todas'),[kind,setKind]=useState('Todos'),[selected,setSelected]=useState<Tank|null>(null),[history,setHistory]=useState<TankHistory[]>([]);
+ useEffect(()=>{if(demo)return;loadDashboard().then(d=>{setTanks(d.tanks);setAlerts(d.alerts);setSummary(d.summary);setOperations(d.operations);setVessels(d.vessels)}).catch(console.error).finally(()=>setLoading(false))},[demo]);
+ useEffect(()=>{if(!selected){setHistory([]);return}loadTankHistory(selected.id).then(setHistory).catch(()=>setHistory([]))},[selected]);
+ const filtered=useMemo(()=>tanks.filter(t=>(phase==='Todas'||t.phase===phase)&&(kind==='Todos'||t.kind===kind)&&(`${t.name} ${t.current_product||''} ${t.client||''}`.toLowerCase().includes(query.toLowerCase()))),[tanks,phase,kind,query]);
+ const total=useMemo(()=>tanks.reduce((a,t)=>a+t.current_volume,0),[tanks]);
+ async function logout(){if(demo)onExitDemo();else await supabase?.auth.signOut()}
+ const metricCards=[['Volume monitorado',`${total.toLocaleString('pt-BR')} un.`,Droplets],['Operações ativas',String(summary?.operations_in_progress??(demo?8:0)).padStart(2,'0'),Activity],['Programadas',String(summary?.operations_scheduled??(demo?12:0)).padStart(2,'0'),Ship],['Pendências QHSE',String(summary?.qhse_pending??(demo?2:0)).padStart(2,'0'),ShieldCheck]];
+ return <div className="app-shell"><AnimatePresence>{sidebar&&<motion.button className="backdrop" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onClick={()=>setSidebar(false)}/>}</AnimatePresence><motion.aside className={`sidebar ${sidebar?'open':''}`}><div className="brand"><div className="brand-mark"><Boxes size={22}/></div><div><strong>OPSControl</strong><span>IA NEXT</span></div><button onClick={()=>setSidebar(false)}><X size={20}/></button></div><div className="plant"><i/><div><span>{demo?'MODO HOMOLOGAÇÃO':'PLANTA ATIVA'}</span><strong>B-PORT LMP</strong></div></div><nav>{nav.map(([label,Icon])=><button key={label} className={active===label?'active':''} onClick={()=>{setActive(label);setSidebar(false)}}><Icon size={19}/><span>{label}</span></button>)}</nav><button className="logout" onClick={logout}><LogOut size={18}/>Sair</button><div className="user"><div>OC</div><span><strong>{demo?'Homologação visual':'Usuário conectado'}</strong><small>{demo?'Dados demonstrativos':'Sessão segura'}</small></span></div></motion.aside>
+ <main><header><button className="menu" onClick={()=>setSidebar(true)}><Menu/></button><div><span>Centro de controle operacional</span><h1>{active}</h1></div><div className="actions"><button><Search/></button><button onClick={()=>setAlertsOpen(true)}><Bell/><i>{alerts.length||3}</i></button></div></header>
+ {active==='Visão geral'&&<><section className="hero"><div><span className="eyebrow">{demo?'HOMOLOGAÇÃO DA NOVA INTERFACE':'OPERAÇÃO EM TEMPO REAL'}</span><h2>Visibilidade total da planta,<br/>decisões mais rápidas.</h2><p>Fluidos, granéis, logística, manutenção e segurança em uma única experiência operacional.</p></div><motion.div className="pulse-orbit" animate={{rotate:360}} transition={{duration:18,repeat:Infinity,ease:'linear'}}><div/></motion.div></section><section className="metrics">{metricCards.map(([l,v,I]:any)=><motion.article key={l} initial={{opacity:0,y:14}} animate={{opacity:1,y:0}}><div><I size={20}/></div><span>{l}</span><strong>{v}</strong><small>{loading?'Carregando...':'Atualizado agora'}</small></motion.article>)}</section><section className="section-head"><div><span>ATIVOS PRINCIPAIS</span><h2>Tanques e silos</h2></div><button onClick={()=>setActive('Tanques e silos')}>Visualizar todos <ChevronRight size={17}/></button></section><section className="tank-grid-list">{tanks.slice(0,8).map(t=><TankCard key={t.id} tank={t} onOpen={setSelected}/>)}</section></>}
+ {active==='Tanques e silos'&&<><section className="module-head"><div><span>GESTÃO DE TANCAGEM</span><h2>Tanques e silos</h2><p>Capacidade, produto, cliente, status e histórico em uma única visão.</p></div></section><section className="filters"><div><Search size={17}/><input value={query} onChange={e=>setQuery(e.target.value)} placeholder="Buscar tanque, produto ou cliente"/></div><label><Filter size={16}/><select value={phase} onChange={e=>setPhase(e.target.value)}><option>Todas</option>{[...new Set(tanks.map(t=>t.phase))].map(v=><option key={v}>{v}</option>)}</select></label><label><select value={kind} onChange={e=>setKind(e.target.value)}><option>Todos</option>{[...new Set(tanks.map(t=>t.kind))].map(v=><option key={v}>{v}</option>)}</select></label></section><section className="tank-grid-list expanded">{filtered.map(t=><TankCard key={t.id} tank={t} onOpen={setSelected}/>)}</section></>}
+ {active==='Operações'&&<section className="module-page"><div className="module-head"><div><span>PROGRAMAÇÃO OPERACIONAL</span><h2>Operações</h2><p>Acompanhamento planejado versus executado.</p></div></div><div className="data-list">{operations.length?operations.map(o=>{const pct=Math.min(100,Math.round((o.executed_quantity/(o.planned_quantity||1))*100));return <article key={o.id}><div><strong>{o.vessel}</strong><span>{o.client} · {o.product}</span></div><div className="progress"><i style={{width:`${pct}%`}}/></div><b>{pct}%</b><small>{o.status}</small></article>}):<div className="empty">Nenhuma operação disponível para esta sessão.</div>}</div></section>}
+ {active==='Embarcações'&&<section className="module-page"><div className="module-head"><div><span>CRONOGRAMA MARÍTIMO</span><h2>Embarcações</h2><p>ETA, cliente, produto e berço planejado.</p></div></div><div className="vessel-grid">{vessels.length?vessels.map(v=><article key={v.id}><Ship/><div><strong>{v.vessel_name}</strong><span>{v.client} · {v.product||v.operation_type}</span><small><Clock size={13}/>{v.eta?new Date(v.eta).toLocaleString('pt-BR'):'Sem ETA'} <MapPin size={13}/>{v.berth||'Berço a definir'}</small></div><b>{v.status}</b></article>):<div className="empty">Nenhuma embarcação programada.</div>}</div></section>}
+ {!['Visão geral','Tanques e silos','Operações','Embarcações'].includes(active)&&<section className="module-page"><div className="module-head"><div><span>MÓDULO EM CONSTRUÇÃO</span><h2>{active}</h2><p>A fundação visual e de dados já está pronta para este módulo.</p></div></div><div className="empty large">Próxima etapa de implementação do OPSControl IA Next.</div></section>}
+ </main>
+ <Dialog open={alertsOpen} onClose={setAlertsOpen} className="dialog"><div className="dialog-backdrop"/><DialogPanel className="dialog-panel"><div className="dialog-title"><DialogTitle>Central de alertas</DialogTitle><button onClick={()=>setAlertsOpen(false)}><X/></button></div>{(alerts.length?alerts:[{title:'TK-12 atingiu 42% da capacidade'},{title:'Operação PRIO inicia em 45 minutos'},{title:'Inspeção do compressor vence hoje'}]).map((a:any,i:number)=><motion.div className="alert" initial={{opacity:0,x:20}} animate={{opacity:1,x:0}} transition={{delay:i*.06}} key={a.alert_key||a.title}><i/><div><strong>{a.title}</strong><span>{a.message||'Agora'}</span></div></motion.div>)}</DialogPanel></Dialog>
+ <Dialog open={Boolean(selected)} onClose={()=>setSelected(null)} className="dialog"><div className="dialog-backdrop"/><DialogPanel className="dialog-panel tank-detail">{selected&&<><div className="dialog-title"><DialogTitle>{selected.name}</DialogTitle><button onClick={()=>setSelected(null)}><X/></button></div><div className="detail-summary"><span>{selected.kind} · {selected.phase}</span><h3>{selected.current_product||'Sem produto'}</h3><strong>{selected.current_volume.toLocaleString('pt-BR')} / {selected.capacity.toLocaleString('pt-BR')} {selected.unit}</strong><p>Cliente: {selected.client||'Não informado'} · Lote: {selected.current_lot||'Não informado'}</p></div><h4>Histórico recente</h4><div className="history-list">{history.length?history.map(h=><article key={h.id}><i/><div><strong>{h.movement_type||'Atualização operacional'}</strong><span>{h.moved_quantity?`${h.moved_quantity} ${selected.unit} · `:''}{new Date(h.created_at).toLocaleString('pt-BR')}</span><small>{h.notes||`${h.previous_volume??'-'} → ${h.new_volume??'-'} ${selected.unit}`}</small></div></article>):<div className="empty">Sem histórico disponível.</div>}</div></>}</DialogPanel></Dialog></div>
 }
-
-function Dashboard({ demo, onExitDemo }: { demo:boolean; onExitDemo:()=>void }) {
-  const [sidebar,setSidebar]=useState(false);
-  const [alertsOpen,setAlertsOpen]=useState(false);
-  const [active,setActive]=useState('Visão geral');
-  const [tanks,setTanks]=useState<Tank[]>(demoTanks);
-  const [alerts,setAlerts]=useState<any[]>([]);
-  const [summary,setSummary]=useState<any>(null);
-  const [loading,setLoading]=useState(!demo);
-
-  useEffect(()=>{
-    if (demo) return;
-    loadDashboard().then(data=>{setTanks(data.tanks);setAlerts(data.alerts);setSummary(data.summary);}).catch(console.error).finally(()=>setLoading(false));
-  },[demo]);
-
-  const total = useMemo(()=>tanks.reduce((a,t)=>a+t.current_volume,0),[tanks]);
-  const userName = demo ? 'Homologação visual' : 'Usuário conectado';
-
-  async function logout(){ if(demo) onExitDemo(); else await supabase?.auth.signOut(); }
-
-  return <div className="app-shell">
-    <AnimatePresence>{sidebar&&<motion.button className="backdrop" aria-label="Fechar menu" initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} onClick={()=>setSidebar(false)}/>}</AnimatePresence>
-    <motion.aside className={`sidebar ${sidebar?'open':''}`}>
-      <div className="brand"><div className="brand-mark"><Boxes size={22}/></div><div><strong>OPSControl</strong><span>IA NEXT</span></div><button onClick={()=>setSidebar(false)}><X size={20}/></button></div>
-      <div className="plant"><i/><div><span>{demo?'MODO HOMOLOGAÇÃO':'PLANTA ATIVA'}</span><strong>B-PORT LMP</strong></div></div>
-      <nav>{nav.map(([label,Icon])=><button key={label} className={active===label?'active':''} onClick={()=>{setActive(label);setSidebar(false)}}><Icon size={19}/><span>{label}</span></button>)}</nav>
-      <button className="logout" onClick={logout}><LogOut size={18}/>Sair</button>
-      <div className="user"><div>OC</div><span><strong>{userName}</strong><small>{demo?'Dados demonstrativos':'Sessão segura'}</small></span></div>
-    </motion.aside>
-
-    <main>
-      <header><button className="menu" onClick={()=>setSidebar(true)}><Menu/></button><div><span>Centro de controle operacional</span><h1>{active}</h1></div><div className="actions"><button><Search/></button><button onClick={()=>setAlertsOpen(true)}><Bell/><i>{alerts.length || 3}</i></button></div></header>
-      <section className="hero"><div><span className="eyebrow">{demo?'HOMOLOGAÇÃO DA NOVA INTERFACE':'OPERAÇÃO EM TEMPO REAL'}</span><h2>Visibilidade total da planta,<br/>decisões mais rápidas.</h2><p>Fluidos, granéis, logística, manutenção e segurança em uma única experiência operacional.</p></div><motion.div className="pulse-orbit" animate={{rotate:360}} transition={{duration:18, repeat:Infinity, ease:'linear'}}><div/><span/></motion.div></section>
-      <section className="metrics">
-        {[
-          ['Volume monitorado',`${total.toLocaleString('pt-BR')} un.`,Droplets],
-          ['Operações ativas',String(summary?.operations_in_progress ?? (demo?8:0)).padStart(2,'0'),Activity],
-          ['Operações programadas',String(summary?.operations_scheduled ?? (demo?12:0)).padStart(2,'0'),Ship],
-          ['Pendências QHSE',String(summary?.qhse_pending ?? (demo?2:0)).padStart(2,'0'),ShieldCheck]
-        ].map(([l,v,I]:any)=><motion.article key={l} initial={{opacity:0,y:14}} animate={{opacity:1,y:0}}><div><I size={20}/></div><span>{l}</span><strong>{v}</strong><small>{loading?'Carregando dados...':'Atualizado agora'}</small></motion.article>)}
-      </section>
-      <section className="section-head"><div><span>ATIVOS PRINCIPAIS</span><h2>Tanques e silos</h2></div><button>Visualizar todos <ChevronRight size={17}/></button></section>
-      <section className="tank-grid-list">{tanks.map(t=><TankCard key={t.id} tank={t}/>)}</section>
-    </main>
-
-    <Dialog open={alertsOpen} onClose={setAlertsOpen} className="dialog"><div className="dialog-backdrop"/><DialogPanel className="dialog-panel"><div className="dialog-title"><DialogTitle>Central de alertas</DialogTitle><button onClick={()=>setAlertsOpen(false)}><X/></button></div>{(alerts.length?alerts:[{title:'TK-12 atingiu 42% da capacidade'},{title:'Operação PRIO inicia em 45 minutos'},{title:'Inspeção do compressor vence hoje'}]).map((a:any,i:number)=><motion.div className="alert" initial={{opacity:0,x:20}} animate={{opacity:1,x:0}} transition={{delay:i*.08}} key={a.alert_key||a.title}><i/><div><strong>{a.title}</strong><span>{a.message||'Agora'}</span></div></motion.div>)}</DialogPanel></Dialog>
-  </div>;
-}
-
-export default function App(){
-  const [session,setSession]=useState<Session|null>(null);
-  const [checking,setChecking]=useState(Boolean(supabase));
-  const [demo,setDemo]=useState(false);
-
-  useEffect(()=>{
-    if(!supabase){setChecking(false);return;}
-    supabase.auth.getSession().then(({data})=>{setSession(data.session);setChecking(false);});
-    const {data}=supabase.auth.onAuthStateChange((_event,next)=>setSession(next));
-    return ()=>data.subscription.unsubscribe();
-  },[]);
-
-  if(checking) return <div className="boot-screen"><div className="brand-mark">OC</div><strong>Inicializando OPSControl IA Next</strong></div>;
-  if(!session&&!demo) return <Login onDemo={()=>setDemo(true)}/>;
-  return <Dashboard demo={demo} onExitDemo={()=>setDemo(false)}/>;
-}
+export default function App(){const[session,setSession]=useState<Session|null>(null),[checking,setChecking]=useState(Boolean(supabase)),[demo,setDemo]=useState(false);useEffect(()=>{if(!supabase){setChecking(false);return}supabase.auth.getSession().then(({data})=>{setSession(data.session);setChecking(false)});const{data}=supabase.auth.onAuthStateChange((_e,next)=>setSession(next));return()=>data.subscription.unsubscribe()},[]);if(checking)return <div className="boot-screen"><div className="brand-mark">OC</div><strong>Inicializando OPSControl IA Next</strong></div>;if(!session&&!demo)return <Login onDemo={()=>setDemo(true)}/>;return <Dashboard demo={demo} onExitDemo={()=>setDemo(false)}/>}

@@ -14,15 +14,9 @@
     "ai-assistant": ["ai-assistant"]
   };
   const modules = {
-    observability: {
-      script: "system-observability.js?v=20260722-observability-1"
-    },
-    "ops-v2": {
-      script: "interface-ops-v2.js?v=20260722-ops-v2-1"
-    },
-    "app-states": {
-      script: "app-states.js?v=20260722-app-states-1"
-    },
+    observability: { script: "system-observability.js?v=20260722-observability-1" },
+    "ops-v2": { script: "interface-ops-v2.js?v=20260722-ops-v2-1" },
+    "app-states": { script: "app-states.js?v=20260722-app-states-1" },
     "visual-v3": {
       script: "visual-system-v3.js?v=20260723-visual-system-v3-1",
       styles: [
@@ -67,6 +61,13 @@
     return new URL(relativePath, scriptUrl).href;
   }
 
+  function promoteVisualStyles() {
+    const visualLinks = [...document.querySelectorAll('link[data-ops-module-style="visual-v3"]')];
+    visualLinks.forEach(link => document.head.appendChild(link));
+    window.OpsControlVisual?.refresh?.();
+    document.documentElement.dataset.visualStylesPromoted = String(visualLinks.length);
+  }
+
   function loadStyle(moduleName, relativePath) {
     const href = assetUrl(relativePath);
     const linked = [...document.querySelectorAll(`link[data-ops-module-style="${moduleName}"]`)]
@@ -106,7 +107,10 @@
   }
 
   function loadModule(moduleName) {
-    if (status.get(moduleName) === "ready") return Promise.resolve();
+    if (status.get(moduleName) === "ready") {
+      if (moduleName !== "visual-v3") promoteVisualStyles();
+      return Promise.resolve();
+    }
     if (loading.has(moduleName)) return loading.get(moduleName);
     const definition = modules[moduleName];
     if (!definition) return Promise.reject(new Error(`Módulo desconhecido: ${moduleName}`));
@@ -117,6 +121,7 @@
       .then(() => {
         status.set(moduleName, "ready");
         loading.delete(moduleName);
+        if (moduleName !== "visual-v3") promoteVisualStyles();
         document.documentElement.dataset.lastInterfaceModule = moduleName;
         document.dispatchEvent(new CustomEvent("opscontrol:module-ready", { detail: { module: moduleName } }));
       })
@@ -141,6 +146,7 @@
         // Os demais módulos continuam carregando mesmo quando um módulo opcional falha.
       }
     }
+    promoteVisualStyles();
   }
 
   function appIsVisible() {
@@ -159,6 +165,7 @@
     if (!pageName) return;
     document.documentElement.dataset.interfacePage = pageName;
     await loadModules(pageModules[pageName] || []);
+    promoteVisualStyles();
   }
 
   let pageSyncScheduled = false;
@@ -174,12 +181,10 @@
   }
 
   function observeNavigation() {
-    const root = document.querySelector("#appView") || document.body;
+    const appRoot = document.querySelector("#appView") || document.body;
     const observer = new MutationObserver(mutations => {
       const relevant = mutations.some(mutation => {
-        if (mutation.type === "attributes") {
-          return mutation.target.matches?.("#appView,.page,.nav-item");
-        }
+        if (mutation.type === "attributes") return mutation.target.matches?.("#appView,.page,.nav-item");
         return [...mutation.addedNodes].some(node => node.nodeType === 1 && (
           node.matches?.('#genericForm[data-kind="alert"],#vesselAisMap,.page')
           || node.querySelector?.('#genericForm[data-kind="alert"],#vesselAisMap,.page')
@@ -187,18 +192,20 @@
       });
       if (relevant) schedulePageSync();
     });
-    observer.observe(root, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
+    observer.observe(appRoot, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
 
     document.addEventListener("click", event => {
       const target = event.target.closest?.("[data-page],[data-mobile-page]");
       if (target) requestAnimationFrame(schedulePageSync);
     });
     document.addEventListener("opscontrol:page-change", schedulePageSync);
+    document.addEventListener("opscontrol:module-ready", promoteVisualStyles);
   }
 
   async function start() {
     document.documentElement.dataset.interfaceLoader = VERSION;
     await loadModules(["observability", "ops-v2", "app-states", "visual-v3"]);
+    promoteVisualStyles();
     document.documentElement.dataset.interfaceRuntime = "ready";
     document.dispatchEvent(new CustomEvent("opscontrol:interface-ready"));
     observeNavigation();
@@ -211,6 +218,7 @@
     loadForPage,
     loaded: moduleName => status.get(moduleName) === "ready",
     status: moduleName => status.get(moduleName) || "idle",
+    promoteVisualStyles,
     pageModules: Object.freeze({ ...pageModules })
   });
 

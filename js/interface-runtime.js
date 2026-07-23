@@ -25,7 +25,10 @@
     },
     "visual-v3": {
       script: "visual-system-v3.js?v=20260723-visual-system-v3-1",
-      styles: ["../visual-system-v3.css?v=20260723-visual-system-v3-1"]
+      styles: [
+        "../visual-system-v3.css?v=20260723-visual-system-v3-1",
+        "../visual-modules-v3.css?v=20260723-visual-system-v3-1"
+      ]
     },
     "role-dashboard": {
       script: "role-dashboard.js?v=20260722-role-dashboard-1",

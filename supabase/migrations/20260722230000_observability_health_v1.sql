@@ -189,7 +189,7 @@ begin
 
   select count(*) into v_overdue_alerts
   from public.alerts
-  where workflow_status<>'Resolvido' and due_at is not null and due_at<now();
+  where status<>'Resolvido' and due_at is not null and due_at<now();
 
   select count(*) into v_overdue_maintenance
   from public.maintenance_orders

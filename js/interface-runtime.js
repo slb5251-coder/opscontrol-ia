@@ -43,8 +43,8 @@
       styles: ["../tv-control-room.css?v=20260722-tv-control-room-1"]
     },
     "alert-center-v2": {
-      script: "alert-center-v2.js?v=20260723-alert-center-v2-2",
-      styles: ["../alert-center-v2.css?v=20260723-alert-center-v2-2"]
+      script: "alert-center-v2.js?v=20260723-alert-center-v2-3",
+      styles: ["../alert-center-v2.css?v=20260723-alert-center-v2-3"]
     },
     "ai-assistant": {
       script: "assistente-integrado.js?v=20260722-deferred-dependencies-1",

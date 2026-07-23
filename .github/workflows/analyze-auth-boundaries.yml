@@ -1,4 +1,4 @@
-name: Analyze auth boundaries
+name: Extract auth session module
 
 on:
   pull_request:
@@ -8,7 +8,7 @@ permissions:
   contents: write
 
 jobs:
-  analyze:
+  extract:
     if: github.head_ref == 'refactor/extract-auth-session-v1'
     runs-on: ubuntu-latest
     steps:
@@ -17,17 +17,22 @@ jobs:
           ref: refactor/extract-auth-session-v1
           fetch-depth: 0
 
-      - name: Generate authentication boundary report
-        run: python scripts/analyze-auth-boundaries.py
+      - name: Extract authentication and session
+        run: |
+          if grep -q "async function initClient" js/app.js; then
+            python scripts/extract-auth-session.py
+          else
+            echo "Authentication already extracted"
+          fi
 
-      - name: Commit analysis report
+      - name: Commit extracted authentication module
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/AUTH_EXTRACTION_REPORT.md
+          git add js/app.js index.html sw.js package.json
           if git diff --cached --quiet; then
-            echo "No report changes"
+            echo "No extraction changes"
             exit 0
           fi
-          git commit -m "chore: mapear autenticação e sessão"
+          git commit -m "refactor: extrair autenticação e sessão"
           git push origin HEAD:refactor/extract-auth-session-v1

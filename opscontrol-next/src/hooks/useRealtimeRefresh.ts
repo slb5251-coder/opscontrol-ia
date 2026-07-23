@@ -29,7 +29,7 @@ function restoreUi(snapshot:UiSnapshot){
 
 export function useRealtimeRefresh(){
  const[version,setVersion]=useState(0);
- const[state,setState]=useState<RealtimeState>('connecting');
+ const[state,setState]=useState<RealtimeState>(navigator.onLine?'connecting':'disconnected');
  const[pendingSync,setPendingSync]=useState(false);
  const[lastEvent,setLastEvent]=useState<OperationalRealtimeEvent|null>(null);
  const pending=useRef<OperationalRealtimeEvent|null>(null);
@@ -93,12 +93,24 @@ export function useRealtimeRefresh(){
    hiddenAt.current=null;
    if(inactiveFor>=60000)applyRefresh({table:'resume',eventType:'UPDATE',receivedAt:new Date().toISOString()});
   };
+  const onOffline=()=>{
+   setState('disconnected');
+   setPendingSync(true);
+  };
+  const onOnline=()=>{
+   setState('connecting');
+   applyRefresh({table:'reconnect',eventType:'UPDATE',receivedAt:new Date().toISOString()});
+  };
   observer.observe(document.body,{childList:true,subtree:true});
   document.addEventListener('visibilitychange',onVisibilityChange);
+  window.addEventListener('offline',onOffline);
+  window.addEventListener('online',onOnline);
   return()=>{
    clearRetry();
    observer.disconnect();
    document.removeEventListener('visibilitychange',onVisibilityChange);
+   window.removeEventListener('offline',onOffline);
+   window.removeEventListener('online',onOnline);
    unsubscribe();
   };
  },[]);

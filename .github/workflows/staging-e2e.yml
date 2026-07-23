@@ -25,6 +25,7 @@ jobs:
     env:
       E2E_FUNCTION_URL: https://idnbbesxdoeeiupwltxk.supabase.co/functions/v1/github-e2e-session
       E2E_BASE_URL: ${{ inputs.base_url }}
+      E2E_BOOTSTRAP_VERSION: '2'
     steps:
       - uses: actions/checkout@v4
 
@@ -51,7 +52,7 @@ jobs:
             --data '{"action":"prepare"}')
           if [[ ! "${STATUS}" =~ ^2 ]]; then
             echo "Bootstrap E2E falhou com HTTP ${STATUS}"
-            jq -c '{error}' /tmp/e2e-response.json || cat /tmp/e2e-response.json
+            jq -c '{error,stage}' /tmp/e2e-response.json || cat /tmp/e2e-response.json
             exit 1
           fi
           EMAIL=$(jq -r '.email' /tmp/e2e-response.json)

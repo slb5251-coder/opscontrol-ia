@@ -12,6 +12,7 @@ import {TanksPanel} from './components/TanksPanel';
 import {TrucksPanel} from './components/TrucksPanel';
 import {TVPanel} from './components/TVPanel';
 import {VesselsPanel} from './components/VesselsPanel';
+import {REALTIME_REFRESH_EVENT} from './hooks/useRealtimeRefresh';
 import {advanceTruck,canWrite,createMaintenance,createOperation,createQhse,createTruck,loadAuditLogs,loadDashboard,loadEquipment,loadFluidTypes,loadProfile,loadTankHistory,updateOperation,updateTank,type AuditLog,type Equipment,type FluidType,type Maintenance,type Operation,type Profile,type QhseRecord,type Tank,type TankHistory,type Truck as TruckRecord,type VesselSchedule} from './lib/data';
 import {supabase} from './lib/supabase';
 
@@ -32,6 +33,7 @@ function Dashboard({demo,onExitDemo}:{demo:boolean;onExitDemo:()=>void}){
  const[qhseForm,setQhseForm]=useState({record_date:new Date().toISOString().slice(0,10),record_type:'Observação',title:'',description:'',responsible:'',severity:'Média'});
  async function refresh(){if(demo)return;const[d,a]=await Promise.all([loadDashboard(),loadAuditLogs()]);setTanks(d.tanks);setOperations(d.operations);setVessels(d.vessels);setTrucks(d.trucks);setMaintenance(d.maintenance);setQhse(d.qhse);setAlerts(d.alerts);setSummary(d.summary);setAudit(a)}
  useEffect(()=>{if(demo)return;Promise.all([refresh(),loadProfile().then(setProfile),loadFluidTypes().then(setFluids),loadEquipment().then(setEquipment)]).catch(e=>setNotice(e.message))},[demo]);
+ useEffect(()=>{if(demo)return;const onRealtimeRefresh=()=>{refresh().catch(e=>setNotice(e instanceof Error?e.message:'Não foi possível sincronizar os dados.'))};window.addEventListener(REALTIME_REFRESH_EVENT,onRealtimeRefresh);return()=>window.removeEventListener(REALTIME_REFRESH_EVENT,onRealtimeRefresh)},[demo]);
  useEffect(()=>{if(!selected)return;loadTankHistory(selected.id).then(setHistory).catch(()=>setHistory([]));setTankForm({volume:selected.current_volume,status:selected.status,client:selected.client||'',lot:selected.current_lot||'',fluid_type_id:selected.current_fluid_type_id||''})},[selected]);
  const filtered=useMemo(()=>tanks.filter(t=>`${t.name} ${t.current_product||''} ${t.client||''}`.toLowerCase().includes(query.toLowerCase())),[tanks,query]);
  const total=useMemo(()=>tanks.reduce((a,t)=>a+t.current_volume,0),[tanks]);

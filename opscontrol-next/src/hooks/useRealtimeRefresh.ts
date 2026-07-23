@@ -37,15 +37,37 @@ export function useRealtimeRefresh(){
  const refreshing=useRef(false);
  const lastRefreshAt=useRef(0);
  const hiddenAt=useRef<number|null>(null);
+ const retryTimer=useRef<number|null>(null);
+
+ const clearRetry=()=>{
+  if(retryTimer.current!==null){
+   window.clearTimeout(retryTimer.current);
+   retryTimer.current=null;
+  }
+ };
 
  const applyRefresh=(event:OperationalRealtimeEvent)=>{
   const now=Date.now();
-  if(refreshing.current||now-lastRefreshAt.current<1200)return;
+  const cooldown=Math.max(0,1200-(now-lastRefreshAt.current));
+  if(refreshing.current||cooldown>0){
+   pending.current=event;
+   setPendingSync(true);
+   clearRetry();
+   retryTimer.current=window.setTimeout(()=>{
+    retryTimer.current=null;
+    const queued=pending.current;
+    if(!queued)return;
+    pending.current=null;
+    applyRefresh(queued);
+   },Math.max(300,cooldown));
+   return;
+  }
   if(document.querySelector('.dialog-panel')){
    pending.current=event;
    setPendingSync(true);
    return;
   }
+  clearRetry();
   refreshing.current=true;
   lastRefreshAt.current=now;
   snapshot.current=captureUi();
@@ -59,7 +81,7 @@ export function useRealtimeRefresh(){
  useEffect(()=>{
   const unsubscribe=subscribeOperationalChanges(applyRefresh,setState);
   const observer=new MutationObserver(()=>{
-   if(pending.current&&!document.querySelector('.dialog-panel')){
+   if(pending.current&&!document.querySelector('.dialog-panel')&&!refreshing.current){
     const event=pending.current;
     pending.current=null;
     applyRefresh(event);
@@ -73,13 +95,25 @@ export function useRealtimeRefresh(){
   };
   observer.observe(document.body,{childList:true,subtree:true});
   document.addEventListener('visibilitychange',onVisibilityChange);
-  return()=>{observer.disconnect();document.removeEventListener('visibilitychange',onVisibilityChange);unsubscribe()};
+  return()=>{
+   clearRetry();
+   observer.disconnect();
+   document.removeEventListener('visibilitychange',onVisibilityChange);
+   unsubscribe();
+  };
  },[]);
 
  useEffect(()=>{
   if(version===0)return;
   restoreUi(snapshot.current);
-  const done=window.setTimeout(()=>{refreshing.current=false},250);
+  const done=window.setTimeout(()=>{
+   refreshing.current=false;
+   const queued=pending.current;
+   if(queued&&!document.querySelector('.dialog-panel')){
+    pending.current=null;
+    applyRefresh(queued);
+   }
+  },250);
   return()=>window.clearTimeout(done);
  },[version]);
 

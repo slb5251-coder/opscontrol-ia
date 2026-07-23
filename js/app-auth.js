@@ -19,9 +19,10 @@
     const saved = safeJson(storage.getItem(CONFIG_KEY), {});
     const environment = storage.getItem(ENVIRONMENT_KEY) || config.defaultEnvironment || "production";
     const selected = config.environments?.[environment] || {};
+    const hasNamedEnvironment = Boolean(selected.supabaseUrl && selected.supabaseKey);
     return Object.freeze({
-      url: saved.url || selected.supabaseUrl || config.supabaseUrl || "",
-      key: saved.key || selected.supabaseKey || config.supabaseKey || "",
+      url: hasNamedEnvironment ? selected.supabaseUrl : (saved.url || config.supabaseUrl || ""),
+      key: hasNamedEnvironment ? selected.supabaseKey : (saved.key || config.supabaseKey || ""),
       environment
     });
   }
@@ -85,6 +86,14 @@
       localStorage.setItem(REMEMBER_KEY, String(Boolean(value)));
     }
 
+    function authStorageKey(remember) {
+      const environment = String(state.config?.environment || "production")
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]+/g, "-");
+      const suffix = environment && environment !== "production" ? `-${environment}` : "";
+      return remember ? `opscontrol-auth${suffix}` : `opscontrol-auth-session${suffix}`;
+    }
+
     function disposeAuthListener() {
       try {
         state.authSubscription?.unsubscribe?.();
@@ -107,7 +116,7 @@
             autoRefreshToken: true,
             detectSessionInUrl: true,
             storage: remember ? localStorage : sessionStorage,
-            storageKey: remember ? "opscontrol-auth" : "opscontrol-auth-session"
+            storageKey: authStorageKey(remember)
           }
         });
       }
@@ -203,6 +212,7 @@
         openApp();
         return true;
       } catch (error) {
+        state.user = null;
         console.error("Não foi possível restaurar a sessão:", error);
         return false;
       }
@@ -252,7 +262,13 @@
     async function signOutAndReload() {
       try {
         await beforeLogout();
+      } catch (error) {
+        console.warn("Falha durante a limpeza anterior ao logout:", error);
+      }
+      try {
         if (state.client) await state.client.auth.signOut();
+      } catch (error) {
+        console.warn("Falha ao encerrar a sessão remota:", error);
       } finally {
         state.user = null;
         disposeAuthListener();

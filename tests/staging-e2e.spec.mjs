@@ -84,10 +84,18 @@ async function openPage(page, name) {
 }
 
 async function closeModal(page) {
+  const modal = page.locator('#modal');
+  if (await modal.isHidden()) return;
   const close = page.locator('#modalClose:visible, [data-close-modal]:visible').first();
   if (await close.count()) await close.click();
   else await page.keyboard.press('Escape');
-  await page.locator('#modal.hidden').waitFor({ state: 'attached', timeout: 10000 }).catch(() => {});
+  try {
+    await modal.waitFor({ state: 'hidden', timeout: 5000 });
+  } catch {
+    await page.keyboard.press('Escape');
+    await modal.waitFor({ state: 'hidden', timeout: 5000 });
+  }
+  check(await modal.isHidden(), 'modal fecha pelo controle padrão');
   await page.waitForTimeout(80);
 }
 

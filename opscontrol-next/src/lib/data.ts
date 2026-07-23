@@ -13,6 +13,8 @@ export type FluidType={id:string;name:string;category:string;default_unit:string
 export type Equipment={id:string;name:string;category:string;status:string};
 export type AuditLog={id:number;table_name:string;record_id:string|null;action:string;old_data:any;new_data:any;created_at:string;profile?:{full_name:string}|null};
 
+type MaintenanceRow=Omit<Maintenance,'equipment'>&{equipment:{name:string}[]|{name:string}|null};
+
 export async function loadDashboard(){
  if(!supabase)throw new Error('Supabase não configurado.');
  const[tanksResult,summaryResult,alertsResult,operationsResult,vesselsResult,trucksResult,maintenanceResult,qhseResult]=await Promise.all([
@@ -26,7 +28,8 @@ export async function loadDashboard(){
   supabase.from('qhse_records').select('id,title,record_type,severity,status,responsible,record_date').order('record_date',{ascending:false}).limit(30)
  ]);
  const error=tanksResult.error||summaryResult.error||alertsResult.error||operationsResult.error||vesselsResult.error||trucksResult.error||maintenanceResult.error||qhseResult.error;if(error)throw error;
- return{tanks:(tanksResult.data??[])as Tank[],summary:(summaryResult.data??null)as DashboardSummary|null,alerts:alertsResult.data??[],operations:(operationsResult.data??[])as Operation[],vessels:(vesselsResult.data??[])as VesselSchedule[],trucks:(trucksResult.data??[])as Truck[],maintenance:(maintenanceResult.data??[])as Maintenance[],qhse:(qhseResult.data??[])as QhseRecord[]};
+ const maintenance=((maintenanceResult.data??[])as unknown as MaintenanceRow[]).map(item=>({...item,equipment:Array.isArray(item.equipment)?item.equipment[0]??null:item.equipment}));
+ return{tanks:(tanksResult.data??[])as Tank[],summary:(summaryResult.data??null)as DashboardSummary|null,alerts:alertsResult.data??[],operations:(operationsResult.data??[])as Operation[],vessels:(vesselsResult.data??[])as VesselSchedule[],trucks:(trucksResult.data??[])as Truck[],maintenance,qhse:(qhseResult.data??[])as QhseRecord[]};
 }
 
 export async function loadTankHistory(tankId:string){if(!supabase)return[];const{data,error}=await supabase.from('tank_history').select('id,created_at,movement_type,movement_direction,moved_quantity,previous_volume,new_volume,notes').eq('tank_id',tankId).order('created_at',{ascending:false}).limit(30);if(error)throw error;return(data??[])as TankHistory[]}

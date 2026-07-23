@@ -14,10 +14,9 @@ extracted = extracted.replace('async function loadData()', 'async function load(
 extracted = extracted.replace('const c = state.client;', 'const c = client;');
 extracted = extracted.replace('const u = state.user;', 'const u = user;');
 extracted = extracted.replace('state.data = {', 'const data = {');
-extracted = extracted.replaceAll('state.data.dismissedSystemAlerts', 'data.dismissedSystemAlerts');
-extracted = extracted.replaceAll('state.data.systemAlerts', 'data.systemAlerts');
+extracted = extracted.replaceAll('state.data', 'data');
 extracted = extracted.replace('state.lastSync = new Date();', 'return Object.freeze({ data, lastSync: new Date() });');
-if (/\bstate\./.test(extracted)) throw new Error('Referência ao estado permaneceu no módulo extraído.');
+if (/\bstate\./.test(extracted)) throw new Error(`Referência ao estado permaneceu no módulo extraído: ${extracted.match(/state\.[A-Za-z0-9_.]+/)?.[0] || 'desconhecida'}`);
 
 const moduleSource = `(() => {\n  "use strict";\n\n  const VERSION = "20260723-data-layer-1";\n\n  ${extracted.replaceAll('\n', '\n  ')}\n\n  window.OpsControlData = Object.freeze({ version: VERSION, load });\n})();\n`;
 await writeFile('js/app-data.js', moduleSource, 'utf8');

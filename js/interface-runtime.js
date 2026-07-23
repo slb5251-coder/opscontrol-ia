@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "20260722-module-loader-1";
+  const VERSION = "20260722-deferred-dependencies-1";
   const scriptUrl = document.currentScript?.src || new URL("js/interface-runtime.js", document.baseURI).href;
   const loading = new Map();
   const status = new Map();
@@ -10,7 +10,8 @@
     tanks: ["tank-cards-reference"],
     operations: ["operations-analytics"],
     tv: ["tv-control-room"],
-    alerts: ["alert-center-v2"]
+    alerts: ["alert-center-v2"],
+    "ai-assistant": ["ai-assistant"]
   };
   const modules = {
     observability: {
@@ -44,6 +45,14 @@
     "alert-center-v2": {
       script: "alert-center-v2.js?v=20260722-alert-center-v2-1",
       styles: ["../alert-center-v2.css?v=20260722-alert-center-v2-1"]
+    },
+    "ai-assistant": {
+      script: "assistente-integrado.js?v=20260722-deferred-dependencies-1",
+      styles: ["../assistente-integrado.css?v=20260722-deferred-dependencies-1"]
+    },
+    leaflet: {
+      script: "https://unpkg.com/leaflet@1.9.4/dist/leaflet.js",
+      styles: ["https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"]
     }
   };
 
@@ -153,6 +162,7 @@
       pageSyncScheduled = false;
       loadForPage();
       if (document.querySelector('#genericForm[data-kind="alert"]')) loadModule("alert-center-v2").catch(() => {});
+      if (document.querySelector("#vesselAisMap")) loadModule("leaflet").catch(() => {});
     });
   }
 
@@ -164,8 +174,8 @@
           return mutation.target.matches?.("#appView,.page,.nav-item");
         }
         return [...mutation.addedNodes].some(node => node.nodeType === 1 && (
-          node.matches?.('#genericForm[data-kind="alert"],.page')
-          || node.querySelector?.('#genericForm[data-kind="alert"],.page')
+          node.matches?.('#genericForm[data-kind="alert"],#vesselAisMap,.page')
+          || node.querySelector?.('#genericForm[data-kind="alert"],#vesselAisMap,.page')
         ));
       });
       if (relevant) schedulePageSync();

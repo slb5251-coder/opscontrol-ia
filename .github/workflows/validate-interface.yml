@@ -54,6 +54,9 @@ jobs:
       - name: Run module loader tests
         run: npm run test:performance-loader
 
+      - name: Run deferred dependency tests
+        run: npm run test:deferred-dependencies
+
       - name: Run database hardening tests
         run: npm run test:database-hardening
 
@@ -75,6 +78,7 @@ jobs:
           runtime_js = Path('js/interface-runtime.js').read_text(encoding='utf-8')
           service_worker = Path('sw.js').read_text(encoding='utf-8')
           config_js = Path('js/config.js').read_text(encoding='utf-8')
+          index_html = Path('index.html').read_text(encoding='utf-8')
 
           css_refs = re.findall(r"@import\s+url\(['\"]?([^'\")?]+)", runtime_css)
           dynamic_css_refs = re.findall(r'"(\.\./[^\"]+\.css\?v=[^\"]+)"', runtime_js)
@@ -106,6 +110,7 @@ jobs:
             Path('tests/environment.spec.mjs'),
             Path('tests/observability.spec.mjs'),
             Path('tests/performance-loader.spec.mjs'),
+            Path('tests/deferred-dependencies.spec.mjs'),
             Path('tests/database-hardening.spec.mjs'),
             Path('supabase/migrations/20260722230000_observability_health_v1.sql'),
             Path('supabase/migrations/20260722231500_observability_hardening_v1.sql'),
@@ -124,6 +129,14 @@ jobs:
           for token in ['CORE_FILES', 'cacheFirst', 'networkFirst']:
             if token not in service_worker:
               errors.append(f'Missing modular cache token in service worker: {token}')
+
+          for dependency in ['assistente-integrado.js', 'assistente-integrado.css', 'leaflet.js', 'leaflet.css']:
+            if dependency in index_html:
+              errors.append(f'Deferred dependency still blocks initial HTML: {dependency}')
+
+          for token in ['ai-assistant', 'leaflet', 'deferred-dependencies']:
+            if token not in runtime_js:
+              errors.append(f'Missing deferred dependency token in runtime: {token}')
 
           forbidden = [
             'design-upgrade.css',
@@ -144,7 +157,7 @@ jobs:
             print('\n'.join(f'- {error}' for error in errors))
             sys.exit(1)
 
-          print(f'Validated {len(css_refs)} core CSS imports, {len(dynamic_css_refs)} lazy CSS assets, {len(js_refs)} JS modules, observability, performance, RLS and environment isolation files.')
+          print(f'Validated {len(css_refs)} core CSS imports, {len(dynamic_css_refs)} lazy CSS assets, {len(js_refs)} JS modules, deferred dependencies, observability, performance, RLS and environment isolation files.')
 
       - name: Upload responsive test evidence
         if: always()

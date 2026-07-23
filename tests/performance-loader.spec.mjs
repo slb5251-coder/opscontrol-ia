@@ -117,8 +117,14 @@ try {
   assert(wasRequested('/alert-center-v2.js'), 'central de alertas carrega quando um formulário de alerta é aberto');
   assert(wasRequested('/alert-center-v2.css'), 'estilo de alertas acompanha o carregamento funcional');
 
-  const loaderVersion = await page.evaluate(() => window.OpsControlModules?.version || '');
-  assert(loaderVersion.includes('module-loader'), 'API de diagnóstico expõe a versão do carregador', loaderVersion);
+  const loader = await page.evaluate(() => ({
+    version: window.OpsControlModules?.version || '',
+    hasLoad: typeof window.OpsControlModules?.load === 'function',
+    hasStatus: typeof window.OpsControlModules?.status === 'function',
+    hasPageMap: Boolean(window.OpsControlModules?.pageModules?.dashboard)
+  }));
+  assert(loader.version.length > 0, 'API de diagnóstico expõe versão do carregador', loader.version);
+  assert(loader.hasLoad && loader.hasStatus && loader.hasPageMap, 'API expõe carregamento, estado e mapa de páginas');
 } finally {
   await browser.close();
   await new Promise(resolveClose => server.close(resolveClose));

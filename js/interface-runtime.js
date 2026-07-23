@@ -3,7 +3,8 @@
 
   const VERSION = "20260722-module-loader-1";
   const scriptUrl = document.currentScript?.src || new URL("js/interface-runtime.js", document.baseURI).href;
-  const loaded = new Map();
+  const loading = new Map();
+  const status = new Map();
   const pageModules = {
     dashboard: ["role-dashboard"],
     tanks: ["tank-cards-reference"],
@@ -52,9 +53,10 @@
 
   function loadStyle(moduleName, relativePath) {
     const href = assetUrl(relativePath);
-    const existing = [...document.styleSheets].some(sheet => sheet.href === href)
-      || document.querySelector(`link[data-ops-module-style="${moduleName}"][href="${CSS.escape(href)}"]`);
-    if (existing) return Promise.resolve();
+    const linked = [...document.querySelectorAll(`link[data-ops-module-style="${moduleName}"]`)]
+      .some(link => link.href === href);
+    const applied = [...document.styleSheets].some(sheet => sheet.href === href);
+    if (linked || applied) return Promise.resolve();
 
     return new Promise((resolve, reject) => {
       const link = document.createElement("link");
@@ -69,7 +71,8 @@
 
   function loadScript(moduleName, relativePath) {
     const src = assetUrl(relativePath);
-    const existing = document.querySelector(`script[data-ops-module="${moduleName}"]`);
+    const existing = [...document.querySelectorAll(`script[data-ops-module="${moduleName}"]`)]
+      .find(script => script.src === src);
     if (existing?.dataset.loaded === "true") return Promise.resolve();
 
     return new Promise((resolve, reject) => {
@@ -87,25 +90,30 @@
   }
 
   function loadModule(moduleName) {
-    if (loaded.has(moduleName)) return loaded.get(moduleName);
+    if (status.get(moduleName) === "ready") return Promise.resolve();
+    if (loading.has(moduleName)) return loading.get(moduleName);
     const definition = modules[moduleName];
     if (!definition) return Promise.reject(new Error(`Módulo desconhecido: ${moduleName}`));
 
+    status.set(moduleName, "loading");
     const promise = Promise.all((definition.styles || []).map(path => loadStyle(moduleName, path)))
       .then(() => loadScript(moduleName, definition.script))
       .then(() => {
+        status.set(moduleName, "ready");
+        loading.delete(moduleName);
         document.documentElement.dataset.lastInterfaceModule = moduleName;
         document.dispatchEvent(new CustomEvent("opscontrol:module-ready", { detail: { module: moduleName } }));
       })
       .catch(error => {
-        loaded.delete(moduleName);
+        loading.delete(moduleName);
+        status.set(moduleName, "error");
         document.documentElement.dataset.interfaceModuleError = moduleName;
         document.dispatchEvent(new CustomEvent("opscontrol:module-error", { detail: { module: moduleName, error } }));
         console.error("[OpsControl Modules]", error);
         throw error;
       });
 
-    loaded.set(moduleName, promise);
+    loading.set(moduleName, promise);
     return promise;
   }
 
@@ -184,7 +192,8 @@
     version: VERSION,
     load: loadModule,
     loadForPage,
-    loaded: moduleName => loaded.has(moduleName),
+    loaded: moduleName => status.get(moduleName) === "ready",
+    status: moduleName => status.get(moduleName) || "idle",
     pageModules: Object.freeze({ ...pageModules })
   });
 

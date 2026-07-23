@@ -1,0 +1,32 @@
+/* OPSControl IA — acessibilidade do Visual System V3 */
+body.visual-v3 .btn.secondary,
+body.visual-v3 .btn.soft,
+body.visual-v3 button.secondary,
+body.visual-v3 a.btn.secondary{
+  color:#0d47a1!important;
+  background:#e7f0ff!important;
+  border:1px solid #b8cef0!important;
+  text-shadow:none!important;
+}
+body.visual-v3 .btn.secondary:hover,
+body.visual-v3 .btn.soft:hover,
+body.visual-v3 button.secondary:hover,
+body.visual-v3 a.btn.secondary:hover{
+  color:#083679!important;
+  background:#d9e8ff!important;
+  border-color:#8fb2e5!important;
+}
+body.visual-v3 :where(button,a,input,select,textarea,summary,[tabindex]):focus-visible{
+  outline:3px solid rgba(36,107,253,.48)!important;
+  outline-offset:3px!important;
+}
+body.visual-v3 .sidebar :where(button,a,input):focus-visible{
+  outline-color:rgba(97,212,255,.72)!important;
+}
+body.visual-v3 .btn.danger,body.visual-v3 .status-badge.danger{color:#a51221}
+body.visual-v3 .btn.warning,body.visual-v3 .status-badge.warning{color:#824700}
+body.visual-v3 .muted,body.visual-v3 small{line-height:1.45}
+@media(forced-colors:active){
+  body.visual-v3 .visual-spotlight:after,body.visual-v3 .visual-border-beam:before,body.visual-v3 .visual-login-aurora{display:none}
+  body.visual-v3 .nav-item.active,body.visual-v3 .btn.primary{border:2px solid ButtonText}
+}

@@ -8,7 +8,6 @@ create index if not exists idx_client_ticket_documents_uploaded_by on public.cli
 create index if not exists idx_course_enrollments_course_id on public.course_enrollments(course_id);
 create index if not exists idx_course_enrollments_created_by on public.course_enrollments(created_by);
 create index if not exists idx_courses_created_by on public.courses(created_by);
-create index if not exists idx_dds_attendance_user_id on public.dds_attendance(user_id);
 create index if not exists idx_dds_sessions_created_by on public.dds_sessions(created_by);
 create index if not exists idx_dismissed_system_alerts_dismissed_by on public.dismissed_system_alerts(dismissed_by);
 create index if not exists idx_documents_created_by on public.documents(created_by);
@@ -30,3 +29,4 @@ create index if not exists idx_vessel_schedules_updated_by on public.vessel_sche
 -- Remove somente índices comprovadamente idênticos.
 drop index if exists public.idx_tank_history_tank_created;
 drop index if exists public.truck_items_truck_product_unique;
+drop index if exists public.idx_dds_attendance_user_id;

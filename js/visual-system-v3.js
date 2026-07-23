@@ -9,6 +9,8 @@
   const $$ = (selector, scope = document) => [...scope.querySelectorAll(selector)];
   let revealObserver;
   let scheduled = false;
+  let pointerFrame = 0;
+  let pendingPointer = null;
 
   function esc(value = "") {
     return String(value).replace(/[&<>"']/g, char => ({
@@ -26,14 +28,6 @@
       <div class="visual-login-ship" aria-hidden="true">
         <div class="wake"></div><div class="ship"><i class="mast"></i></div><div class="sea"></div>
       </div>`);
-  }
-
-  function isCard(element) {
-    return element.matches([
-      ".card", ".stat-card", ".figma-kpi", ".role-dashboard-home", ".role-dashboard-metric",
-      ".role-dashboard-action", ".reference-tank-card", ".table-wrap", ".dashboard-command-bar",
-      ".dashboard-more-metrics", ".tv-control-status-rail article", ".login-ops-metrics article"
-    ].join(","));
   }
 
   function enhanceSurface(element) {
@@ -54,12 +48,20 @@
     ].join(","), scope).forEach(enhanceSurface);
   }
 
-  function pointerSpotlight(event) {
-    const card = event.target.closest(".visual-spotlight");
+  function applyPointerSpotlight() {
+    pointerFrame = 0;
+    const event = pendingPointer;
+    pendingPointer = null;
+    const card = event?.target?.closest?.(".visual-spotlight");
     if (!card) return;
     const rect = card.getBoundingClientRect();
     card.style.setProperty("--spot-x", `${event.clientX - rect.left}px`);
     card.style.setProperty("--spot-y", `${event.clientY - rect.top}px`);
+  }
+
+  function pointerSpotlight(event) {
+    pendingPointer = event;
+    if (!pointerFrame) pointerFrame = requestAnimationFrame(applyPointerSpotlight);
   }
 
   function revealChildren(scope = document) {
@@ -82,28 +84,51 @@
     if (!match) return null;
     const numeric = Number(match[2].replace(/\./g, "").replace(",", "."));
     if (!Number.isFinite(numeric)) return null;
-    return { prefix: match[1], value: numeric, suffix: match[3], decimals: match[2].includes(",") ? match[2].split(",")[1].length : 0 };
+    return {
+      prefix: match[1],
+      value: numeric,
+      suffix: match[3],
+      decimals: match[2].includes(",") ? match[2].split(",")[1].length : 0
+    };
   }
 
   function animateNumber(element) {
-    if (!element || element.dataset.visualNumber === element.textContent) return;
-    const parsed = parseNumericText(element.textContent);
+    if (!element || element.dataset.visualAnimating === "true") return;
+    const original = element.textContent;
+    if (element.dataset.visualNumberTarget === original) return;
+    const parsed = parseNumericText(original);
     if (!parsed || Math.abs(parsed.value) > 100000000) return;
-    element.dataset.visualNumber = element.textContent;
+
+    element.dataset.visualNumberTarget = original;
     if (reduceMotion.matches) return;
+
+    element.dataset.visualAnimating = "true";
     const duration = 650;
     const start = performance.now();
-    const original = element.textContent;
+    let lastRendered = original;
     const format = value => value.toLocaleString("pt-BR", {
       minimumFractionDigits: parsed.decimals,
       maximumFractionDigits: parsed.decimals
     });
+
     function frame(now) {
+      if (!element.isConnected) return;
+      if (element.textContent !== lastRendered && element.textContent !== original) {
+        delete element.dataset.visualAnimating;
+        delete element.dataset.visualNumberTarget;
+        schedule(element);
+        return;
+      }
       const progress = Math.min(1, (now - start) / duration);
       const eased = 1 - Math.pow(1 - progress, 3);
-      element.textContent = `${parsed.prefix}${format(parsed.value * eased)}${parsed.suffix}`;
-      if (progress < 1) requestAnimationFrame(frame);
-      else element.textContent = original;
+      lastRendered = `${parsed.prefix}${format(parsed.value * eased)}${parsed.suffix}`;
+      element.textContent = lastRendered;
+      if (progress < 1) {
+        requestAnimationFrame(frame);
+      } else {
+        element.textContent = original;
+        delete element.dataset.visualAnimating;
+      }
     }
     requestAnimationFrame(frame);
   }
@@ -183,6 +208,15 @@
     requestAnimationFrame(() => run(scope));
   }
 
+  function meaningfulMutation(records) {
+    return records.find(record => {
+      const target = record.target instanceof Element ? record.target : record.target.parentElement;
+      if (!target) return false;
+      if (target.closest?.('[data-visual-animating="true"]')) return false;
+      return true;
+    });
+  }
+
   function start() {
     body.classList.add("visual-v3");
     root.dataset.visualSystem = VERSION;
@@ -196,10 +230,17 @@
 
     document.addEventListener("pointermove", pointerSpotlight, { passive: true });
     const observer = new MutationObserver(records => {
-      const scope = records.find(record => record.target instanceof Element)?.target || document;
-      schedule(scope instanceof Element ? scope : document);
+      const relevant = meaningfulMutation(records);
+      if (!relevant) return;
+      const scope = relevant.target instanceof Element ? relevant.target : relevant.target.parentElement;
+      schedule(scope || document);
     });
-    observer.observe(document.body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class", "style", "aria-valuenow"] });
+    observer.observe(document.body, {
+      childList: true,
+      subtree: true,
+      attributes: true,
+      attributeFilter: ["class", "aria-valuenow"]
+    });
     document.addEventListener("visibilitychange", () => !document.hidden && schedule());
     window.addEventListener("resize", () => schedule(), { passive: true });
     schedule();

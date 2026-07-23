@@ -51,6 +51,9 @@ jobs:
       - name: Run observability tests
         run: npm run test:observability
 
+      - name: Run module loader tests
+        run: npm run test:performance-loader
+
       - name: Run database hardening tests
         run: npm run test:database-hardening
 
@@ -74,12 +77,18 @@ jobs:
           config_js = Path('js/config.js').read_text(encoding='utf-8')
 
           css_refs = re.findall(r"@import\s+url\(['\"]?([^'\")?]+)", runtime_css)
+          dynamic_css_refs = re.findall(r'"(\.\./[^\"]+\.css\?v=[^\"]+)"', runtime_js)
           js_refs = re.findall(r'"([A-Za-z0-9._/-]+\.js\?v=[^"]+)"', runtime_js)
 
           for ref in css_refs:
             path = Path(ref.split('?')[0].lstrip('./'))
             if not path.exists():
               errors.append(f'Missing CSS reference: {path}')
+
+          for ref in dynamic_css_refs:
+            path = Path(ref.split('?')[0].removeprefix('../'))
+            if not path.exists():
+              errors.append(f'Missing lazy CSS reference: {path}')
 
           for ref in js_refs:
             path = Path('js') / Path(ref.split('?')[0]).name
@@ -96,6 +105,7 @@ jobs:
             Path('js/system-observability.js'),
             Path('tests/environment.spec.mjs'),
             Path('tests/observability.spec.mjs'),
+            Path('tests/performance-loader.spec.mjs'),
             Path('tests/database-hardening.spec.mjs'),
             Path('supabase/migrations/20260722230000_observability_health_v1.sql'),
             Path('supabase/migrations/20260722231500_observability_hardening_v1.sql'),
@@ -110,6 +120,10 @@ jobs:
           for token in ['production', 'staging', 'opscontrol_environment']:
             if token not in config_js:
               errors.append(f'Missing environment guard token in config: {token}')
+
+          for token in ['CORE_FILES', 'cacheFirst', 'networkFirst']:
+            if token not in service_worker:
+              errors.append(f'Missing modular cache token in service worker: {token}')
 
           forbidden = [
             'design-upgrade.css',
@@ -130,7 +144,7 @@ jobs:
             print('\n'.join(f'- {error}' for error in errors))
             sys.exit(1)
 
-          print(f'Validated {len(css_refs)} CSS imports, {len(js_refs)} JS modules, observability, RLS and environment isolation files.')
+          print(f'Validated {len(css_refs)} core CSS imports, {len(dynamic_css_refs)} lazy CSS assets, {len(js_refs)} JS modules, observability, performance, RLS and environment isolation files.')
 
       - name: Upload responsive test evidence
         if: always()

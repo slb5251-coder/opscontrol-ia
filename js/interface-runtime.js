@@ -1,7 +1,7 @@
 (() => {
   "use strict";
 
-  const VERSION = "20260722-deferred-dependencies-1";
+  const VERSION = "20260723-visual-system-v3-1";
   const scriptUrl = document.currentScript?.src || new URL("js/interface-runtime.js", document.baseURI).href;
   const loading = new Map();
   const status = new Map();
@@ -22,6 +22,10 @@
     },
     "app-states": {
       script: "app-states.js?v=20260722-app-states-1"
+    },
+    "visual-v3": {
+      script: "visual-system-v3.js?v=20260723-visual-system-v3-1",
+      styles: ["../visual-system-v3.css?v=20260723-visual-system-v3-1"]
     },
     "role-dashboard": {
       script: "role-dashboard.js?v=20260722-role-dashboard-1",
@@ -191,7 +195,7 @@
 
   async function start() {
     document.documentElement.dataset.interfaceLoader = VERSION;
-    await loadModules(["observability", "ops-v2", "app-states"]);
+    await loadModules(["observability", "ops-v2", "app-states", "visual-v3"]);
     document.documentElement.dataset.interfaceRuntime = "ready";
     document.dispatchEvent(new CustomEvent("opscontrol:interface-ready"));
     observeNavigation();

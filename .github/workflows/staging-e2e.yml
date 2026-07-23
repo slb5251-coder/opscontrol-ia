@@ -25,7 +25,7 @@ jobs:
     env:
       E2E_FUNCTION_URL: https://idnbbesxdoeeiupwltxk.supabase.co/functions/v1/github-e2e-session
       E2E_BASE_URL: ${{ inputs.base_url }}
-      E2E_BOOTSTRAP_VERSION: '2'
+      E2E_BOOTSTRAP_VERSION: '3'
     steps:
       - uses: actions/checkout@v4
 
@@ -41,6 +41,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          mkdir -p test-results
           OIDC=$(curl --fail --silent --show-error \
             -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" \
             "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=opscontrol-staging-e2e" | jq -r '.value')
@@ -52,7 +53,7 @@ jobs:
             --data '{"action":"prepare"}')
           if [[ ! "${STATUS}" =~ ^2 ]]; then
             echo "Bootstrap E2E falhou com HTTP ${STATUS}"
-            jq -c '{error,stage}' /tmp/e2e-response.json || cat /tmp/e2e-response.json
+            jq -c '{error,stage}' /tmp/e2e-response.json | tee test-results/e2e-bootstrap-error.json
             exit 1
           fi
           EMAIL=$(jq -r '.email' /tmp/e2e-response.json)
@@ -63,6 +64,7 @@ jobs:
           echo "::add-mask::${PASSWORD}"
           echo "E2E_EMAIL=${EMAIL}" >> "${GITHUB_ENV}"
           echo "E2E_PASSWORD=${PASSWORD}" >> "${GITHUB_ENV}"
+          jq -n --arg status "${STATUS}" '{ok:true,http_status:$status}' > test-results/e2e-bootstrap-success.json
 
       - name: Run authenticated staging flows
         run: node tests/staging-e2e.spec.mjs

@@ -6871,7 +6871,7 @@
       const text = $("#chatText")?.value.trim();
       if (!text) return;
       const { error } = await state.client.from("chat_messages").insert({
-        channel: "operacao-geral", sender_id: state.user.id,
+        channel: "geral", sender_id: state.user.id,
         sender_name: state.data.profile.name, message: text
       });
       if (error) return toast(error.message, "error");

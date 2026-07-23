@@ -13,7 +13,8 @@ const tableLabels:Record<string,string>={
  maintenance_orders:'Manutenção',
  qhse_records:'QHSE',
  audit_logs:'Auditoria',
- manual:'Sincronização manual'
+ manual:'Sincronização manual',
+ resume:'Atualização ao retornar'
 };
 
 export function RealtimeIndicator({state,pending,lastEvent,onSync}:Props){

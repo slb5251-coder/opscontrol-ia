@@ -7,6 +7,7 @@ const CORE_FILES = [
   "./opscontrol-ui.css?v=20260722-security-1",
   "./figma-interface.css?v=20260722-security-1",
   "./visual-system-v3.css?v=20260723-visual-system-v3-1",
+  "./visual-modules-v3.css?v=20260723-visual-system-v3-1",
   "./interface-runtime.css?v=20260722-deferred-dependencies-1",
   "./interface-fix.css?v=20260722-final-audit-1",
   "./final-interface.css?v=20260722-final-audit-1",

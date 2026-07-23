@@ -83,6 +83,14 @@ async function openPage(page, name) {
   await page.waitForTimeout(120);
 }
 
+async function closeModal(page) {
+  const close = page.locator('#modalClose:visible, [data-close-modal]:visible').first();
+  if (await close.count()) await close.click();
+  else await page.keyboard.press('Escape');
+  await page.locator('#modal.hidden').waitFor({ state: 'attached', timeout: 10000 }).catch(() => {});
+  await page.waitForTimeout(80);
+}
+
 async function fillRequiredFields(form) {
   const today = new Date().toISOString().slice(0, 10);
   const dateTime = new Date().toISOString().slice(0, 16);
@@ -154,7 +162,7 @@ try {
     ['client-tickets','new-client-ticket','#clientTicketForm'],
     ['qhse','new-qhse','#genericForm[data-kind="qhse"]'],
     ['maintenance','new-maintenance-order','#maintenanceOrderForm'],
-    ['chemicals','new-chemical','#chemicalForm'],
+    ['chemical-catalog','new-chemical-product','#chemicalProductForm'],
     ['alerts','new-alert','#genericForm[data-kind="alert"]']
   ];
   for (const [module, action, selector] of forms) {
@@ -166,10 +174,7 @@ try {
       const form = page.locator(selector);
       await form.waitFor({ state: 'visible', timeout: 15000 });
       check(await form.isVisible(), `formulário ${selector} abre corretamente`);
-      const close = page.locator('[data-close-modal]:visible').first();
-      if (await close.count()) await close.click();
-      else await page.keyboard.press('Escape');
-      await page.waitForTimeout(80);
+      await closeModal(page);
     }
   }
 

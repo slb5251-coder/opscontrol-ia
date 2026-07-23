@@ -1,7 +1,7 @@
 import React from 'react';
 import ReactDOM from 'react-dom/client';
-import { BrowserRouter } from 'react-router-dom';
-import App from './App';
+import {BrowserRouter} from 'react-router-dom';
+import {RealtimeApp} from './components/RealtimeApp';
 import './styles.css';
 import './auth.css';
 import './modules.css';
@@ -10,5 +10,5 @@ import './tv-panel.css';
 import './functional.css';
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
-  <React.StrictMode><BrowserRouter><App /></BrowserRouter></React.StrictMode>
+ <React.StrictMode><BrowserRouter><RealtimeApp/></BrowserRouter></React.StrictMode>
 );

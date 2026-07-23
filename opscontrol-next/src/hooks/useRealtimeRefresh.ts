@@ -1,49 +1,37 @@
 import {useEffect,useRef,useState} from 'react';
 import {subscribeOperationalChanges,type OperationalRealtimeEvent,type RealtimeState} from '../lib/realtime';
 
-type UiSnapshot={active:string;query:string;scrollY:number};
-
-function captureUi():UiSnapshot{
- const active=document.querySelector<HTMLButtonElement>('.sidebar nav button.active')?.textContent?.trim()||'Visão geral';
- const query=document.querySelector<HTMLInputElement>('.filters input')?.value||'';
- return{active,query,scrollY:window.scrollY};
-}
-
-function restoreUi(snapshot:UiSnapshot){
- requestAnimationFrame(()=>{
-  const button=[...document.querySelectorAll<HTMLButtonElement>('.sidebar nav button')].find(item=>item.textContent?.trim()===snapshot.active);
-  button?.click();
-  requestAnimationFrame(()=>{
-   if(snapshot.query){
-    const input=document.querySelector<HTMLInputElement>('.filters input');
-    if(input){
-     const setter=Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value')?.set;
-     setter?.call(input,snapshot.query);
-     input.dispatchEvent(new Event('input',{bubbles:true}));
-    }
-   }
-   window.scrollTo({top:snapshot.scrollY});
-  });
- });
-}
+export const REALTIME_REFRESH_EVENT='opscontrol:refresh';
 
 export function useRealtimeRefresh(){
- const[version,setVersion]=useState(0);
  const[state,setState]=useState<RealtimeState>(navigator.onLine?'connecting':'disconnected');
  const[pendingSync,setPendingSync]=useState(false);
  const[lastEvent,setLastEvent]=useState<OperationalRealtimeEvent|null>(null);
  const pending=useRef<OperationalRealtimeEvent|null>(null);
- const snapshot=useRef<UiSnapshot>({active:'Visão geral',query:'',scrollY:0});
  const refreshing=useRef(false);
  const lastRefreshAt=useRef(0);
  const hiddenAt=useRef<number|null>(null);
  const retryTimer=useRef<number|null>(null);
+ const finishTimer=useRef<number|null>(null);
 
  const clearRetry=()=>{
-  if(retryTimer.current!==null){
-   window.clearTimeout(retryTimer.current);
-   retryTimer.current=null;
-  }
+  if(retryTimer.current!==null){window.clearTimeout(retryTimer.current);retryTimer.current=null}
+ };
+ const clearFinish=()=>{
+  if(finishTimer.current!==null){window.clearTimeout(finishTimer.current);finishTimer.current=null}
+ };
+
+ const finishRefresh=()=>{
+  clearFinish();
+  finishTimer.current=window.setTimeout(()=>{
+   finishTimer.current=null;
+   refreshing.current=false;
+   const queued=pending.current;
+   if(queued&&!document.querySelector('.dialog-panel')){
+    pending.current=null;
+    applyRefresh(queued);
+   }
+  },250);
  };
 
  const applyRefresh=(event:OperationalRealtimeEvent)=>{
@@ -70,13 +58,16 @@ export function useRealtimeRefresh(){
   clearRetry();
   refreshing.current=true;
   lastRefreshAt.current=now;
-  snapshot.current=captureUi();
   setLastEvent(event);
   setPendingSync(false);
-  setVersion(value=>value+1);
+  window.dispatchEvent(new CustomEvent<OperationalRealtimeEvent>(REALTIME_REFRESH_EVENT,{detail:event}));
+  finishRefresh();
  };
 
- const syncNow=()=>applyRefresh({table:'manual',eventType:'UPDATE',receivedAt:new Date().toISOString()});
+ const syncNow=()=>{
+  if(!navigator.onLine)return;
+  applyRefresh({table:'manual',eventType:'UPDATE',receivedAt:new Date().toISOString()});
+ };
 
  useEffect(()=>{
   const unsubscribe=subscribeOperationalChanges(applyRefresh,setState);
@@ -93,10 +84,7 @@ export function useRealtimeRefresh(){
    hiddenAt.current=null;
    if(inactiveFor>=60000)applyRefresh({table:'resume',eventType:'UPDATE',receivedAt:new Date().toISOString()});
   };
-  const onOffline=()=>{
-   setState('disconnected');
-   setPendingSync(true);
-  };
+  const onOffline=()=>{setState('disconnected');setPendingSync(true)};
   const onOnline=()=>{
    setState('connecting');
    applyRefresh({table:'reconnect',eventType:'UPDATE',receivedAt:new Date().toISOString()});
@@ -106,8 +94,7 @@ export function useRealtimeRefresh(){
   window.addEventListener('offline',onOffline);
   window.addEventListener('online',onOnline);
   return()=>{
-   clearRetry();
-   observer.disconnect();
+   clearRetry();clearFinish();observer.disconnect();
    document.removeEventListener('visibilitychange',onVisibilityChange);
    window.removeEventListener('offline',onOffline);
    window.removeEventListener('online',onOnline);
@@ -115,19 +102,5 @@ export function useRealtimeRefresh(){
   };
  },[]);
 
- useEffect(()=>{
-  if(version===0)return;
-  restoreUi(snapshot.current);
-  const done=window.setTimeout(()=>{
-   refreshing.current=false;
-   const queued=pending.current;
-   if(queued&&!document.querySelector('.dialog-panel')){
-    pending.current=null;
-    applyRefresh(queued);
-   }
-  },250);
-  return()=>window.clearTimeout(done);
- },[version]);
-
- return{version,state,pendingSync,lastEvent,syncNow};
+ return{state,pendingSync,lastEvent,syncNow};
 }

@@ -67,6 +67,7 @@ async function login(page) {
 }
 
 async function openPage(page, name) {
+  if (await page.locator('#modal').isVisible()) await closeModal(page);
   const button = page.locator(`.nav-item[data-page="${name}"]`).first();
   await button.waitFor({ state: 'attached', timeout: 30000 });
   const group = button.locator('xpath=ancestor::section[contains(concat(" ", normalize-space(@class), " "), " design-nav-group ")]').first();

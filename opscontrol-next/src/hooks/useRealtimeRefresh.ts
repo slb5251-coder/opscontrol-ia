@@ -35,15 +35,19 @@ export function useRealtimeRefresh(){
  const pending=useRef<OperationalRealtimeEvent|null>(null);
  const snapshot=useRef<UiSnapshot>({active:'Visão geral',query:'',scrollY:0});
  const refreshing=useRef(false);
+ const lastRefreshAt=useRef(0);
+ const hiddenAt=useRef<number|null>(null);
 
  const applyRefresh=(event:OperationalRealtimeEvent)=>{
-  if(refreshing.current)return;
+  const now=Date.now();
+  if(refreshing.current||now-lastRefreshAt.current<1200)return;
   if(document.querySelector('.dialog-panel')){
    pending.current=event;
    setPendingSync(true);
    return;
   }
   refreshing.current=true;
+  lastRefreshAt.current=now;
   snapshot.current=captureUi();
   setLastEvent(event);
   setPendingSync(false);
@@ -61,8 +65,15 @@ export function useRealtimeRefresh(){
     applyRefresh(event);
    }
   });
+  const onVisibilityChange=()=>{
+   if(document.hidden){hiddenAt.current=Date.now();return}
+   const inactiveFor=hiddenAt.current?Date.now()-hiddenAt.current:0;
+   hiddenAt.current=null;
+   if(inactiveFor>=60000)applyRefresh({table:'resume',eventType:'UPDATE',receivedAt:new Date().toISOString()});
+  };
   observer.observe(document.body,{childList:true,subtree:true});
-  return()=>{observer.disconnect();unsubscribe()};
+  document.addEventListener('visibilitychange',onVisibilityChange);
+  return()=>{observer.disconnect();document.removeEventListener('visibilitychange',onVisibilityChange);unsubscribe()};
  },[]);
 
  useEffect(()=>{

@@ -159,14 +159,14 @@ try {
   ];
   for (const [module, action, selector] of forms) {
     await openPage(page, module);
-    const trigger = page.locator(`[data-action="${action}"]`).first();
+    const trigger = page.locator(`[data-action="${action}"]:visible`).first();
     check(await trigger.count() > 0, `ação ${action} está disponível`);
     if (await trigger.count()) {
       await trigger.click();
       const form = page.locator(selector);
       await form.waitFor({ state: 'visible', timeout: 15000 });
       check(await form.isVisible(), `formulário ${selector} abre corretamente`);
-      const close = page.locator('[data-close-modal]').first();
+      const close = page.locator('[data-close-modal]:visible').first();
       if (await close.count()) await close.click();
       else await page.keyboard.press('Escape');
       await page.waitForTimeout(80);
@@ -174,7 +174,7 @@ try {
   }
 
   await openPage(page, 'alerts');
-  const alertTrigger = page.locator('[data-action="new-alert"]').first();
+  const alertTrigger = page.locator('[data-action="new-alert"]:visible').first();
   await alertTrigger.click();
   const alertForm = page.locator('#genericForm[data-kind="alert"]');
   await alertForm.waitFor({ state: 'visible' });
@@ -200,7 +200,7 @@ try {
   check(!tvAudit.overflow, 'Painel TV não causa overflow global');
   await page.screenshot({ path: resolve(outputDir, 'e2e-tv-panel.png'), fullPage: true });
 
-  const logout = page.locator('#logoutBtn, [data-action="logout"]').first();
+  const logout = page.locator('#logoutBtn:visible, [data-action="logout"]:visible').first();
   check(await logout.count() > 0, 'controle de logout está disponível');
   if (await logout.count()) {
     await logout.click();
@@ -220,8 +220,8 @@ try {
   mobilePage.on('pageerror', error => mobileErrors.push(error.message));
   await login(mobilePage);
   for (const module of ['dashboard','operations','tanks','alerts','tv']) {
-    const direct = mobilePage.locator(`[data-mobile-page="${module}"]`).first();
-    if (await direct.count() && await direct.isVisible()) await direct.click();
+    const direct = mobilePage.locator(`[data-mobile-page="${module}"]:visible`).first();
+    if (await direct.count()) await direct.click();
     else {
       await mobilePage.click('#menuBtn').catch(() => {});
       const target = mobilePage.locator(`.nav-item[data-page="${module}"]`).first();

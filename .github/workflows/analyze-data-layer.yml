@@ -1,4 +1,4 @@
-name: Analyze data layer
+name: Extract data layer
 
 on:
   pull_request:
@@ -8,7 +8,7 @@ permissions:
   contents: write
 
 jobs:
-  analyze:
+  extract:
     if: github.head_ref == 'refactor/extract-data-layer-v1'
     runs-on: ubuntu-latest
     steps:
@@ -20,11 +20,18 @@ jobs:
         with:
           node-version: '22'
       - run: npm install --no-save acorn@8
-      - run: node scripts/analyze-data-layer.mjs
-      - run: |
+      - name: Extract data loader
+        run: |
+          if [ ! -f js/app-data.js ]; then
+            node scripts/extract-data-layer.mjs
+          else
+            echo "Data layer already extracted"
+          fi
+      - name: Commit extracted data module
+        run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add docs/DATA_LAYER_REPORT.md
+          git add js/app-data.js js/app.js index.html sw.js package.json
           if git diff --cached --quiet; then exit 0; fi
-          git commit -m "chore: mapear camada de dados"
+          git commit -m "refactor: extrair carregamento de dados"
           git push origin HEAD:refactor/extract-data-layer-v1

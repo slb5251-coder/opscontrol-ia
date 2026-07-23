@@ -1,10 +1,15 @@
-import type {RealtimeChannel,RealtimePostgresChangesPayload} from '@supabase/supabase-js';
+import type {RealtimeChannel} from '@supabase/supabase-js';
 import {supabase} from './supabase';
 
 const realtimeTables=['tanks','tank_history','operations','vessel_schedules','trucks','truck_stage_history','maintenance_orders','qhse_records','audit_logs'] as const;
 
 export type RealtimeState='connecting'|'connected'|'disconnected'|'error';
 export type OperationalRealtimeEvent={table:string;eventType:'INSERT'|'UPDATE'|'DELETE';receivedAt:string};
+type RealtimePayload={eventType?:string};
+
+function normalizeEventType(value:string|undefined):OperationalRealtimeEvent['eventType']{
+ return value==='INSERT'||value==='DELETE'?value:'UPDATE';
+}
 
 export function subscribeOperationalChanges(onChange:(event:OperationalRealtimeEvent)=>void,onState?:(state:RealtimeState)=>void){
  if(!supabase){onState?.('disconnected');return()=>undefined}
@@ -14,8 +19,8 @@ export function subscribeOperationalChanges(onChange:(event:OperationalRealtimeE
  let stopped=false;
  let latestEvent:OperationalRealtimeEvent|null=null;
 
- const scheduleRefresh=(table:string,payload:RealtimePostgresChangesPayload<Record<string,unknown>>)=>{
-  latestEvent={table,eventType:payload.eventType,receivedAt:new Date().toISOString()};
+ const scheduleRefresh=(table:string,payload:RealtimePayload)=>{
+  latestEvent={table,eventType:normalizeEventType(payload.eventType),receivedAt:new Date().toISOString()};
   if(refreshTimer)clearTimeout(refreshTimer);
   refreshTimer=setTimeout(()=>{if(latestEvent)onChange(latestEvent)},450);
  };

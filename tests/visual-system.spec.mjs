@@ -59,6 +59,15 @@ try {
   check((await page.locator('.visual-vessel-copy strong').textContent()) === '70%', 'medidor mantém percentual real');
   check((await page.locator('.visual-vessel-liquid').getAttribute('style')).includes('70%'), 'nível líquido acompanha os dados');
 
+  await page.waitForTimeout(760);
+  const counter = await page.locator('.stat-card h2').evaluate(element => ({
+    text: element.textContent,
+    animating: element.dataset.visualAnimating || '',
+    target: element.dataset.visualNumberTarget || ''
+  }));
+  check(counter.text === '1.250', 'contador termina no valor original', counter.text);
+  check(counter.animating === '' && counter.target === '1.250', 'contador não reinicia após a própria atualização', JSON.stringify(counter));
+
   const iconDisplay = await page.locator('.nav-icon svg').evaluate(element => getComputedStyle(element).display);
   check(iconDisplay !== 'none', 'ícones reais aparecem na sidebar', iconDisplay);
   const sidebarBackground = await page.locator('.sidebar').evaluate(element => getComputedStyle(element).backgroundImage);

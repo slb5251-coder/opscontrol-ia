@@ -13,9 +13,9 @@ export function TrucksPanel({trucks,canEdit,saving,onNew,onAdvance}:Props){
     <div className="module-head"><div><span>FLUXO LOGÍSTICO</span><h2>Carretas</h2><p>Entrada, operação e liberação com acompanhamento por etapa.</p></div>{canEdit&&<button className="primary" onClick={onNew}><Plus size={16}/>Nova carreta</button>}</div>
     <div className="module-summary"><span><Truck size={15}/> {pending} carreta(s) pendente(s)</span><strong>{trucks.length} registros</strong></div>
     <div className="quick-filters">{stages.map(item=><button key={item} className={stage===item?'active':''} onClick={()=>setStage(item)}>{item==='Todas'?item:item[0].toUpperCase()+item.slice(1)}</button>)}</div>
-    <div className="workflow-grid">{visible.length?visible.map(t=>{const current=(t.workflow_stage||'programada').toLowerCase();const released=current==='liberada';return <article key={t.id}>
+    <div className="workflow-grid">{visible.length?visible.map(t=>{const current=(t.workflow_stage||'programada').toLowerCase();const released=current==='liberada';const quantity=t.quantity??0;return <article key={t.id}>
       <Truck/>
-      <div><strong>{t.plate||'Sem placa'}</strong><span>{t.product} · {t.quantity.toLocaleString('pt-BR')} {t.unit}</span><small>{t.supplier||'Fornecedor não informado'} · NF {t.invoice_number||'—'} · {t.driver_name||'Motorista não informado'}</small></div>
+      <div><strong>{t.plate||'Sem placa'}</strong><span>{t.product||'Produto não informado'} · {quantity.toLocaleString('pt-BR')} {t.unit||''}</span><small>{t.supplier||'Fornecedor não informado'} · NF {t.invoice_number||'—'} · {t.driver_name||'Motorista não informado'}</small></div>
       <div><b className={`status-chip status-${current}`}>{t.workflow_stage||'Programada'}</b>{canEdit&&<button className="mini-action" disabled={saving||released} onClick={()=>onAdvance(t.id,t.workflow_stage)}>{released?'Fluxo concluído':'Avançar etapa'}</button>}</div>
     </article>}):<div className="empty-state">Nenhuma carreta encontrada nesta etapa.</div>}</div>
   </section>

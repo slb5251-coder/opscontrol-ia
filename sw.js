@@ -1,4 +1,4 @@
-const CACHE = "opscontrol-20260722-deferred-dependencies-1";
+const CACHE = "opscontrol-20260723-app-core-1";
 const CORE_FILES = [
   "./",
   "./index.html",
@@ -14,7 +14,8 @@ const CORE_FILES = [
   "./system-health.css?v=20260722-observability-1",
   "./homologation.css?v=20260722-staging-db-1",
   "./js/config.js?v=20260722-security-1",
-  "./js/app.js?v=20260722-security-1",
+  "./js/app-core.js?v=20260723-app-core-1",
+  "./js/app.js?v=20260723-app-core-1",
   "./js/ui-polish.js?v=20260722-deferred-dependencies-1",
   "./js/interface-runtime.js?v=20260722-deferred-dependencies-1",
   "./js/system-observability.js?v=20260722-observability-1",

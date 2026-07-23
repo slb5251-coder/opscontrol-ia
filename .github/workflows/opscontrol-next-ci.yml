@@ -1,0 +1,34 @@
+name: OPSControl IA Next CI
+
+on:
+  pull_request:
+    paths:
+      - 'opscontrol-next/**'
+      - '.github/workflows/opscontrol-next-ci.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: opscontrol-next
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund --loglevel=error
+      - name: Typecheck and build
+        shell: bash
+        run: |
+          set -o pipefail
+          npm run build --silent 2>&1 | tee build.log
+      - name: Upload build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: opscontrol-next-build-log
+          path: opscontrol-next/build.log
+          if-no-files-found: error

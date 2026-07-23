@@ -1,10 +1,10 @@
 (() => {
   "use strict";
 
-  const VERSION = "20260722-final-audit-1";
+  const VERSION = "20260722-deferred-dependencies-1";
   const scriptUrl = document.currentScript?.src || new URL("js/ui-polish.js", document.baseURI).href;
-  const INTERFACE_STYLESHEET = new URL("../interface-runtime.css?v=20260722-final-audit-1", scriptUrl).href;
-  const INTERFACE_SCRIPT = new URL("interface-runtime.js?v=20260722-final-audit-1", scriptUrl).href;
+  const INTERFACE_STYLESHEET = new URL("../interface-runtime.css?v=20260722-deferred-dependencies-1", scriptUrl).href;
+  const INTERFACE_SCRIPT = new URL("interface-runtime.js?v=20260722-deferred-dependencies-1", scriptUrl).href;
   const MENU_STATE_KEY = "opscontrol_design_menu_groups";
   const MAX_MOBILE_ROWS = 100;
   const $ = (selector, root = document) => root.querySelector(selector);

@@ -1,0 +1,126 @@
+html[data-ops-environment="staging"] body {
+  padding-top: 52px;
+}
+
+.homologation-banner {
+  position: fixed;
+  inset: 0 0 auto;
+  z-index: 100000;
+  min-height: 52px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  padding: 8px 18px;
+  color: #2f2100;
+  background: #ffd34f;
+  border-bottom: 1px solid #d8a900;
+  box-shadow: 0 4px 18px rgb(76 57 0 / 18%);
+  font-family: Inter, system-ui, sans-serif;
+}
+
+.homologation-banner > div {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.homologation-banner strong {
+  font-size: 12px;
+  letter-spacing: .08em;
+}
+
+.homologation-banner span {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.homologation-banner button,
+.staging-config-blocker button {
+  min-height: 34px;
+  padding: 0 14px;
+  border: 1px solid #4a3900;
+  border-radius: 9px;
+  color: #fff;
+  background: #342800;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.staging-config-blocker {
+  position: fixed;
+  inset: 52px 0 0;
+  z-index: 99999;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgb(245 247 251 / 94%);
+  backdrop-filter: blur(12px);
+}
+
+.staging-config-blocker > div {
+  width: min(520px, 100%);
+  padding: 34px;
+  border: 1px solid #d9dee8;
+  border-radius: 20px;
+  background: #fff;
+  box-shadow: 0 24px 70px rgb(15 31 56 / 16%);
+  text-align: center;
+}
+
+.staging-config-blocker span {
+  display: inline-block;
+  margin-bottom: 12px;
+  color: #9a6700;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .08em;
+}
+
+.staging-config-blocker h1 {
+  margin: 0 0 12px;
+  color: #10233e;
+  font-size: clamp(24px, 4vw, 34px);
+}
+
+.staging-config-blocker p {
+  margin: 0 auto 22px;
+  max-width: 420px;
+  color: #5e6b7d;
+  line-height: 1.55;
+}
+
+@media (max-width: 640px) {
+  html[data-ops-environment="staging"] body {
+    padding-top: 66px;
+  }
+
+  .homologation-banner {
+    min-height: 66px;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 8px 12px;
+  }
+
+  .homologation-banner > div {
+    display: grid;
+    gap: 2px;
+  }
+
+  .homologation-banner span {
+    font-size: 11px;
+  }
+
+  .homologation-banner button {
+    max-width: 116px;
+    font-size: 11px;
+  }
+
+  .staging-config-blocker {
+    inset-block-start: 66px;
+  }
+
+  .staging-config-blocker > div {
+    padding: 26px 20px;
+  }
+}

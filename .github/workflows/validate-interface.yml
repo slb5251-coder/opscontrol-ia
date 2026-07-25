@@ -1,0 +1,231 @@
+name: Validate OPSControl
+
+on:
+  push:
+    branches: [main, homologacao]
+  pull_request:
+    branches: [main, homologacao]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: validate-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Lint, testes e build
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npx playwright install --with-deps chromium
+
+      - name: Validate static files
+        run: npm run lint
+
+      - name: Validate JavaScript
+        run: npm run typecheck
+
+      - name: Run responsive tests
+        run: npm run test:responsive
+
+      - name: Run visual system tests
+        shell: bash
+        run: |
+          set -o pipefail
+          mkdir -p test-results
+          npm run test:visual-system 2>&1 | tee test-results/visual-system.log
+
+      - name: Run environment isolation tests
+        run: npm run test:environment
+
+      - name: Run observability tests
+        run: npm run test:observability
+
+      - name: Run module loader tests
+        run: npm run test:performance-loader
+
+      - name: Run deferred dependency tests
+        run: npm run test:deferred-dependencies
+
+      - name: Run app core tests
+        run: npm run test:app-core
+
+      - name: Run authentication and session tests
+        run: npm run test:auth-session
+
+      - name: Run data layer tests
+        run: npm run test:data-layer
+
+      - name: Run database hardening tests
+        run: npm run test:database-hardening
+
+      - name: Run security tests
+        run: node tests/security.spec.mjs
+
+      - name: Build application
+        run: npm run build
+
+      - name: Validate runtime references and CSS balance
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+          import sys
+
+          errors = []
+          runtime_css = Path('interface-runtime.css').read_text(encoding='utf-8')
+          runtime_js = Path('js/interface-runtime.js').read_text(encoding='utf-8')
+          service_worker = Path('sw.js').read_text(encoding='utf-8')
+          config_js = Path('js/config.js').read_text(encoding='utf-8')
+          app_js = Path('js/app.js').read_text(encoding='utf-8')
+          app_core_js = Path('js/app-core.js').read_text(encoding='utf-8')
+          app_auth_js = Path('js/app-auth.js').read_text(encoding='utf-8')
+          app_data_js = Path('js/app-data.js').read_text(encoding='utf-8')
+          visual_css = Path('visual-system-v3.css').read_text(encoding='utf-8')
+          visual_js = Path('js/visual-system-v3.js').read_text(encoding='utf-8')
+          index_html = Path('index.html').read_text(encoding='utf-8')
+
+          css_refs = re.findall(r"@import\s+url\(['\"]?([^'\")?]+)", runtime_css)
+          dynamic_css_refs = re.findall(r'"(\.\./[^\"]+\.css\?v=[^\"]+)"', runtime_js)
+          js_refs = re.findall(r'"([A-Za-z0-9._/-]+\.js\?v=[^"]+)"', runtime_js)
+
+          for ref in css_refs:
+            path = Path(ref.split('?')[0].lstrip('./'))
+            if not path.exists():
+              errors.append(f'Missing CSS reference: {path}')
+
+          for ref in dynamic_css_refs:
+            path = Path(ref.split('?')[0].removeprefix('../'))
+            if not path.exists():
+              errors.append(f'Missing lazy CSS reference: {path}')
+
+          for ref in js_refs:
+            path = Path('js') / Path(ref.split('?')[0]).name
+            if not path.exists():
+              errors.append(f'Missing JS reference: {path}')
+
+          required = [
+            Path('final-interface.css'), Path('interface-fix.css'), Path('homologation.css'), Path('system-health.css'),
+            Path('visual-system-v3.css'), Path('visual-modules-v3.css'), Path('visual-accessibility-v3.css'),
+            Path('js/ui-polish.js'), Path('js/interface-runtime.js'), Path('js/system-observability.js'),
+            Path('js/app-core.js'), Path('js/app-auth.js'), Path('js/app-data.js'), Path('js/visual-system-v3.js'),
+            Path('tests/environment.spec.mjs'), Path('tests/observability.spec.mjs'),
+            Path('tests/performance-loader.spec.mjs'), Path('tests/deferred-dependencies.spec.mjs'),
+            Path('tests/app-core.spec.mjs'), Path('tests/auth-session.spec.mjs'), Path('tests/data-layer.spec.mjs'),
+            Path('tests/visual-system.spec.mjs'), Path('tests/database-hardening.spec.mjs'),
+            Path('supabase/migrations/20260722230000_observability_health_v1.sql'),
+            Path('supabase/migrations/20260722231500_observability_hardening_v1.sql'),
+            Path('supabase/migrations/20260723001500_revoke_anon_and_public_policies.sql'),
+            Path('supabase/migrations/20260723001600_consolidate_rls_policies.sql'),
+            Path('supabase/migrations/20260723001700_cover_foreign_keys_and_remove_duplicates.sql'),
+          ]
+          for path in required:
+            if not path.exists():
+              errors.append(f'Missing required interface file: {path}')
+
+          for token in ['production', 'staging', 'opscontrol_environment']:
+            if token not in config_js:
+              errors.append(f'Missing environment guard token in config: {token}')
+
+          for token in ['CORE_FILES', 'cacheFirst', 'networkFirst', 'app-core.js', 'app-auth.js', 'app-data.js', 'data-layer-1', 'visual-system-v3.css', 'visual-modules-v3.css', 'visual-accessibility-v3.css', 'visual-system-v3.js']:
+            if token not in service_worker:
+              errors.append(f'Missing modular cache token in service worker: {token}')
+
+          for dependency in ['assistente-integrado.js', 'assistente-integrado.css', 'leaflet.js', 'leaflet.css']:
+            if dependency in index_html:
+              errors.append(f'Deferred dependency still blocks initial HTML: {dependency}')
+
+          for token in ['ai-assistant', 'leaflet', 'deferred-dependencies', 'visual-v3']:
+            if token not in runtime_js:
+              errors.append(f'Missing deferred dependency token in runtime: {token}')
+
+          for token in ['visual-v3', 'visual-vessel-gauge', 'tv-control-room', 'prefers-reduced-motion', 'visual-login-ship']:
+            if token not in visual_css:
+              errors.append(f'Missing visual system CSS token: {token}')
+          for token in ['window.OpsControlVisual', 'addLoginScene', 'enhanceTankCard', 'IntersectionObserver', 'animateNumbers']:
+            if token not in visual_js:
+              errors.append(f'Missing visual system JS token: {token}')
+
+          core_index = index_html.find('js/app-core.js')
+          auth_index = index_html.find('js/app-auth.js')
+          data_index = index_html.find('js/app-data.js')
+          app_index = index_html.find('js/app.js')
+          if core_index < 0 or auth_index <= core_index or data_index <= auth_index or app_index <= data_index:
+            errors.append('Script order must be app-core.js, app-auth.js, app-data.js, then app.js')
+
+          if 'window.OpsControlCore' not in app_js:
+            errors.append('Missing app core integration in app.js')
+          if '20260723-app-core-1' not in app_core_js:
+            errors.append('Missing app core version in app-core.js')
+          if 'window.OpsControlAuth' not in app_js:
+            errors.append('Missing authentication integration in app.js')
+          for token in ['window.OpsControlAuth', '20260723-auth-session-1', 'createController', 'resetPasswordForEmail']:
+            if token not in app_auth_js:
+              errors.append(f'Missing authentication module token: {token}')
+          if 'window.OpsControlData' not in app_js or 'DATA.load' not in app_js:
+            errors.append('Missing data layer integration in app.js')
+          for token in ['window.OpsControlData', '20260723-data-layer-1', 'async function load(', 'client_document_tickets']:
+            if token not in app_data_js:
+              errors.append(f'Missing data layer token: {token}')
+          if '20260723-data-layer-1' not in app_js:
+            errors.append('Missing data layer version in app.js')
+
+          for duplicate in ['const UI_ICONS =', 'function normalizeSearch(', 'const MOBILE_PAGE_META =']:
+            if duplicate in app_js:
+              errors.append(f'App core symbol duplicated in app.js: {duplicate}')
+
+          for duplicate in [
+            'function loadConfig(', 'function initClient(', 'function resolveLoginEmail(',
+            'function requestPasswordRecovery(', 'function login(', 'function restoreSession(',
+            'function logout(', 'REMEMBER_LOGIN_KEY', 'APP_ENV_KEY', 'CONFIG_KEY'
+          ]:
+            if duplicate in app_js:
+              errors.append(f'Authentication symbol duplicated in app.js: {duplicate}')
+
+          if 'c.from("profiles").select("*").eq("id", u.id).maybeSingle()' in app_js:
+            errors.append('Supabase data queries remain duplicated in app.js')
+          if 'Se o acesso estiver cadastrado' not in app_auth_js:
+            errors.append('Password recovery must keep a non-enumerating response')
+
+          forbidden = ['design-upgrade.css', 'js/design-upgrade.js', 'js/design-stability.js']
+          combined = runtime_css + runtime_js + service_worker
+          for item in forbidden:
+            if item in combined:
+              errors.append(f'Legacy reference still active: {item}')
+
+          for path in Path('.').glob('*.css'):
+            text = path.read_text(encoding='utf-8')
+            if text.count('{') != text.count('}'):
+              errors.append(f'Unbalanced CSS braces: {path}')
+
+          if errors:
+            print('\n'.join(f'- {error}' for error in errors))
+            sys.exit(1)
+
+          print(f'Validated {len(css_refs)} core CSS imports, {len(dynamic_css_refs)} lazy CSS assets, {len(js_refs)} JS modules, visual system, app core, authentication, data layer, deferred dependencies, observability, RLS and environment isolation files.')
+
+      - name: Upload responsive test evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: responsive-test-results-${{ github.run_number }}
+          path: test-results/
+          if-no-files-found: ignore
+          retention-days: 14

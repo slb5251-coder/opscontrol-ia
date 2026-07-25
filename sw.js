@@ -1,43 +1,40 @@
-const CACHE="opscontrol-20260722-final-audit-1";
-const FILES=[
+const CACHE = "opscontrol-20260723-visual-system-v3-1";
+const CORE_FILES = [
   "./",
   "./index.html",
   "./app.css?v=20260722-security-1",
   "./v33.css?v=20260722-security-1",
   "./opscontrol-ui.css?v=20260722-security-1",
   "./figma-interface.css?v=20260722-security-1",
-  "./assistente-integrado.css?v=20260722-security-1",
-  "./interface-runtime.css?v=20260722-final-audit-1",
+  "./visual-system-v3.css?v=20260723-visual-system-v3-1",
+  "./visual-modules-v3.css?v=20260723-visual-system-v3-1",
+  "./visual-accessibility-v3.css?v=20260723-visual-system-v3-1",
+  "./interface-runtime.css?v=20260722-deferred-dependencies-1",
   "./interface-fix.css?v=20260722-final-audit-1",
   "./final-interface.css?v=20260722-final-audit-1",
-  "./tank-cards-reference.css?v=20260722-mobile-tanks-1",
-  "./mobile-tank-experience.css?v=20260722-mobile-tanks-1",
   "./interface-ops-v2.css?v=20260722-ops-v2-1",
-  "./tv-control-room.css?v=20260722-tv-control-room-1",
-  "./role-dashboard.css?v=20260722-role-dashboard-1",
-  "./operations-analytics.css?v=20260722-operations-analytics-1",
-  "./alert-center-v2.css?v=20260722-alert-center-v2-1",
   "./app-states.css?v=20260722-app-states-1",
+  "./system-health.css?v=20260722-observability-1",
+  "./homologation.css?v=20260722-staging-db-1",
   "./js/config.js?v=20260722-security-1",
-  "./js/app.js?v=20260722-security-1",
-  "./js/assistente-integrado.js?v=20260722-security-1",
-  "./js/ui-polish.js?v=20260722-security-1",
-  "./js/interface-runtime.js?v=20260722-final-audit-1",
-  "./js/tank-cards-reference.js?v=20260722-mobile-tanks-1",
+  "./js/app-core.js?v=20260723-app-core-1",
+  "./js/app-auth.js?v=20260723-auth-session-1",
+  "./js/app-data.js?v=20260723-data-layer-1",
+  "./js/app.js?v=20260723-data-layer-1",
+  "./js/ui-polish.js?v=20260722-deferred-dependencies-1",
+  "./js/interface-runtime.js?v=20260723-visual-system-v3-1",
+  "./js/visual-system-v3.js?v=20260723-visual-system-v3-1",
+  "./js/system-observability.js?v=20260722-observability-1",
   "./js/interface-ops-v2.js?v=20260722-ops-v2-1",
-  "./js/tv-control-room.js?v=20260722-tv-control-room-1",
-  "./js/role-dashboard.js?v=20260722-role-dashboard-1",
-  "./js/operations-analytics.js?v=20260722-operations-analytics-1",
-  "./js/alert-center-v2.js?v=20260722-alert-center-v2-1",
   "./js/app-states.js?v=20260722-app-states-1",
   "./manifest.json",
   "./assets/icon.svg",
-  "./vendor/qrcode.js"
+  "./vendor/qrcode.js?v=20260722-security-1"
 ];
 
 self.addEventListener("install", event => {
   self.skipWaiting();
-  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(FILES)));
+  event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(CORE_FILES)));
 });
 
 self.addEventListener("activate", event => {
@@ -49,55 +46,49 @@ self.addEventListener("activate", event => {
   );
 });
 
+function isNavigation(request, url) {
+  return request.mode === "navigate" || url.pathname.endsWith("/") || url.pathname.endsWith("/index.html");
+}
+
+function isStaticAsset(url) {
+  return /\.(?:css|js|json|svg)$/i.test(url.pathname);
+}
+
+async function networkFirst(request, fallback = "./index.html") {
+  try {
+    const response = await fetch(request, { cache: "no-store" });
+    if (response?.ok) {
+      const cache = await caches.open(CACHE);
+      await cache.put(request, response.clone());
+    }
+    return response;
+  } catch {
+    return (await caches.match(request)) || caches.match(fallback);
+  }
+}
+
+async function cacheFirst(request) {
+  const cached = await caches.match(request);
+  if (cached) return cached;
+  const response = await fetch(request);
+  if (response?.ok) {
+    const cache = await caches.open(CACHE);
+    await cache.put(request, response.clone());
+  }
+  return response;
+}
+
 self.addEventListener("fetch", event => {
   if (event.request.method !== "GET") return;
-
   const url = new URL(event.request.url);
-  const appFile = url.origin === self.location.origin && (
-    url.pathname.endsWith("/") ||
-    url.pathname.endsWith("/index.html") ||
-    url.pathname.endsWith("/app.css") ||
-    url.pathname.endsWith("/v33.css") ||
-    url.pathname.endsWith("/opscontrol-ui.css") ||
-    url.pathname.endsWith("/figma-interface.css") ||
-    url.pathname.endsWith("/assistente-integrado.css") ||
-    url.pathname.endsWith("/interface-runtime.css") ||
-    url.pathname.endsWith("/interface-fix.css") ||
-    url.pathname.endsWith("/final-interface.css") ||
-    url.pathname.endsWith("/tank-cards-reference.css") ||
-    url.pathname.endsWith("/mobile-tank-experience.css") ||
-    url.pathname.endsWith("/interface-ops-v2.css") ||
-    url.pathname.endsWith("/tv-control-room.css") ||
-    url.pathname.endsWith("/role-dashboard.css") ||
-    url.pathname.endsWith("/operations-analytics.css") ||
-    url.pathname.endsWith("/alert-center-v2.css") ||
-    url.pathname.endsWith("/app-states.css") ||
-    url.pathname.endsWith("/js/app.js") ||
-    url.pathname.endsWith("/js/assistente-integrado.js") ||
-    url.pathname.endsWith("/js/config.js") ||
-    url.pathname.endsWith("/js/ui-polish.js") ||
-    url.pathname.endsWith("/js/interface-runtime.js") ||
-    url.pathname.endsWith("/js/tank-cards-reference.js") ||
-    url.pathname.endsWith("/js/interface-ops-v2.js") ||
-    url.pathname.endsWith("/js/tv-control-room.js") ||
-    url.pathname.endsWith("/js/role-dashboard.js") ||
-    url.pathname.endsWith("/js/operations-analytics.js") ||
-    url.pathname.endsWith("/js/alert-center-v2.js") ||
-    url.pathname.endsWith("/js/app-states.js")
-  );
+  if (url.origin !== self.location.origin) return;
 
-  if (appFile) {
-    event.respondWith(
-      fetch(event.request, { cache: "no-store" })
-        .then(response => {
-          const copy = response.clone();
-          caches.open(CACHE).then(cache => cache.put(event.request, copy));
-          return response;
-        })
-        .catch(() => caches.match(event.request).then(cached => cached || caches.match("./index.html")))
-    );
+  if (isNavigation(event.request, url)) {
+    event.respondWith(networkFirst(event.request));
     return;
   }
 
-  event.respondWith(caches.match(event.request).then(cached => cached || fetch(event.request)));
+  if (isStaticAsset(url)) {
+    event.respondWith(cacheFirst(event.request));
+  }
 });
